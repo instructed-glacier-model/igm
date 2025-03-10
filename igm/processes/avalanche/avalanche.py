@@ -47,8 +47,12 @@ def initialize(params, state):
 
 
 def update(params, state):
+<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
     if (state.t - state.tlast_avalanche) >= params.avalanche_update_freq:
 >>>>>>> 3d1e1f5 (Add consistent parameter names, add code annotations, add new exiting strategy based on mean ice thickness to redistribute):igm/modules/process/avalanche/avalanche.py
+=======
+    if (state.t - state.tlast_avalanche) >= params.aval_update_freq:
+>>>>>>> 2705a24 (fixed avalanche.py for already changed params in params now also adapted for update function):igm/modules/process/avalanche/avalanche.py
         if hasattr(state, "logger"):
             state.logger.info("Update AVALANCHE at time : " + str(state.t.numpy()))
 
@@ -59,7 +63,11 @@ def update(params, state):
         
         # the elevation difference of the cells that is considered to be stable
         dHRepose = state.dx * tf.math.tan(
+<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
             cfg.processes.avalanche.angleOfRepose * np.pi / 180.0
+=======
+            params.aval_angleOfRepose * np.pi / 180.0
+>>>>>>> 2705a24 (fixed avalanche.py for already changed params in params now also adapted for update function):igm/modules/process/avalanche/avalanche.py
         )
         Ho = tf.maximum(H, 0)
 
