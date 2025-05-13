@@ -14,19 +14,24 @@ import json
 def run(cfg, state):
 
     path_data = os.path.join(state.original_cwd,cfg.core.folder_data)
-    path_RGI = os.path.join(path_data, cfg.inputs.oggm_shop.RGI_ID)
+
+    if cfg.inputs.oggm_shop.RGI_ID=="":
+        path_RGIs = [os.path.join(path_data,path_RGI) for path_RGI in cfg.inputs.oggm_shop.RGI_IDs]
+    else:
+        path_RGIs = [os.path.join(path_data,cfg.inputs.oggm_shop.RGI_ID)]
+
     path_file = os.path.join(path_data,cfg.inputs.oggm_shop.filename)
 
     if not os.path.exists(path_data):
         os.makedirs(path_data)
 
     # Fetch the data from OGGM if it does not exist
-    if not os.path.exists(path_RGI):
-        _oggm_util(cfg, path_RGI)
+    if not all(os.path.exists(p) for p in path_RGIs):
+        _oggm_util(cfg, path_RGIs)
 
     # transform the data into IGM readable data if it does not exist
     if not os.path.exists(path_file):
-        transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file)
+        transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGIs[0], path_file)
 
 def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
     
@@ -245,7 +250,7 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
 #########################################################################
 
 
-def _oggm_util(cfg, path_RGI):
+def _oggm_util(cfg, path_RGIs):
     """
     Function written by Fabien Maussion
     """
@@ -254,7 +259,10 @@ def _oggm_util(cfg, path_RGI):
     from oggm import utils, workflow, tasks, graphics
     import xarray as xr
 
-    RGIs = [cfg.inputs.oggm_shop.RGI_ID]
+    if cfg.inputs.oggm_shop.RGI_ID=="":
+        RGIs = cfg.inputs.oggm_shop.RGI_IDs
+    else:
+        RGIs = [cfg.inputs.oggm_shop.RGI_ID]
 
     if cfg.inputs.oggm_shop.preprocess:
         # This uses OGGM preprocessed directories
@@ -391,12 +399,12 @@ def _oggm_util(cfg, path_RGI):
         workflow.execute_entity_task(tasks.fixed_dx_elevation_band_flowline, gdirs)
         workflow.execute_entity_task(tasks.mb_calibration_from_geodetic_mb,
                                                 gdirs, informed_threestep=True)
-
-    source_folder = gdirs[0].get_filepath("gridded_data").split("gridded_data.nc")[0]
-
-    if os.path.exists(path_RGI):
-        shutil.rmtree(path_RGI)
-    shutil.copytree(source_folder, path_RGI)
+    
+    for gdir,path_RGI in zip(gdirs,path_RGIs):
+        source_folder = gdir.get_filepath("gridded_data").split("gridded_data.nc")[0]
+        if os.path.exists(path_RGI):
+            shutil.rmtree(path_RGI)
+        shutil.copytree(source_folder, path_RGI)
 
 def _read_glathida(x, y, usurf, proj, path_glathida, state):
     """

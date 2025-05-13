@@ -1,5 +1,6 @@
 oggm_shop:
   RGI_ID: "RGI60-11.01450"
+  RGI_IDs: ["RGI60-11.01450"]
   preprocess: True
   RGI_version: 7
   dx: 100
