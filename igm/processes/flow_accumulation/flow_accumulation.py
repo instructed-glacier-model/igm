@@ -71,7 +71,7 @@ def update(cfg, state):
         dirmap = (64, 128, 1, 2, 4, 8, 16, 32)
             
         # Compute flow directions
-        fdir = grid.flowdir(inflated_dem, dirmap=dirmap, routing='mfd')
+        fdir = grid.flowdir(inflated_dem, dirmap=dirmap)
 
         # Calculate flow accumulation
         state.flow_accumulation = tf.Variable(grid.accumulation(fdir, dirmap=dirmap), dtype=tf.float32)
