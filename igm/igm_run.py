@@ -29,10 +29,6 @@ import hydra
 OmegaConf.register_new_resolver("get_cwd", lambda x: os.getcwd())
 from hydra.core.hydra_config import HydraConfig
 
-physical_devices = tf.config.list_physical_devices("GPU")
-for gpu_instance in physical_devices:
-    tf.config.experimental.set_memory_growth(gpu_instance, True)
-
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -51,7 +47,9 @@ def main(cfg: DictConfig) -> None:
         print_gpu_info()
 
     gpus = tf.config.list_physical_devices("GPU")
-
+    for gpu_instance in gpus:
+        tf.config.experimental.set_memory_growth(gpu_instance, True)
+    
     print([gpus[i] for i in cfg.core.hardware.visible_gpus])
     if gpus:
         try:
