@@ -21,6 +21,9 @@ def initialize(cfg, state):
     state.tempsurfref = tf.Variable(state.tempsurfref_snap[:, :, 0], dtype="float32")
     state.LR = tf.Variable(state.LR_snap[0], dtype="float32")
 
+    state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
+    state.meantemp = tf.math.reduce_mean(state.air_temp, axis=0)
+
     state.tlast_clim = tf.Variable(-1.0e50, dtype="float32")
 
 

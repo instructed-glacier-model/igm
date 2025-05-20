@@ -77,6 +77,9 @@ def initialize(cfg, state):
         dtype="float32", trainable=False
     )
 
+    state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
+    state.meantemp = tf.math.reduce_mean(state.air_temp, axis=0)
+
     state.tlast_clim_oggm = tf.Variable(-(10**10), dtype="float32", trainable=False)
 
     if cfg.processes.clim_oggm.clim_trend_array == []:

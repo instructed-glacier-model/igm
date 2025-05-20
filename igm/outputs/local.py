@@ -54,12 +54,6 @@ def run(cfg, state):
     if "velbase_mag" in cfg.outputs.local.vars_to_save:
         state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
 
-    if "meanprec" in cfg.outputs.local.vars_to_save:
-        state.meanprec = tf.reduce_mean(state.precipitation, axis=0)
-
-    if "meantemp" in cfg.outputs.local.vars_to_save:
-        state.meantemp = tf.reduce_mean(state.air_temp, axis=0)
-
     if 'netcdf' in cfg.outputs.local.file_format_list:
         update_netcdf_ex(cfg,state)
     
@@ -126,7 +120,7 @@ def update_netcdf_ex(cfg,state):
             "time": ("time", [getattr(state, 't', tf.constant(0)).numpy()])
         }
 
-        if "Nz" in cfg.processes.iceflow:
+        if (hasattr(cfg, 'processes') and hasattr(cfg.processes, 'iceflow')):
             coords["z"] = ("z", np.arange(cfg.processes.iceflow.numerics.Nz))
 
         ds = xr.Dataset(

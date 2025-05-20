@@ -66,12 +66,6 @@ def run(cfg, state):
         if "velbase_mag" in cfg.outputs.write_ncdf.vars_to_save:
             state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
 
-        if "meanprec" in cfg.outputs.write_ncdf.vars_to_save:
-            state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
-
-        if "meantemp" in cfg.outputs.write_ncdf.vars_to_save:
-            state.meantemp = tf.math.reduce_mean(state.air_temp, axis=0)
-
         if not hasattr(state, "already_called_update_write_ncdf"):
             state.already_called_update_write_ncdf = True
 
