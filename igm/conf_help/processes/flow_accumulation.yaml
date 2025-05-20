@@ -1,0 +1,4 @@
+update_freq:
+  Type: float
+  Units: y
+  Description: Frequency at which to update the flow accumulation
