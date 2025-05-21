@@ -56,6 +56,7 @@ iceflow:
     save_cost: ''
     output_directory: ''
     plot_sol: False
+    pertubate: false
     network:
       architecture: cnn
       multiple_window_size: 0

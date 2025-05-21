@@ -74,8 +74,9 @@ def solve_iceflow(cfg, state, U, V):
  
         state.optimizer.apply_gradients(zip(grads, [U, V]))
 
-        if state.it == 0:
-            velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
+        velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
+
+        if state.it == 0:    
             print_info(state, i, C_shear_cost.numpy(), C_slid_cost.numpy(), \
                                  C_grav_cost.numpy(), COST.numpy(), 
                                  tf.reduce_max(velsurf_mag).numpy())

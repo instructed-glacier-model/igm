@@ -192,6 +192,10 @@ emulator:
     Type: boolean
     Description: "Perits to plot the solution of the emulator at each time step"
     Units: dimless
+  pertubate:
+    Type: boolean
+    Description: "pertubate the input field at training"
+    Units: dimless
   network:
     architecture:
       Type: string

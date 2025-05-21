@@ -81,17 +81,19 @@ def update(cfg, state):
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
 
-    if cfg.processes.iceflow.method == "emulated":
+    if cfg.processes.iceflow.method in ["emulated","diagnostic"]:
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0):
-            update_iceflow_emulator(cfg, state, state.it)
+            update_iceflow_emulator(cfg, state, state.it, 
+                                    pertubate=cfg.processes.iceflow.emulator.pertubate)
 
         update_iceflow_emulated(cfg, state)
+
+        if cfg.processes.iceflow.method == "diagnostic":
+            update_iceflow_diagnostic(cfg, state)
 
     elif cfg.processes.iceflow.method == "solved":
         update_iceflow_solved(cfg, state)
 
-    elif cfg.processes.iceflow.method == "diagnostic":
-        update_iceflow_diagnostic(cfg, state)
 
 def finalize(cfg, state):
 

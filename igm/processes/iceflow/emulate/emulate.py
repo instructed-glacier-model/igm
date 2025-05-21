@@ -290,9 +290,14 @@ def pertubate_X(cfg, X):
         vec = [tf.ones_like(X[:,:,:,i])*(i==j) for j in range(X.shape[3])]
         vec = tf.stack(vec, axis=-1)
  
-        if f in cfg.processes.data_assimilation.control_list:
-            XX.append(X + X*vec*0.2)
-            XX.append(X - X*vec*0.2)
+        if hasattr(cfg.processes, "data_assimilation"):
+            if f in cfg.processes.data_assimilation.control_list:
+                XX.append(X + X*vec*0.2)
+                XX.append(X - X*vec*0.2)
+        else:
+            if f in ["thk","usurf"]: 
+                XX.append(X + X*vec*0.2)
+                XX.append(X - X*vec*0.2)
  
     return tf.concat(XX, axis=0)
 
