@@ -162,7 +162,10 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
     warm_up = int(it <= cfg.processes.iceflow.emulator.warm_up_it)
 
     if (warm_up | run_it):
-        
+
+        state.COST_EMULATOR = []
+        state.GRAD_EMULATOR = []
+     
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
 
         XX = fieldin_to_X(cfg, fieldin) 
@@ -177,8 +180,6 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
         Nx = X.shape[-2]
         
         PAD = compute_PAD(cfg,Nx,Ny)
-
-        state.COST_EMULATOR = []
 
         if warm_up:
             nbit = cfg.processes.iceflow.emulator.nbit_init
@@ -258,14 +259,15 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                     zip(grads, state.iceflow_model.trainable_variables)
                 )
 
-#               gradient_norm = tf.linalg.global_norm(grads)
+                grad_emulator = tf.linalg.global_norm(grads)
  
             state.COST_EMULATOR.append(cost_emulator)
+            state.GRAD_EMULATOR.append(grad_emulator)
+
     
-    if len(cfg.processes.iceflow.emulator.save_cost)>0:
-        np.savetxt(cfg.processes.iceflow.emulator.output_directory
-                   + cfg.processes.iceflow.emulator.save_cost+'-'+str(it)+'.dat', 
-                   np.array(state.COST_EMULATOR), fmt="%5.10f")
+        if len(cfg.processes.iceflow.emulator.save_cost)>0:
+            np.savetxt(cfg.processes.iceflow.emulator.save_cost+'-'+str(it)+'.dat',
+                    np.array(list(zip(state.COST_EMULATOR,state.GRAD_EMULATOR))), fmt="%5.10f")
 
 def split_into_patches(X, nbmax, split_patch_method):
     """

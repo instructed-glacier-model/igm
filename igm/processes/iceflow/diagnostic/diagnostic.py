@@ -48,25 +48,23 @@ def update_iceflow_diagnostic(cfg, state):
         COST_Glen     = Cost_Glen[-1].numpy() 
 
         nb_it_solve = len(Cost_Glen)
+        nb_it_emul = len(state.COST_EMULATOR)
 
         l1, l2 = computemisfit(state, state.thk, state.U - U, state.V - V)
 
         vol = np.sum(state.thk) * (state.dx**2) / 10**9
 
         #######
-        #rat = np.abs( (COST_Emulator - COST_Glen) / COST_Glen ) 
-        #training_strenght = np.clip(rat*30, 0.1, 10.0)
-        
-        training_strenght = 5 * (l1 / 10)**2
+        training_strenght = 15 * (l1 / 10)**2
         training_strenght = np.clip(training_strenght, 0.1, 10.0)        
-        cfg.processes.iceflow.emulator.retrain_freq = int(1/min(training_strenght,1))
-        cfg.processes.iceflow.emulator.nbit         = int(max(training_strenght,1))
+        #cfg.processes.iceflow.emulator.retrain_freq = int(1/min(training_strenght,1))
+        #cfg.processes.iceflow.emulator.nbit         = int(max(training_strenght,1))
 
         state.diagno.append([state.t.numpy(), l1, l2, COST_Glen, COST_Emulator, 
-                             nb_it_solve, time_solve, training_strenght, vol])
+                             nb_it_solve, nb_it_emul, training_strenght, vol])
  
         np.savetxt("errors_diagno.txt", np.stack(state.diagno), delimiter=",", fmt="%10.3f",
-                header="time,l1,l2,COST_Glen,COST_Emulator,nb_it_solve,time_solve,training_strenght,vol",
+                header="time,l1,l2,COST_Glen,COST_Emulator,nb_it_solve,nb_it_emul,training_strenght,vol",
                 comments='')
             
         state.tlast_diagno.assign(state.t)
