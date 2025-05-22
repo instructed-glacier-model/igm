@@ -2,7 +2,6 @@ oggm_shop:
   RGI_ID: "RGI60-11.01450"
   RGI_IDs: ["RGI60-11.01450"]
   preprocess: True
-  RGI_version: 7
   dx: 100
   border: 30
   thk_source: consensus_ice_thickness
@@ -12,7 +11,6 @@ oggm_shop:
   filename: input.nc
   remove_RGI_folder: True
   sub_entity_mask: False
-  RGI_product: "G"
   run_batch: False
   smooth_obs_vel: True
   highres: False

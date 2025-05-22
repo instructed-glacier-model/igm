@@ -8,10 +8,13 @@ import matplotlib.pyplot as plt
 import os, glob, shutil, scipy
 from netCDF4 import Dataset
 import pandas as pd
+import xarray as xr
 #from igm.processes.utils import complete_data
 import json
 
 def run(cfg, state):
+
+    RGI_version, RGI_product = _get_RGI_version_and_product(cfg)
 
     path_data = os.path.join(state.original_cwd,cfg.core.folder_data)
 
@@ -27,13 +30,13 @@ def run(cfg, state):
 
     # Fetch the data from OGGM if it does not exist
     if not all(os.path.exists(p) for p in path_RGIs):
-        _oggm_util(cfg, path_RGIs)
+        _oggm_util(cfg, path_RGIs, RGI_version, RGI_product)
 
     # transform the data into IGM readable data if it does not exist
     if not os.path.exists(path_file):
-        transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGIs[0], path_file)
+        transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGIs[0], path_file, RGI_version, RGI_product)
 
-def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
+def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file, RGI_version, RGI_product):
     
     ncpath = os.path.join(path_RGI, "gridded_data.nc")
     if not os.path.exists(ncpath):
@@ -80,7 +83,7 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
     #One of individually numbered RGI7.0G entities within each RGI7.0C and one for which entities
     #(for any RGI version used) are tidewater glaciers as identified in the RGI
     if cfg.inputs.oggm_shop.sub_entity_mask == True:
-        if cfg.inputs.oggm_shop.RGI_product == "C":
+        if RGI_product == "C":
             icemask = np.flipud(np.squeeze(nc.variables["sub_entities"]).astype("float32"))
             icemaskobs = np.flipud(np.squeeze(nc.variables["sub_entities"]).astype("float32"))
             icemask = np.where(icemask > -1, icemask+1, icemask)
@@ -92,7 +95,7 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
             icemaskobs = np.flipud(np.squeeze(nc.variables["glacier_mask"]).astype("float32"))
             tidewatermask = icemask.copy()
             slopes = icemask.copy()
-        _get_tidewater_termini_and_slopes(tidewatermask, slopes, [cfg.inputs.oggm_shop.RGI_ID], cfg)
+        _get_tidewater_termini_and_slopes(tidewatermask, slopes, [cfg.inputs.oggm_shop.RGI_ID], cfg, RGI_product)
         vars_to_save = ["usurf", "thk", "icemask", "usurfobs", "thkobs", "icemaskobs", "tidewatermask", "slopes"]
     else:
         icemask = np.flipud(np.squeeze(nc.variables["glacier_mask"]).astype("float32"))
@@ -158,7 +161,7 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
     thkobs = np.zeros_like(thk) * np.nan
 
     if cfg.inputs.oggm_shop.incl_glathida:
-        if cfg.inputs.oggm_shop.RGI_version==6:
+        if RGI_version==6:
             with open(os.path.join(path_RGI, "glacier_grid.json"), "r") as f:
                 data = json.load(f)
             proj = data["proj"]
@@ -170,7 +173,7 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
                 thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
-        elif cfg.inputs.oggm_shop.RGI_version==7:
+        elif RGI_version==7:
             path_glathida = os.path.join(path_RGI, "glathida_data.csv")
 
             try:
@@ -214,56 +217,53 @@ def transform_OGGM_data_into_IGM_readable_data(cfg, state, path_RGI, path_file):
     if cfg.inputs.oggm_shop.sub_entity_mask == True:
         var_info["tidewatermask"] = ["Tidewater glacier mask", "no unit"]
         var_info["slopes"] = ["Average glacier surface slope", "deg"]
+ 
+    coords = {
+        "y": ("y", y, {"units": "m", "long_name": "y", "standard_name": "y", "axis": "Y"}),
+        "x": ("x", x, {"units": "m", "long_name": "x", "standard_name": "x", "axis": "X"}),
+    }
 
-    nc = Dataset(path_file, "w", format="NETCDF4")
-
-    nc.createDimension("y", len(y))
-    yn = nc.createVariable("y", np.dtype("float32").char, ("y",))
-    yn.units = "m"
-    yn.long_name = "y"
-    yn.standard_name = "y"
-    yn.axis = "Y"
-    yn[:] = y
-
-    nc.createDimension("x", len(x))
-    xn = nc.createVariable("x", np.dtype("float32").char, ("x",))
-    xn.units = "m"
-    xn.long_name = "x"
-    xn.standard_name = "x"
-    xn.axis = "X"
-    xn[:] = x
-
-    if pyproj_srs is not None:
-        nc.pyproj_srs = pyproj_srs
+    # Create data variables
+    data_vars = {}
 
     for v in vars_to_save:
-        E = nc.createVariable(v, np.dtype("float32").char, ("y", "x"))
-        E.long_name = var_info[v][0]
-        E.units = var_info[v][1]
-        E.standard_name = v
-        E[:] = vars()[v]
+        data = vars()[v]  # You can replace this with an explicit dictionary if needed
+        data_vars[v] = (
+            ("y", "x"),
+            data.astype(np.float32),
+            {
+                "long_name": var_info[v][0],
+                "units": var_info[v][1],
+                "standard_name": v
+            }
+        )
 
-    nc.close()
+    # Create the dataset
+    ds = xr.Dataset(
+        data_vars=data_vars,
+        coords=coords,
+        attrs={"pyproj_srs": pyproj_srs} if pyproj_srs is not None else {}
+    )
 
-
+    # Write to NetCDF
+    ds.to_netcdf(path_file, format="NETCDF4")
 
 #########################################################################
 
 
-def _oggm_util(cfg, path_RGIs):
+def _oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
     """
     Function written by Fabien Maussion
     """
 
     import oggm.cfg as cfg_oggm # changed the name to avoid namespace conflicts with IGM's config
     from oggm import utils, workflow, tasks, graphics
-    import xarray as xr
 
     if cfg.inputs.oggm_shop.RGI_ID=="":
         RGIs = cfg.inputs.oggm_shop.RGI_IDs
     else:
         RGIs = [cfg.inputs.oggm_shop.RGI_ID]
-
+ 
     if cfg.inputs.oggm_shop.preprocess:
         # This uses OGGM preprocessed directories
         # I think that a minimal environment should be enough for this to run
@@ -289,7 +289,7 @@ def _oggm_util(cfg, path_RGIs):
         cfg_oggm.PATHS["working_dir"] = utils.gettempdir(dirname=WD, reset=True)
 
         # We need the outlines here
-        if cfg.inputs.oggm_shop.RGI_version==6:
+        if RGI_version==6:
             rgi_ids = RGIs  # rgi_ids = utils.get_rgi_glacier_entities(RGIs)
             base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v2" )
             gdirs = workflow.init_glacier_directories(
@@ -311,10 +311,10 @@ def _oggm_util(cfg, path_RGIs):
                 rgi_ids,
                 prepro_border=40,
                 from_prepro_level=3,
-                prepro_rgi_version='70'+cfg.inputs.oggm_shop.RGI_product,
+                prepro_rgi_version='70'+RGI_product,
                 prepro_base_url=base_url,
             )
-            if (cfg.inputs.oggm_shop.sub_entity_mask == True) & (cfg.inputs.oggm_shop.RGI_product == "C"):
+            if (cfg.inputs.oggm_shop.sub_entity_mask == True) & (RGI_product == "C"):
                 tasks.rgi7g_to_complex(gdirs[0])
 
     else:
@@ -521,7 +521,7 @@ def _read_glathida_v7(x, y, path_glathida):
 
     return thkobs
 
-def _get_tidewater_termini_and_slopes(tidewatermask, slopes, RGIs, cfg):
+def _get_tidewater_termini_and_slopes(tidewatermask, slopes, RGIs, cfg, RGI_product):
     #Function written by Samuel Cook
     #Identify which glaciers in a complex are tidewater and also return average slope (both needed for infer_params in optimize)
 
@@ -536,10 +536,10 @@ def _get_tidewater_termini_and_slopes(tidewatermask, slopes, RGIs, cfg):
         rgi_ids,
         prepro_border=40,
         from_prepro_level=3,
-        prepro_rgi_version='70'+cfg.inputs.oggm_shop.RGI_product,
+        prepro_rgi_version='70'+RGI_product,
         prepro_base_url=base_url,
     )
-    if cfg.inputs.oggm_shop.RGI_product == "C":
+    if RGI_product == "C":
         tasks.rgi7g_to_complex(gdirs[0])
         gdf = gdirs[0].read_shapefile('complex_sub_entities')
         with xr.open_dataset(gdirs[0].get_filepath('gridded_data')) as ds:
@@ -558,3 +558,18 @@ def _get_tidewater_termini_and_slopes(tidewatermask, slopes, RGIs, cfg):
             tidewatermask[tidewatermask==1] = 1
         else:
             tidewatermask[tidewatermask==1] = 0
+
+def _get_RGI_version_and_product(cfg):
+
+    if (cfg.inputs.oggm_shop.RGI_ID.count('-')==4)&(cfg.inputs.oggm_shop.RGI_ID.split('-')[1][1]=='7'):
+        RGI_version = 7
+        RGI_product = cfg.inputs.oggm_shop.RGI_ID.split('-')[2]
+        #print("RGI version ",RGI_version," and RGI_product ",RGI_product)
+    elif (cfg.inputs.oggm_shop.RGI_ID.count('-')==1)&(cfg.inputs.oggm_shop.RGI_ID.split('-')[0][3]=='6'):
+        RGI_version = 6
+        RGI_product = None
+        #print("RGI version ",RGI_version)
+    else:
+        print("RGI version not recognized")
+
+    return RGI_version,RGI_product

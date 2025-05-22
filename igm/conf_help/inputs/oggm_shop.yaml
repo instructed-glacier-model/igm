@@ -10,10 +10,6 @@ preprocess:
   Type: bool
   Description: "Use OGGM preprocessing if you are fine with given spatial resolution and border size"
   Units: dimless
-RGI_version:
-  Type: int
-  Description: "RGI versio : 6 or 7"
-  Units: dimless
 dx:
   Type: float
   Description: "Spatial resolution (need preprocess false to change it)"
@@ -49,10 +45,6 @@ remove_RGI_folder:
 sub_entity_mask:
   Type: bool
   Description: "Ice mask shows individual RGI 7.0G entities within each larger RGI 7.0C complex"
-  Units: dimless
-RGI_product:
-  Type: str
-  Description: "Glacier complexes (C) or individual basins (G) (default is G, individual basins)"
   Units: dimless
 run_batch:
   Type: bool
