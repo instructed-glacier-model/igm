@@ -46,6 +46,7 @@ iceflow:
     nbit_init: 1
     nbit: 1
     framesizemax: 750
+    split_patch_method: "sequential"
     pretrained: true
     name: ''
     save_model: false

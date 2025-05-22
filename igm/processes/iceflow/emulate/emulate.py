@@ -170,7 +170,8 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
         if pertubate:
             XX = pertubate_X(cfg, XX)  
 
-        X = split_into_patches(XX, cfg.processes.iceflow.emulator.framesizemax)
+        X = split_into_patches(XX, cfg.processes.iceflow.emulator.framesizemax,
+                                   cfg.processes.iceflow.emulator.split_patch_method)
  
         Ny = X.shape[-3]
         Nx = X.shape[-2]
@@ -266,7 +267,13 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                    + cfg.processes.iceflow.emulator.save_cost+'-'+str(it)+'.dat', 
                    np.array(state.COST_EMULATOR), fmt="%5.10f")
 
-def split_into_patches(X, nbmax):
+def split_into_patches(X, nbmax, split_patch_method):
+    """
+    This function splits the input tensor into patches of size nbmax x nbmax.
+    The patches are then stacked together to form a new tensor.
+    If stack along axis 0, the adata will be streammed in a sequential way
+    If stack along axis 1, the adata will be streammed in a parallel way by baches
+    """
     XX = []
     ny = X.shape[1]
     nx = X.shape[2]
@@ -277,9 +284,15 @@ def split_into_patches(X, nbmax):
 
     for i in range(sx):
         for j in range(sy):
+#            if tf.reduce_max(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :]) > 0:
             XX.append(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :])
 
-    return tf.stack(XX, axis=0)
+    if split_patch_method == "sequential":
+        XXX = tf.stack(XX, axis=0)
+    elif split_patch_method == "parrallel":
+        XXX = tf.expand_dims(tf.concat(XX, axis=0), axis=0)
+
+    return XXX
 
 def pertubate_X(cfg, X):
 

@@ -148,9 +148,13 @@ emulator:
     Type: integer
     Description: "Number of iterations done at each time step for the retraining of the emulator"
     Units: dimless
-  retrain_emulator_framesizemax:
+  framesizemax:
     Type: integer
     Description: "Size of the patch used for retraining the emulator, this is useful for large size arrays, otherwise the GPU memory can be overloaded"
+    Units: dimless
+  split_patch_method:
+    Type: string
+    Description: "Method to split the patch for the emulator: sequential or parallel, sequential is usefull for large size arrays, otherwise the GPU memory can be overloaded (seeting retrain_emulator_framesizemax), parallel permits to apply a patching strategy to the whole domain"
     Units: dimless
   pretrained:
     Type: boolean
