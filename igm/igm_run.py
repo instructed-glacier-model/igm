@@ -7,7 +7,6 @@ import os
 import tensorflow as tf
 from igm import (
     State, 
-    IGM_DESCRIPTION,
     initialize_modules,
     update_modules,
     finalize_modules,
@@ -32,7 +31,6 @@ from hydra.core.hydra_config import HydraConfig
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-    print(IGM_DESCRIPTION)
 
     state = State()  # class acting as a dictionary
 
