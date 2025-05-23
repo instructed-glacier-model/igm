@@ -46,10 +46,6 @@ sub_entity_mask:
   Type: bool
   Description: "Ice mask shows individual RGI 7.0G entities within each larger RGI 7.0C complex"
   Units: dimless
-run_batch:
-  Type: bool
-  Description: "Run all the glaciers in the world"
-  Units: dimless
 smooth_obs_vel:
   Type: bool
   Description: "Smooth the observed velocities"

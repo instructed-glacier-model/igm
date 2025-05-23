@@ -11,6 +11,5 @@ oggm_shop:
   filename: input.nc
   remove_RGI_folder: True
   sub_entity_mask: False
-  run_batch: False
   smooth_obs_vel: True
   highres: False
