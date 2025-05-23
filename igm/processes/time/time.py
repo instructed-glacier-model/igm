@@ -25,23 +25,26 @@ def initialize(cfg, state):
 
     state.time_save = tf.constant(state.time_save, dtype="float32")
 
-
 def update(cfg, state):
     if hasattr(state, "logger"):
         state.logger.info(
-            "Update DT from the CFL condition at time : " + str(state.t.numpy())
+            "Update DT at time : " + str(state.t.numpy())
         )
 
-    # compute maximum ice velocitiy magnitude 
-    velomax = tf.maximum(
-        tf.reduce_max(tf.abs(state.ubar)),
-        tf.reduce_max(tf.abs(state.vbar)),
-    )
-    # dt_target account for both cfl and dt_max
-    if (velomax > 0) & (cfg.processes.time.cfl>0):
-        state.dt_target =  tf.minimum(
-            cfg.processes.time.cfl * state.dx / velomax, cfg.processes.time.step_max
+    if (cfg.processes.time.cfl>0):
+        # compute maximum ice velocitiy magnitude 
+        velomax = tf.maximum(
+            tf.reduce_max(tf.abs(state.ubar)),
+            tf.reduce_max(tf.abs(state.vbar)),
         )
+        # dt_target account for both cfl and dt_max
+        if (velomax > 0):
+            state.dt_target =  tf.minimum(
+                cfg.processes.time.cfl * state.dx / velomax, 
+                cfg.processes.time.step_max
+            )
+        else:
+            state.dt_target = cfg.processes.time.step_max
     else:
         state.dt_target = cfg.processes.time.step_max
 
