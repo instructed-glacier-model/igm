@@ -8,7 +8,7 @@ import os, copy
 import matplotlib.pyplot as plt
 import matplotlib 
 import tensorflow as tf 
-from igm.processes.utils import * 
+from igm.utils.math.getmag import getmag
  
 def plot_cost_functions():
 

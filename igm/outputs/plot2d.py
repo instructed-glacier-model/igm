@@ -3,14 +3,12 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
-import os, sys, shutil
+import numpy as np 
 import matplotlib.pyplot as plt
-import matplotlib
-import datetime, time
+import matplotlib 
 import tensorflow as tf
 
-from igm.processes.utils import *
+from igm.utils.math.getmag import getmag 
 
 def initialize(cfg, state):
     state.extent = [np.min(state.x), np.max(state.x), np.min(state.y), np.max(state.y)]

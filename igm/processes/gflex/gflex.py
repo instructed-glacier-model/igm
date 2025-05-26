@@ -4,9 +4,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
-import time
-from igm.processes.utils import *
+import tensorflow as tf 
 
 def initialize(cfg, state):
     from gflex.f2d import F2D

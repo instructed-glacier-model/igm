@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import os
 
-from igm.processes.utils import getmag
+from igm.utils.math.getmag import getmag
 
 def initialize(cfg, state):
     state.var_info_ncdf_ex = {

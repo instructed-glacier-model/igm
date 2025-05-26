@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import xarray as xr
 import json
-from igm.processes.utils import interp1d_tf
+from igm.utils.math.interp1d_tf import interp1d_tf
 
 def initialize(cfg, state):
     # load the given parameters from the json file

@@ -7,7 +7,9 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
 import tensorflow as tf
-from igm.processes.utils import compute_gradient_tf, compute_divflux
+
+from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.gradient.compute_divflux import compute_divflux
  
 def initialize(cfg, state):
     pass

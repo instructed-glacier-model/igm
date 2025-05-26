@@ -3,7 +3,7 @@ import numpy as np
 import os, glob
 import tensorflow as tf
 
-from igm.processes.utils import *
+from .complete_data import complete_data
 
 from .include_icemask import include_icemask
     

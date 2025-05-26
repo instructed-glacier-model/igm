@@ -6,7 +6,8 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-from igm.processes.utils import getmag, compute_gradient_tf
+from igm.utils.math.getmag import getmag
+from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
 
 def initialize(cfg, state):
     pass

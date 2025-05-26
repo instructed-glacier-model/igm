@@ -7,7 +7,7 @@ import numpy as np
 import os, sys, shutil 
 import tensorflow as tf 
 
-from igm.processes.utils import interpolate_bilinear_tf
+from igm.utils.math.interpolate_bilinear_tf import interpolate_bilinear_tf
 
 def initialize(cfg, state):
 

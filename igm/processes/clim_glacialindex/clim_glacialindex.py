@@ -8,7 +8,7 @@ import os
 import tensorflow as tf
 import xarray as xr
 from scipy.interpolate import RectBivariateSpline, interp1d
-from igm.processes.utils import interp1d_tf
+from igm.utils.math.interp1d_tf import interp1d_tf
  
 def initialize(cfg, state):
     load_climate_data_glacialindex(cfg, state)

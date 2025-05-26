@@ -4,8 +4,8 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
-import tensorflow as tf
-from igm.processes.utils import interp1d_tf
+import tensorflow as tf 
+from igm.utils.math.interp1d_tf import interp1d_tf 
 
 def initialize(cfg, state):
 

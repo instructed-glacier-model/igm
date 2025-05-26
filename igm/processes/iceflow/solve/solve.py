@@ -1,6 +1,6 @@
 import numpy as np 
 import tensorflow as tf 
-from igm.processes.utils import getmag3d 
+from igm.utils.math.getmag3d import getmag3d 
 from ..energy_iceflow.energy_iceflow import iceflow_energy
 from ..utils import EarlyStopping, update_2d_iceflow_variables, print_info
 import matplotlib.pyplot as plt

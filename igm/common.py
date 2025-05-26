@@ -6,16 +6,10 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 """
 
 import os, json, sys
-from json import JSONDecodeError
 import importlib
-import argparse
-from argparse import ArgumentParser, Namespace
-from pathlib import Path
-from functools import partial
 from typing import List, Any, Dict, Tuple
 from types import ModuleType
 import logging
-import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf

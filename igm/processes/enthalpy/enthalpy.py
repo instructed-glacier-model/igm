@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf 
 
-from igm.processes.utils import compute_gradient_tf
+from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
 
 def initialize(cfg, state):
     

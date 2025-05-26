@@ -8,7 +8,7 @@ import os, sys, shutil
 import time
 import tensorflow as tf
 
-from igm.processes.utils import getmag
+from igm.utils.math.getmag import getmag
 
 def initialize(cfg, state):
     

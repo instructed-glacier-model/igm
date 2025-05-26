@@ -10,8 +10,7 @@ import datetime
 import os
 import xarray
 import sys
- 
-from ..utils import *  
+  
 from ..iceflow.diagnostic.diagnostic import *
 from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *

@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.utils import compute_divflux
+from igm.utils.gradient.compute_divflux import compute_divflux
 
 def cost_divfluxobs(cfg,state,i):
 

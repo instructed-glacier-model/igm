@@ -5,7 +5,8 @@
  
 import tensorflow as tf
 
-from igm.processes.utils import compute_divflux_slope_limiter
+from igm.utils.gradient.compute_divflux_slope_limiter import compute_divflux_slope_limiter
+
 
 def initialize(cfg, state):
 

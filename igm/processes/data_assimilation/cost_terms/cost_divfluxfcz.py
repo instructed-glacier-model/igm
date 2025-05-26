@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from scipy import stats 
-from igm.processes.utils import compute_divflux
+from igm.utils.gradient.compute_divflux import compute_divflux
 
 def cost_divfluxfcz(cfg,state,i):
 

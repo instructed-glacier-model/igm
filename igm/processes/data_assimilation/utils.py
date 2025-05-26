@@ -5,7 +5,7 @@
 
 import numpy as np  
 import tensorflow as tf 
-from igm.processes.utils import getmag
+from igm.utils.math.getmag import getmag
 
 def compute_rms_std_optimization(state, i):
     I = state.icemaskobs > 0.5

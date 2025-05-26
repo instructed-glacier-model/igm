@@ -4,8 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np 
-import tensorflow as tf 
-from igm.processes.utils import *
+import tensorflow as tf  
 
 from .utils import gauss_points_and_weigths, get_dz_COND
 from ..utils import X_to_fieldin, Y_to_UV

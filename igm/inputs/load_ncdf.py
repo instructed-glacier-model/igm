@@ -5,7 +5,7 @@ import tensorflow as tf
 from netCDF4 import Dataset
 from scipy.interpolate import RectBivariateSpline
 
-from igm.processes.utils import *
+from .complete_data import complete_data
 
 from .include_icemask import include_icemask
 

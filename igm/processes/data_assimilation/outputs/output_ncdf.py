@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from scipy import stats
 from netCDF4 import Dataset
-from igm.processes.utils import * 
+from igm.utils.math.getmag import getmag
 
 def update_ncdf_optimize(cfg, state, it):
     """
