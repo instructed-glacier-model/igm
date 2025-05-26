@@ -7,7 +7,7 @@ import numpy as np
 import os, sys, shutil
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from netCDF4 import Dataset
+import xarray as xr
 import json
 from igm.processes.utils import interp1d_tf
 
@@ -30,24 +30,17 @@ def initialize(cfg, state):
     
     state.temp_bias = oggm_mb_calib["temp_bias"]
     state.prcp_fac = oggm_mb_calib["prcp_fac"]
+ 
+    ds = xr.open_dataset(os.path.join(path_RGI, "climate_historical.nc"))
+    
+    time = ds["time"].values.astype("float32").squeeze()       # unit: year
+    prcp = ds["prcp"].values.astype("float32").squeeze()       # unit: kg * m^(-2)
+    temp = ds["temp"].values.astype("float32").squeeze()       # unit: degree Celsius
+    temp_std = ds["temp_std"].values.astype("float32").squeeze()  # unit: degree Celsius
 
-    # load climate data from netcdf file climate_historical.nc
-    nc = Dataset(
-        os.path.join(path_RGI, "climate_historical.nc")
-    )
-
-    time = np.squeeze(nc.variables["time"]).astype("float32")  # unit : year
-    prcp = np.squeeze(nc.variables["prcp"]).astype("float32")  # unit : kg * m^(-2)
-    temp = np.squeeze(nc.variables["temp"]).astype("float32")  # unit : degree celcius
-    temp_std = np.squeeze(nc.variables["temp_std"]).astype(
-        "float32"
-    )  # unit : degree celcius
-
-    state.ref_hgt = nc.ref_hgt
-    state.yr_0 = nc.yr_0
-
-    nc.close()
-
+    state.ref_hgt = ds.attrs["ref_hgt"]
+    state.yr_0 = ds.attrs["yr_0"]
+  
     # reshape climate data per year and month
     nb_y = int(time.shape[0] / 12)
     nb_m = 12

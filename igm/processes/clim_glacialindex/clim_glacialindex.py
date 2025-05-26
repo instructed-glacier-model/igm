@@ -6,7 +6,7 @@
 import numpy as np
 import os
 import tensorflow as tf
-from netCDF4 import Dataset
+import xarray as xr
 from scipy.interpolate import RectBivariateSpline, interp1d
 from igm.processes.utils import interp1d_tf
  
@@ -77,19 +77,24 @@ def load_climate_data_one_snapshot(cfg, state, filename):
     load the ncdf climate file containing precipitation and temperatures
     """
 
-    nc = Dataset(filename, "r")
 
-    x = np.squeeze(nc.variables["x"]).astype("float32")
-    y = np.squeeze(nc.variables["y"]).astype("float32")
 
-    air_temp = np.squeeze(nc.variables["air_temp"]).astype("float32")
-    precipitation = np.squeeze(nc.variables["precipitation"]).astype("float32")
-    surf_clim_ref = np.squeeze(nc.variables["usurf"]).astype("float32")
 
-    if "air_temp_sd" in [var for var in nc.variables]:
-        air_temp_sd = np.squeeze(nc.variables["air_temp_sd"]).astype("float32")
+
+    ds = xr.open_dataset(filename)
+
+    x = ds["x"].values.astype("float32").squeeze()
+    y = ds["y"].values.astype("float32").squeeze()
+
+    air_temp = ds["air_temp"].values.astype("float32").squeeze()
+    precipitation = ds["precipitation"].values.astype("float32").squeeze()
+    surf_clim_ref = ds["usurf"].values.astype("float32").squeeze()
+
+    if "air_temp_sd" in ds.variables:
+        air_temp_sd = ds["air_temp_sd"].values.astype("float32").squeeze()
     else:
         air_temp_sd = np.ones_like(air_temp) * cfg.processes.clim_glacialindex.temp_std
+  
 
     air_temp_sd = np.where(air_temp_sd > 0, air_temp_sd, 5.0)
 
@@ -121,9 +126,7 @@ def load_climate_data_one_snapshot(cfg, state, filename):
 
     air_temp -= 273.15           # unit to [ °C ]
     precipitation *= 31556952.0  # unit to [ kg * m^(-2) * s^(-1) ] -> [ kg * m^(-2) * y^(-1) ]
-
-    nc.close()
-
+ 
     return [air_temp, air_temp_sd, precipitation, surf_clim_ref]
 
 
