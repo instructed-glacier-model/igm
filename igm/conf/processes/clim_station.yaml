@@ -1,0 +1,59 @@
+clim_station:
+  update_freq: 1
+  # Help : Update the climate fields and thus the mass balance each X years (1 by default)
+
+  zero_degree_isotherm: 2405.0
+  # Help : Elevation at which mean annual temperature is 0°C (in m a.s.l.)
+
+  adiabatic_lapse_rate: 0.005695
+  # Help : Adiabatic lapse rate for air temperature (in °C m-1)
+
+  air_temperature_stdev: 2.0
+  # Help : The space-independent standard deviation of the daily temperature variability (in Kelvin)
+
+  precipitation_lapse_rate: 3.0
+  # Help : Change in precipitation with altitude (in % / 100m): that is, in % / 100m of the given reference_precipitation value.
+
+  reference_precipitation_elevation: 680.0
+  # Help : Elevation (m a.s.l.) at which mean annual precipitation rate is known (e.g. a weather station)
+
+  reference_precipitation: 780.0
+  # Help : Mean precipitation rate (in mm yr-1) where it is known (e.g. a weather station)
+
+  min_precipitation_allowed: 1.0
+  # Help : Minimum allowed precipitation (mm yr-1) to avoid unrealistically low (e.g. negative) values
+
+  cosine_yearly_cycle_temp: True
+  # Help : Keep the temperature constant through the year ('False'), or make an ideal seasonal sinusoidal signal of temperature ('True')
+
+  cosine_yearly_cycle_amplitude: 5.0
+  # Help : Amplitude of the cosine-based seasonal temperature variation, defining the maximum excursion from the mean annual temperature (in °C (or Kelvin)).
+
+  southern_hemisphere_climate: False
+  # Help : Set to 'True' for Southern Hemisphere hydrological year (May - April cycle) and optional seasonal cycle (warmest temperatures in January).
+
+  export_climate_ref: True
+  # Help : Set to 'True' to export a NetCDF file called 'climate_ref.nc' which allows to view the climate fields produced just from topography and 
+  #        user-define climate parameters (prior to updating climate due to changing ice surface elevation as simulation is running).
+
+  time_dependent_climate: True
+  # Help : Keep climate constant ('False'), or make it change in time ('True') and thus use the user-given climate_change_array
+
+  climate_change_array:  
+    - ["time", "temperature_offset", "precip_offset"]
+    - [ 1750, 0.0, 100]
+    - [ 1800, 0.0, 100]
+    - [ 1850, 0.0, 100]
+    - [ 1900, 0.0, 100]
+    - [ 1950, 0.0, 100]
+    - [ 2000, 0.2, 100]
+    - [ 2050, 1.0, 100]
+    - [ 2100, 1.5, 100]
+    - [ 2200, 2.0, 100]
+    - [ 2300, 2.5, 100]
+    - [ 2400, 2.5, 100]
+    - [ 2500, 2.5, 100]
+
+  # Help : Time-dependent parameters for temperature offsets (in °C of change) and precipitation offsets 
+  #        (in % of the original precip field, i.e. '100' means no change, '110' means +10% precip, etc). 
+  #        Array structure: [time, temperature_offset, precip_offset]                         
