@@ -7,6 +7,7 @@ import tensorflow as tf
  
 from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.gradient.compute_divflux import compute_divflux
+from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing
@@ -100,5 +101,10 @@ def optimize_update(cfg, state, cost, i):
             state.ubar, state.vbar, state.thk, state.dx, state.dx, 
             method=cfg.processes.data_assimilation.divflux.method
         )
+
+        # relaxation = 0.02
+        # if relaxation>0:
+        #     state.thk = tf.maximum(state.thk + relaxation * gaussian_filter_tf(state.divflux, sigma=2.0, kernel_size=13), 0)
+        #     state.usurf = state.topg + state.thk
 
         #state.divflux = tf.where(ACT, state.divflux, 0.0)

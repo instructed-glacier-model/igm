@@ -1,5 +1,7 @@
 import tensorflow as tf
 
+from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
+
 @tf.function()
 def compute_divflux(u, v, h, dx, dy, method='upwind'):
     """
@@ -41,5 +43,9 @@ def compute_divflux(u, v, h, dx, dy, method='upwind'):
             [Qy[0:1, :], 0.5 * (Qy[:-1, :] + Qy[1:, :]), Qy[-1:, :]], 0
         )  # has shape (ny+1,nx)
         
-        ## Computation of the divergence, final shape is (ny,nx)
+
+#    Qx = gaussian_filter_tf(Qx, sigma=2.0, kernel_size=13)
+#    Qy = gaussian_filter_tf(Qy, sigma=2.0, kernel_size=13)
+
+    ## Computation of the divergence, final shape is (ny,nx)
     return (Qx[:, 1:] - Qx[:, :-1]) / dx + (Qy[1:, :] - Qy[:-1, :]) / dy
