@@ -6,7 +6,7 @@
 import numpy as np 
 import tensorflow as tf 
 
-from ..utils import *
+from igm.utils.math.getmag import getmag
 from ..solve.solve import *
 from ..emulate.emulate import *
 
