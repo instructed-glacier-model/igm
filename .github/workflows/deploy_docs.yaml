@@ -12,11 +12,11 @@ on:
       # - main
       - feature/hydra
 
-permissions:
-  actions: write
 
 jobs:
   deploy-docs:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
