@@ -27,7 +27,12 @@ jobs:
         with:
           python-version: '3.x'
       
-
+      - name: Configure git details
+        run: |
+          git fetch origin gh-pages --depth=1
+          git config user.name brfi3983
+          git config user.email brandon.finley@unil.ch
+      
       - name: Install dependencies
         run: |
           pip install mike mkdocs mkdocs-material mkdocs-macros-plugin mkdocs-include-markdown-plugin mkdocs-table-reader-plugin mkdocs-material-extensions
@@ -35,7 +40,8 @@ jobs:
       - name: Deploy documentation
         run: |
           cd igm-doc
-
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Current tag: $TAG"
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             TAG=${GITHUB_REF#refs/tags/}
             echo "Tagged release: deploying version $TAG and updating latest"
