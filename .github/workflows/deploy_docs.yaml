@@ -27,11 +27,11 @@ jobs:
         with:
           python-version: '3.x'
       
-      - name: Configure git details
-        run: |
-          git config user.name brfi3983
-          git config user.email brandon.finley@unil.ch
-          # git fetch origin gh-pages --depth=1
+      # - name: Configure git details
+      #   run: |
+      #     git config user.name brfi3983
+      #     git config user.email brandon.finley@unil.ch
+      #     # git fetch origin gh-pages --depth=1
       
       - name: Install dependencies
         run: |
@@ -42,6 +42,10 @@ jobs:
           cd igm-doc
           TAG=${GITHUB_REF#refs/tags/}
           echo "Current tag: $TAG"
+          
+          git config user.name brfi3983
+          git config user.email brandon.finley@unil.ch
+          
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             TAG=${GITHUB_REF#refs/tags/}
             echo "Tagged release: deploying version $TAG and updating latest"
