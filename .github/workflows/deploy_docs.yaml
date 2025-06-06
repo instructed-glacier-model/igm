@@ -3,14 +3,14 @@ name: Deploy Documentation
 on:
   push:
     branches:
-      - main
-      # - feature/hydra
+      # - main
+      - feature/hydra
     # tags:
       # - 'v*'
   pull_request:
     branches:
-      - main
-      # - feature/hydra
+      # - main
+      - feature/hydra
 
 jobs:
   deploy-docs:
