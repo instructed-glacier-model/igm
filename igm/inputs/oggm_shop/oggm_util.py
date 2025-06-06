@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
  
 import numpy as np
-import os, glob, shutil 
+import os, glob, shutil
 
 def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
     """
@@ -13,6 +13,7 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
 
     import oggm.cfg as cfg_oggm # changed the name to avoid namespace conflicts with IGM's config
     from oggm import utils, workflow, tasks, graphics
+    from .masks_subentities import get_tidewater_termini
 
     if cfg.inputs.oggm_shop.RGI_ID=="":
         RGIs = cfg.inputs.oggm_shop.RGI_IDs
@@ -160,3 +161,7 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         if os.path.exists(path_RGI):
             shutil.rmtree(path_RGI)
         shutil.copytree(source_folder, path_RGI)
+        
+    if cfg.inputs.oggm_shop.sub_entity_mask == True:
+        get_tidewater_termini(
+            gdirs[0], RGI_product, path_RGIs)

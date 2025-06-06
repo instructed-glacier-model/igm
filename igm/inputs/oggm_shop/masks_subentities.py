@@ -10,56 +10,51 @@ import pandas as pd
 import xarray as xr
 
 # Subfunction to handle masks
-def process_masks_subentities(ds, cfg, RGI_product):
+def process_masks_subentities(ds, cfg, RGI_product, path_RGI):
     result = {} 
     if RGI_product == "C":
         icemask = ds["sub_entities"]
-        icemask = xr.where(icemask > -1, icemask + 1, icemask)
+        icemask = xr.where(icemask > -1, icemask + 1, 0)
     else:
         icemask = ds["glacier_mask"]
     result["icemask"] = icemask 
-    result["tidewatermask"] = icemask.copy(deep=True)
-    result["slopes"] = icemask.copy(deep=True)
+    twmask = xr.open_dataset(path_RGI+'/tidewatermask.nc')
+    if RGI_product == 'C':
+        result["tidewatermask"] = twmask['sub_entities']
+    else:
+        result["tidewatermask"] = twmask['glacier_mask']
 
-    get_tidewater_termini_and_slopes(
-        result["tidewatermask"].values, result["slopes"].values,[cfg.inputs.oggm_shop.RGI_ID], RGI_product)
+    #get_tidewater_termini(
+    #    result["tidewatermask"].values,[cfg.inputs.oggm_shop.RGI_ID], RGI_product, path_RGI, ds)
 
     return result
 
-def get_tidewater_termini_and_slopes(tidewatermask, slopes, RGIs, RGI_product):
+def get_tidewater_termini(gdir, RGI_product, path_RGI):
     #Function written by Samuel Cook
-    #Identify which glaciers in a complex are tidewater and also return average slope (both needed for infer_params in optimize)
+    #Identify which glaciers in a complex are tidewater
 
     from oggm import utils, workflow, tasks, graphics
     import xarray as xr
-    import matplotlib.pyplot as plt
 
-    rgi_ids = RGIs
-    base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v4" )
-    gdirs = workflow.init_glacier_directories(
-        # Start from level 3 if you want some climate data in them
-        rgi_ids,
-        prepro_border=40,
-        from_prepro_level=3,
-        prepro_rgi_version='70'+RGI_product,
-        prepro_base_url=base_url,
-    )
-    if RGI_product == "C":
-        tasks.rgi7g_to_complex(gdirs[0])
-        gdf = gdirs[0].read_shapefile('complex_sub_entities')
-        with xr.open_dataset(gdirs[0].get_filepath('gridded_data')) as ds:
-            ds = ds.load()
+    with xr.open_dataset(gdir.get_filepath('gridded_data')) as ds:
+        ds = ds.load()
+        if RGI_product == "C":
+            tidewatermask = ds.sub_entities.copy(deep=True)
+            gdf = gdir.read_shapefile('complex_sub_entities')
+            
             NumEntities = np.max(ds.sub_entities.values)+1
             for i in range(1,NumEntities+1):
-                slopes[slopes==i] = gdf.loc[i-1].slope_deg
                 if gdf.loc[i-1].term_type == 1:
-                    tidewatermask[tidewatermask==i] = 1
+                    tidewatermask.values[tidewatermask.values==i] = 1
                 else:
-                    tidewatermask[tidewatermask==i] = 0
-    else:
-        gdf = gdirs[0].read_shapefile('outlines')
-        slopes[slopes==1] = gdf.loc[0].slope_deg
-        if gdf.loc[0].term_type == '1':
-            tidewatermask[tidewatermask==1] = 1
+                    tidewatermask.values[tidewatermask.values==i] = 0
         else:
-            tidewatermask[tidewatermask==1] = 0
+            tidewatermask = ds.glacier_mask.copy(deep=True)
+            gdf = gdir.read_shapefile('outlines')
+            if gdf.loc[0].term_type == '1':
+                tidewatermask.values[tidewatermask.values==1] = 1
+            else:
+                tidewatermask.values[tidewatermask.values==1] = 0
+            tidewatermask.values[ds.glacier_mask.values==0] = -1
+          
+    tidewatermask.to_netcdf(path_RGI[0]+'/tidewatermask.nc', format='NETCDF4')

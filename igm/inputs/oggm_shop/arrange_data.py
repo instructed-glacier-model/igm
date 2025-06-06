@@ -31,7 +31,7 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
 
     # Process masks
     if cfg.inputs.oggm_shop.sub_entity_mask:
-        mask_vars = process_masks_subentities(ds, cfg, RGI_product)
+        mask_vars = process_masks_subentities(ds, cfg, RGI_product, path_RGI)
         ds_vars.update(mask_vars)
     else:
         ds_vars["icemask"]    = ds["glacier_mask"] 
