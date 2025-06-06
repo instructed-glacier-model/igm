@@ -29,9 +29,9 @@ jobs:
       
       - name: Configure git details
         run: |
-          git fetch origin gh-pages --depth=1
           git config user.name brfi3983
           git config user.email brandon.finley@unil.ch
+          # git fetch origin gh-pages --depth=1
       
       - name: Install dependencies
         run: |
