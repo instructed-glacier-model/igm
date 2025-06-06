@@ -4,7 +4,7 @@ url_data:
   Units: dimless
 folder_data:
   Type: str
-  Description: data
+  Description: Folder that holds the data for default IGM downloading
   Units: dimless
 logging_file:
   Type: str
