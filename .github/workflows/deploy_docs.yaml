@@ -12,6 +12,9 @@ on:
       # - main
       - feature/hydra
 
+permissions:
+  actions: write
+
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
