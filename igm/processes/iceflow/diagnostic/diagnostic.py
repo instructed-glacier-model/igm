@@ -55,16 +55,16 @@ def update_iceflow_diagnostic(cfg, state):
         vol = np.sum(state.thk) * (state.dx**2) / 10**9
 
         #######
-        training_strenght = 15 * (l1 / 10)**2
-        training_strenght = np.clip(training_strenght, 0.1, 10.0)        
+        #training_strenght = 15 * (l1 / 10)**2
+        #training_strenght = np.clip(training_strenght, 0.1, 10.0)        
         #cfg.processes.iceflow.emulator.retrain_freq = int(1/min(training_strenght,1))
         #cfg.processes.iceflow.emulator.nbit         = int(max(training_strenght,1))
 
         state.diagno.append([state.t.numpy(), l1, l2, COST_Glen, COST_Emulator, 
-                             nb_it_solve, nb_it_emul, training_strenght, vol])
+                             nb_it_solve, nb_it_emul, vol])
  
         np.savetxt("errors_diagno.txt", np.stack(state.diagno), delimiter=",", fmt="%10.3f",
-                header="time,l1,l2,COST_Glen,COST_Emulator,nb_it_solve,nb_it_emul,training_strenght,vol",
+                header="time,l1,l2,COST_Glen,COST_Emulator,nb_it_solve,nb_it_emul,vol",
                 comments='')
             
         state.tlast_diagno.assign(state.t)
