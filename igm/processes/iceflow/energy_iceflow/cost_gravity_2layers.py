@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from .utils import stag4, compute_gradient_stag, compute_average_velocity_twolayers_tf
+from igm.processes.iceflow.energy_iceflow.utils import stag4, compute_gradient_stag, compute_average_velocity_twolayers_tf
 
 @tf.function()
 def cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst, w, n):

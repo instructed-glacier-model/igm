@@ -5,8 +5,8 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import stag4, stag8
-from .utils import compute_gradient_stag
+from igm.processes.iceflow.energy_iceflow.utils import stag4, stag8
+from igm.processes.iceflow.energy_iceflow.utils import compute_gradient_stag
 
 @tf.function()
 def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptopgy, thr):

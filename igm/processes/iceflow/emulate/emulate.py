@@ -7,10 +7,10 @@ import numpy as np
 import tensorflow as tf 
 import os
 
-from ..utils import *
-from ..energy_iceflow.energy_iceflow import * 
-from .neural_network import *
-from ..emulate import emulators
+from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, update_2d_iceflow_variables, compute_PAD, print_info
+from igm.processes.iceflow.energy_iceflow.energy_iceflow import iceflow_energy_XY
+from igm.processes.iceflow.emulate.neural_network import *
+from igm.processes.iceflow.emulate import emulators
 import importlib_resources 
 import igm  
 import matplotlib.pyplot as plt

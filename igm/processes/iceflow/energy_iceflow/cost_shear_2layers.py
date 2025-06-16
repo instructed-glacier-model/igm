@@ -5,7 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import stag4,compute_average_velocity_twolayers_tf
+from igm.processes.iceflow.energy_iceflow.utils import stag4,compute_average_velocity_twolayers_tf
 
 @tf.function()
 def compute_strainrate_Glen_twolayers_tf(U, V, dX):

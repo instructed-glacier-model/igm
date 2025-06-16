@@ -5,7 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import stag2
+from igm.processes.iceflow.energy_iceflow.utils import stag2
 
 @tf.function()
 def cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):

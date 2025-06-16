@@ -5,8 +5,8 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import stag4, compute_gradient_stag
-from .utils import compute_gradient_stag
+from igm.processes.iceflow.energy_iceflow.utils import stag4, compute_gradient_stag
+from igm.processes.iceflow.energy_iceflow.utils import compute_gradient_stag
 
 @tf.function()
 def cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, new_friction_param):

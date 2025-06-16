@@ -7,8 +7,8 @@ import numpy as np
 import tensorflow as tf 
 
 from igm.utils.math.getmag import getmag
-from ..solve.solve import *
-from ..emulate.emulate import *
+from igm.processes.iceflow.solve.solve import solve_iceflow, initialize_iceflow_solver
+from igm.processes.iceflow.emulate.emulate import initialize_iceflow_emulator
 
 import time
 

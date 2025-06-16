@@ -35,11 +35,11 @@ emulator as we minmize the same energy, however, with different controls,
 namely directly the velocity field U and V instead of the emulator parameters.
 """
 
-from .emulate.emulate import initialize_iceflow_emulator,update_iceflow_emulated
-from .emulate.emulate import update_iceflow_emulator, save_iceflow_model
-from .solve.solve import initialize_iceflow_solver, update_iceflow_solved
-from .diagnostic.diagnostic import initialize_iceflow_diagnostic, update_iceflow_diagnostic
-from .utils import initialize_iceflow_fields, define_vertical_weight,compute_PAD
+from igm.processes.iceflow.emulate.emulate import initialize_iceflow_emulator,update_iceflow_emulated
+from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model
+from igm.processes.iceflow.solve.solve import initialize_iceflow_solver, update_iceflow_solved
+from igm.processes.iceflow.diagnostic.diagnostic import initialize_iceflow_diagnostic, update_iceflow_diagnostic
+from igm.processes.iceflow.utils import initialize_iceflow_fields, define_vertical_weight,compute_PAD
 
 def initialize(cfg, state):
 
