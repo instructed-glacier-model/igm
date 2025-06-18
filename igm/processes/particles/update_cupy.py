@@ -6,7 +6,17 @@
 import tensorflow as tf       
 
 from igm.processes.particles.seeding_particles_cupy import seeding_particles
-from igm.processes.particles.utils import rhs_to_zeta
+
+def rhs_to_zeta(verticle_spacing, rhs):
+    if verticle_spacing == 1:
+        rhs = zeta
+    else:
+        DET = tf.sqrt(1 + 4 * (verticle_spacing - 1) * verticle_spacing * rhs)
+        zeta = (DET - 1) / (2 * (verticle_spacing - 1))
+
+    #           temp = cfg.processes.iceflow.iceflow.Nz*(DET-1)/(2*(cfg.processes.iceflow.iceflow.vert_spacing-1))
+    #           I=tf.cast(tf.minimum(temp-1,cfg.processes.iceflow.iceflow.Nz-1),dtype='int32')
+    return zeta
 
 def get_weights(vertical_spacing, number_z_layers, particle_r, u):
     "What is this function doing? Name it properly.."
@@ -121,8 +131,8 @@ def update_cupy(cfg, state):
         state.particle_thk = thk
         state.particle_topg = topg
 
-        vertical_spacing = cfg.processes.iceflow.iceflow.vert_spacing
-        number_z_layers = cfg.processes.iceflow.iceflow.Nz
+        vertical_spacing = cfg.processes.iceflow.numerics.vert_spacing
+        number_z_layers = cfg.processes.iceflow.numerics.Nz
         weights = get_weights(
             vertical_spacing=vertical_spacing,
             number_z_layers=number_z_layers,
