@@ -36,8 +36,7 @@ def initialize_write_particle_pyvista(cfg, state):
         surface = cloud.delaunay_2d()
 
         # Save to VTP format
-        #cloud.save(ftt)
-        surface.save(ftt.replace(".vtp", "_surf.vtp"))
+        surface.save(ftt)
 
 def update_write_particle_pyvista(cfg, state):
 
@@ -98,5 +97,4 @@ def update_write_particle_pyvista(cfg, state):
             surface = cloud.delaunay_2d()
 
             # Save to VTP format
-            #cloud.save(ftt)
-            surface.save(ftt.replace(".vtp", "_surf.vtp"))
+            surface.save(ftt)
