@@ -11,6 +11,8 @@ from igm.processes.particles.write_particle_numpy import initialize_write_partic
 from igm.processes.particles.write_particle_numpy import update_write_particle_numpy
 from igm.processes.particles.write_particle_cudf import initialize_write_particle_cudf
 from igm.processes.particles.write_particle_cudf import update_write_particle_cudf 
+from igm.processes.particles.write_particle_pyvista import initialize_write_particle_pyvista
+from igm.processes.particles.write_particle_pyvista import update_write_particle_pyvista 
 from igm.processes.particles.update_tf import update_tf
 from igm.processes.particles.update_cupy import update_cupy
 
@@ -57,6 +59,8 @@ def initialize(cfg, state):
             initialize_write_particle_numpy(cfg, state)
         elif cfg.processes.particles.writing_library == "cudf":
             initialize_write_particle_cudf(cfg, state)
+        elif cfg.processes.particles.writing_library == "pyvista":
+            initialize_write_particle_pyvista(cfg, state)
         else:
             raise ValueError("must be either 'numpy' or 'cudf'.")
 
@@ -81,6 +85,8 @@ def update(cfg, state):
             update_write_particle_numpy(cfg, state)
         elif cfg.processes.particles.writing_library == "cudf":
             update_write_particle_cudf(cfg, state)
+        elif cfg.processes.particles.writing_library == "pyvista":
+            update_write_particle_pyvista(cfg, state)
         else:
             raise ValueError("Must be either 'numpy' or 'cudf'.")
 #        erange(rng)

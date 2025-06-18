@@ -29,7 +29,7 @@ computation_library:
 writing_library:
   Type: str
   Units: dimless
-  Description: numpy (original) or cudf (best performance, but requires cupy, cudf)
+  Description: numpy (original), cudf (best performance, but requires cupy, cudf), or pyvista (for paraview)
 output_format:
   Type: str
   Units: dimless
