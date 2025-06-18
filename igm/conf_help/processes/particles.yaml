@@ -22,3 +22,16 @@ add_topography:
   Type: bool
   Units: dimless
   Description: Add topg when writing particles
+computation_library: 
+  Type: str
+  Units: dimless
+  Description: tensorflow (original) or cupy (best performance, but requires cupy, numba)
+writing_library:
+  Type: str
+  Units: dimless
+  Description: numpy (original) or cudf (best performance, but requires cupy, cudf)
+output_format:
+  Type: str
+  Units: dimless
+  Description: Type of output format for particles (csv, parquet)
+
