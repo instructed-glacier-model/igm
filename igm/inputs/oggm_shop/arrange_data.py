@@ -10,8 +10,8 @@ import xarray as xr
 import pandas as pd
 import scipy.signal
 
-from .read_glathida import read_glathida_v6, read_glathida_v7
-from .masks_subentities import process_masks_subentities
+from igm.inputs.oggm_shop.read_glathida import read_glathida_v6, read_glathida_v7
+from igm.inputs.oggm_shop.masks_subentities import process_masks_subentities
  
 def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
  
