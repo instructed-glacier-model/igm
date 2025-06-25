@@ -16,6 +16,10 @@ import igm
 import matplotlib.pyplot as plt
 import matplotlib
 
+import sys
+sys.path.append('/home/srosier/work/tgregov')
+from Optimizer_NN import Optimizer_NN
+
 def initialize_iceflow_emulator(cfg, state):
 
     if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
