@@ -69,8 +69,8 @@ def update(cfg, state):
             # if there is less than a certain thickness to redesitribute, just redistribute the remaining thickness and stop afterwards
             # print(count, np.max(delH), np.sum(delH) / (np.shape(H)[0]*np.shape(H)[1]))
             mean_thickness = np.sum(delH) / (np.shape(H)[0]*np.shape(H)[1])
-            
-            if mean_thickness < params.aval_stop_redistribution_thk:
+
+            if mean_thickness < cfg.processes.avalanche.stop_redistribution_thk:
                 # for a last time, use all the thickness to redistribute and then stop
                 delH = tf.maximum(0, grad - dHRepose)
                 count = 2000 # set to random high number to exit the loop
