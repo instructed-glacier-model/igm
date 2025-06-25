@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf 
 
 from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.processes.iceflow.vert_disc import compute_levels, compute_dz, compute_depth
 
 def initialize(cfg, state):
     
@@ -72,9 +73,12 @@ def update(cfg, state):
     )  # [K]
 
     # get the vertical discretization
-    depth, dz = vertically_discretize_tf(
-        state.thk, cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing
-    )
+
+    levels = compute_levels(
+               cfg.processes.iceflow.numerics.Nz, 
+               cfg.processes.iceflow.numerics.vert_spacing)
+    dz = compute_dz(state.thk, levels)
+    depth = compute_depth(dz)
 
     # compute temperature and enthalpy at the pressure melting point
     Tpmp, Epmp = TpmpEpmp_from_depth_tf(
@@ -241,19 +245,6 @@ def finalize(cfg, state):
 # strainheat in [W m-3]
 
 
-@tf.function()
-def vertically_discretize_tf(thk, Nz, vert_spacing):
-    zeta = tf.cast(tf.range(Nz) / (Nz - 1), "float32")
-    levels = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
-    ddz = levels[1:] - levels[:-1]
-
-    dz = tf.expand_dims(thk, 0) * tf.expand_dims(tf.expand_dims(ddz, -1), -1)
-
-    D = tf.concat([dz, tf.zeros((1, dz.shape[1], dz.shape[2]))], axis=0)
-
-    depth = tf.math.cumsum(D, axis=0, reverse=True)
-
-    return depth, dz
 
 
 @tf.function()

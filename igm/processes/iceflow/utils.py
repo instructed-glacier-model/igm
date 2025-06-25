@@ -9,6 +9,8 @@ import math
 from tqdm import tqdm
 import datetime
 
+from igm.processes.iceflow.vert_disc import compute_levels
+
 
 def initialize_iceflow_fields(cfg, state):
 
@@ -29,17 +31,17 @@ def initialize_iceflow_fields(cfg, state):
         state.U = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
 
-def define_vertical_weight(cfg, state):
-    """
-    define_vertical_weight
-    """
+# def define_vertical_weight(cfg, state):
+#     """
+#     define_vertical_weight
+#     """
 
-    zeta = np.arange(cfg.processes.iceflow.numerics.Nz + 1) / cfg.processes.iceflow.numerics.Nz
-    weight = (zeta / cfg.processes.iceflow.numerics.vert_spacing) * (
-        1.0 + (cfg.processes.iceflow.numerics.vert_spacing - 1.0) * zeta
-    )
-    weight = tf.Variable(weight[1:] - weight[:-1], dtype=tf.float32, trainable=False)
-    state.vert_weight = tf.expand_dims(tf.expand_dims(weight, axis=-1), axis=-1)
+#     zeta = np.arange(cfg.processes.iceflow.numerics.Nz + 1) / cfg.processes.iceflow.numerics.Nz
+#     weight = (zeta / cfg.processes.iceflow.numerics.vert_spacing) * (
+#         1.0 + (cfg.processes.iceflow.numerics.vert_spacing - 1.0) * zeta
+#     )
+#     weight = tf.Variable(weight[1:] - weight[:-1], dtype=tf.float32, trainable=False)
+#     state.vert_weight = tf.expand_dims(tf.expand_dims(weight, axis=-1), axis=-1)
 
 
 def update_2d_iceflow_variables(cfg, state):
@@ -68,8 +70,11 @@ def compute_PAD(cfg,Nx,Ny):
 @tf.function()
 def base_surf_to_U(uvelbase, uvelsurf, Nz, vert_spacing, iflo_exp_glen):
 
-    zeta = tf.cast(tf.range(Nz) / (Nz - 1), "float32")
-    levels = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
+    # zeta = tf.cast(tf.range(Nz) / (Nz - 1), "float32")
+    # levels = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
+
+    levels = compute_levels(Nz, vert_spacing)
+
     levels = tf.expand_dims(tf.expand_dims(levels, axis=-1), axis=-1)
 
     return tf.expand_dims(uvelbase, axis=0) \

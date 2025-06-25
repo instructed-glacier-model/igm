@@ -6,6 +6,7 @@
 import numpy as np
 import tensorflow as tf
 from igm.processes.iceflow.energy_iceflow.utils import stag2
+from igm.processes.iceflow.vert_disc import compute_levels
 
 @tf.function()
 def cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
@@ -40,9 +41,8 @@ def cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
 
     if Nz > 1:
         # Blatter-Pattyn
-        zeta = np.arange(Nz) / (Nz - 1)  # formerly ... 
-        temp = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
-        temd = temp[1:] - temp[:-1] 
+        levels = compute_levels(Nz, vert_spacing)
+        temd = levels[1:] - levels[:-1] 
         weight = tf.stack([tf.ones_like(thk) * z for z in temd], axis=1) # dimensionless, 
         C_float = (
                 P * tf.reduce_sum(weight * stag2(U), axis=1) * CF_W

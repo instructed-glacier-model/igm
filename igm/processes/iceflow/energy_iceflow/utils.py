@@ -5,6 +5,8 @@
 
 import numpy as np 
 import tensorflow as tf 
+
+from igm.processes.iceflow.vert_disc import compute_levels
  
 @tf.function()
 def compute_average_velocity_twolayers_tf(U, V):
@@ -55,19 +57,15 @@ def stag8(B):
         + B[:, :-1, :-1, :-1]
     ) / 8
 
-@tf.function()
+tf.function()
 def get_dz_COND(thk, Nz, vert_spacing):
 
     # Vertical discretization
+    dz = tf.expand_dims(stag4(thk), axis=0)
     if Nz > 1:
-        zeta = np.arange(Nz) / (Nz - 1)  # formerly ...
-        #zeta = tf.range(Nz, dtype=tf.float32) / (Nz - 1)
-        temp = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
-        temd = temp[1:] - temp[:-1]
-        dz = tf.stack([stag4(thk) * z for z in temd], axis=1)  # formerly ..
-        #dz = (tf.expand_dims(tf.expand_dims(temd,axis=-1),axis=-1)*tf.expand_dims(stag4(thk),axis=0))
-    else:
-        dz = tf.expand_dims(stag4(thk), axis=0)
+        levels = compute_levels(Nz, vert_spacing)
+        temd = levels[1:] - levels[:-1]
+        dz = tf.expand_dims(tf.expand_dims(temd,axis=-1),axis=-1) * dz
 
     COND = (
         (thk[:, 1:, 1:] > 0)

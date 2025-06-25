@@ -39,7 +39,8 @@ from igm.processes.iceflow.emulate.emulate import initialize_iceflow_emulator,up
 from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model
 from igm.processes.iceflow.solve.solve import initialize_iceflow_solver, update_iceflow_solved
 from igm.processes.iceflow.diagnostic.diagnostic import initialize_iceflow_diagnostic, update_iceflow_diagnostic
-from igm.processes.iceflow.utils import initialize_iceflow_fields, define_vertical_weight,compute_PAD
+from igm.processes.iceflow.utils import initialize_iceflow_fields,compute_PAD
+from igm.processes.iceflow.vert_disc import define_vertical_weight
 
 def initialize(cfg, state):
 
@@ -61,7 +62,9 @@ def initialize(cfg, state):
         initialize_iceflow_diagnostic(cfg,state)
 
     # create the vertica discretization
-    define_vertical_weight(cfg, state)
+    state.vert_weight = define_vertical_weight(
+        cfg.processes.iceflow.numerics.Nz,cfg.processes.iceflow.numerics.vert_spacing
+                                              )
     
     # padding is necessary when using U-net emulator
     state.PAD = compute_PAD(cfg, state.thk.shape[1],state.thk.shape[0])
