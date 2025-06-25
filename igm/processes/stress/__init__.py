@@ -1,4 +1,4 @@
-from .enthalpy import (
+from .stress import (
     initialize,
     finalize,
     update
