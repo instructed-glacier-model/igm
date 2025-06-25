@@ -1,0 +1,5 @@
+write_vtp:
+  vars_to_save:
+    - usurf
+    - velsurf_mag
+    - thk

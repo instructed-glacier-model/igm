@@ -3,5 +3,6 @@ from . import (
 	plot2d,
     write_ncdf,
 	write_tif,
-	write_ts,
+    write_vtp,
+	write_ts
 )

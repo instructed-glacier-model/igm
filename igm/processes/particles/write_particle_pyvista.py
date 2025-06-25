@@ -10,42 +10,20 @@ import tensorflow as tf
 
 def initialize_write_particle_pyvista(cfg, state):
 
-    import pyvista as pv
- 
     directory = "trajectories"
     if os.path.exists(directory):
         shutil.rmtree(directory)
     os.mkdir(directory)
 
-    if cfg.processes.particles.add_topography:
-
-        ftt = os.path.join("trajectories", "topg.vtp")
-
-        # Apply mask
-        mask = state.X > 0
-        x = state.X[mask].numpy()
-        y = state.Y[mask].numpy()
-        z = state.topg[mask].numpy()
-
-        # Create point cloud
-        points = np.vstack((x, y, z)).T  # shape (n, 3)
-        cloud = pv.PolyData(points)
-
-        # Optionally add 'topg' as scalar (z)
-        cloud["topg"] = z
-
-        surface = cloud.delaunay_2d()
-
-        # Save to VTP format
-        surface.save(ftt)
-
 def update_write_particle_pyvista(cfg, state):
 
     import pyvista as pv
 
+    directory = "trajectories"
+
     if state.saveresult:
         filename = os.path.join(
-            "trajectories",
+            directory,
             "traj-" + "{:06d}".format(int(state.t.numpy())) + ".vtp",
         )
 
@@ -76,28 +54,3 @@ def update_write_particle_pyvista(cfg, state):
 
         # Write to VTP file
         cloud.save(filename)
-
-        if cfg.processes.particles.add_topography:
-
-            ftt = os.path.join(
-                "trajectories",
-                "usurf-" + "{:06d}".format(int(state.t.numpy())) + ".vtp",
-            )
-
-            # Apply mask
-            mask = state.X > 0
-            x = state.X[mask].numpy()
-            y = state.Y[mask].numpy()
-            z = state.usurf[mask].numpy()
-
-            # Create point cloud
-            points = np.vstack((x, y, z)).T  # shape (n, 3)
-            cloud = pv.PolyData(points)
-
-            # Optionally add 'topg' as scalar (z)
-            cloud["usurf"] = z
-
-            surface = cloud.delaunay_2d()
-
-            # Save to VTP format
-            surface.save(ftt)
