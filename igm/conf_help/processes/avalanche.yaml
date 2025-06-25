@@ -6,3 +6,7 @@ angleOfRepose:
   Type: float
   Units: Degrees
   Description: Angle of repose (threshold for avalanche initiation)
+stop_redistribution_thk:
+  Type: float
+  Units: m
+  Description: Stop redistribution if the mean thickness is below this value over the whole grid
