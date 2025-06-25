@@ -11,6 +11,7 @@ from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, update_2d_iceflow
 from igm.processes.iceflow.energy_iceflow.energy_iceflow import iceflow_energy_XY
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
+from igm.utils.math.getmag3d import getmag3d
 import importlib_resources 
 import igm  
 import matplotlib.pyplot as plt
