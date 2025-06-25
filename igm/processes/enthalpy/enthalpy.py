@@ -73,7 +73,6 @@ def update(cfg, state):
     )  # [K]
 
     # get the vertical discretization
-
     levels = compute_levels(
                cfg.processes.iceflow.numerics.Nz, 
                cfg.processes.iceflow.numerics.vert_spacing)
