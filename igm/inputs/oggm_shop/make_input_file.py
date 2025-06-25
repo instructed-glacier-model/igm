@@ -21,7 +21,6 @@ def build_var_info(cfg):
     }
     if cfg.inputs.oggm_shop.sub_entity_mask:
         info["tidewatermask"] = ["Tidewater glacier mask", "no unit"]
-        info["slopes"] = ["Average glacier surface slope", "deg"]
     return info
 
 def make_input_file(cfg, ds, ds_vars, path_file):
