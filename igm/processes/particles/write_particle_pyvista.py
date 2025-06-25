@@ -7,10 +7,11 @@ import os
 import shutil
 import numpy as np
 import tensorflow as tf
-import pyvista as pv
 
 def initialize_write_particle_pyvista(cfg, state):
 
+    import pyvista as pv
+ 
     directory = "trajectories"
     if os.path.exists(directory):
         shutil.rmtree(directory)
@@ -39,6 +40,8 @@ def initialize_write_particle_pyvista(cfg, state):
         surface.save(ftt)
 
 def update_write_particle_pyvista(cfg, state):
+
+    import pyvista as pv
 
     if state.saveresult:
         filename = os.path.join(
