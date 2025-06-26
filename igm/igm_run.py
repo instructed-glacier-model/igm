@@ -93,18 +93,8 @@ def main(cfg: DictConfig) -> None:
     for input_method in imported_inputs_modules:
         input_method.run(cfg, state)
 
-    output_modules = []
-    if "outputs" in cfg:
-        output_methods = list(cfg.outputs.keys())
-        for output_method in output_methods:
-            output_module = getattr(outputs, output_method)
-            output_modules.append(output_module)
-
-        for output_module in output_modules:
-            output_module.initialize(
-                cfg, state
-            )  # do we need to initialize outputs modules? This is not very clean...
-
+    for output_method in imported_outputs_modules:
+        output_method.initialize(cfg, state) # do we need to initialize outputs modules? This is not very clean...
 
     with strategy.scope():
         initialize_modules(imported_processes_modules, cfg, state)
