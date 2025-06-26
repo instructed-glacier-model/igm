@@ -97,7 +97,8 @@ def update_tf(cfg, state):
             indexing="ij",
         )[0, :, 0]
 
-        zeta = rhs_to_zeta(cfg, state.particle_r)  # get the position in the column
+        # get the position in the column
+        zeta = rhs_to_zeta(cfg.processes.iceflow.numerics.vert_spacing, state.particle_r)  
         I0 = tf.cast(
             tf.math.floor(zeta * (cfg.processes.iceflow.numerics.Nz - 1)),
             dtype="int32",

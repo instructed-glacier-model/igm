@@ -6,23 +6,13 @@
 import tensorflow as tf       
 
 from igm.processes.particles.seeding_particles_cupy import seeding_particles
+from igm.processes.particles.utils import rhs_to_zeta
 
-def rhs_to_zeta(verticle_spacing, rhs):
-    if verticle_spacing == 1:
-        rhs = zeta
-    else:
-        DET = tf.sqrt(1 + 4 * (verticle_spacing - 1) * verticle_spacing * rhs)
-        zeta = (DET - 1) / (2 * (verticle_spacing - 1))
-
-    #           temp = cfg.processes.iceflow.iceflow.Nz*(DET-1)/(2*(cfg.processes.iceflow.iceflow.vert_spacing-1))
-    #           I=tf.cast(tf.minimum(temp-1,cfg.processes.iceflow.iceflow.Nz-1),dtype='int32')
-    return zeta
-
-def get_weights(vertical_spacing, number_z_layers, particle_r, u):
+def get_weights(vert_spacing, number_z_layers, particle_r, u):
     "What is this function doing? Name it properly.."
 
     # rng_outer = srange("indices in weights", color="blue")
-    zeta = rhs_to_zeta(vertical_spacing, particle_r)  # get the position in the column
+    zeta = rhs_to_zeta(vert_spacing, particle_r)  # get the position in the column
     I0 = tf.math.floor(zeta * (number_z_layers - 1))
 
     I0 = tf.minimum(I0, number_z_layers - 2)  # make sure to not reach the upper-most pt
@@ -131,11 +121,9 @@ def update_cupy(cfg, state):
         state.particle_thk = thk
         state.particle_topg = topg
 
-        vertical_spacing = cfg.processes.iceflow.numerics.vert_spacing
-        number_z_layers = cfg.processes.iceflow.numerics.Nz
         weights = get_weights(
-            vertical_spacing=vertical_spacing,
-            number_z_layers=number_z_layers,
+            vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
+            number_z_layers=cfg.processes.iceflow.numerics.Nz,
             particle_r=state.particle_r,
             u=u,
         )
