@@ -6,16 +6,19 @@
 import numpy as np 
 import tensorflow as tf 
 
+# Shape of levels is (Nz,)
 @tf.function()
 def compute_levels(Nz, vert_spacing):
     zeta = tf.cast(tf.range(Nz) / (Nz - 1), "float32")
     return (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
 
+# Shape of dz is (Nz-1, Ny, Nx)
 @tf.function()
 def compute_dz(thk, levels):
     ddz = levels[1:] - levels[:-1]
     return tf.expand_dims(thk, 0) * tf.expand_dims(tf.expand_dims(ddz, -1), -1)
 
+# Shape of depth is (Nz, Ny, Nx)
 @tf.function()
 def compute_depth(dz):
     D = tf.concat([dz, tf.zeros((1, dz.shape[1], dz.shape[2]))], axis=0)
