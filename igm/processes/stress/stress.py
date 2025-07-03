@@ -2,26 +2,22 @@
 
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
-
-import numpy as np
-import matplotlib.pyplot as plt
+ 
 import tensorflow as tf 
 
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dz, compute_depth
+from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
  
 def initialize(cfg, state):
-    
+ 
     if "iceflow" not in cfg.processes:
         raise ValueError("The 'iceflow' module is required for the 'stress' module.")
-    
-    Ny, Nx = state.thk.shape
-
-    state.sigma_xx = tf.Variable(tf.zeros_like(state.U), trainable=False)
-    state.sigma_yy = tf.Variable(tf.zeros_like(state.U), trainable=False)
-    state.sigma_zz = tf.Variable(tf.zeros_like(state.U), trainable=False)
-    state.sigma_xy = tf.Variable(tf.zeros_like(state.U), trainable=False)
-    state.sigma_xz = tf.Variable(tf.zeros_like(state.U), trainable=False)
-    state.sigma_yz = tf.Variable(tf.zeros_like(state.U), trainable=False)
+     
+    state.sigma_xx = tf.zeros_like(state.U)
+    state.sigma_yy = tf.zeros_like(state.U)
+    state.sigma_zz = tf.zeros_like(state.U)
+    state.sigma_xy = tf.zeros_like(state.U)
+    state.sigma_xz = tf.zeros_like(state.U)
+    state.sigma_yz = tf.zeros_like(state.U)
   
 def update(cfg, state):
     if hasattr(state, "logger"):
@@ -38,7 +34,7 @@ def update(cfg, state):
     else:
        B = state.arrhenius ** (-1.0 / cfg.processes.iceflow.physics.exp_glen)
 
-    Exx, Eyy, Ezz, Exy, Exz, Eyz = compute_strainratetensor_tf(state.U, state.V, state.dx, dz)
+    Exx, Eyy, Ezz, Exy, Exz, Eyz = compute_strainratetensor_tf(state.U, state.V, state.dx, dz, thr=1.0)
 
     strainrate = 0.5 * ( Exx**2 + Exy**2 + Exz**2 + Exy**2 + Eyy**2 + Eyz**2 + Exz**2 + Eyz**2 + Ezz**2 ) ** 0.5
 
