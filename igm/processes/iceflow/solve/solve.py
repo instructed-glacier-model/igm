@@ -76,7 +76,7 @@ def solve_iceflow(cfg, state, U, V):
 
         velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
 
-        if state.it == 0:    
+        if state.it <= 1:    
             print_info(state, i, C_shear_cost.numpy(), C_slid_cost.numpy(), \
                                  C_grav_cost.numpy(), COST.numpy(), 
                                  tf.reduce_max(velsurf_mag).numpy())
@@ -90,7 +90,7 @@ def solve_iceflow(cfg, state, U, V):
                     np.where(state.thk > 0, velsurf_mag, np.nan),
                     origin="lower",
                     cmap="turbo",
-                    norm=matplotlib.colors.LogNorm(vmin=1,vmax=300)
+                    norm=matplotlib.colors.LogNorm(vmin=1,vmax=1000)
                 )
                 if not hasattr(state, "already_set_cbar"):
                     state.cbar = plt.colorbar(im, label='velocity')
