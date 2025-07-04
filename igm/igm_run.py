@@ -94,7 +94,12 @@ def main(cfg: DictConfig) -> None:
         input_method.run(cfg, state)
 
     for output_method in imported_outputs_modules:
-        output_method.initialize(cfg, state) # do we need to initialize outputs modules? This is not very clean...
+        # TODO: would be cleaner to have inside setup_igm_modules... 
+        if not hasattr(output_method, "initialize"):
+            raise ValueError(
+                "Output methods must have an 'initialize' method defined (in addition to a 'run' method)." 
+            )
+        output_method.initialize(cfg, state)
 
     with strategy.scope():
         initialize_modules(imported_processes_modules, cfg, state)
