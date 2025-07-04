@@ -174,9 +174,23 @@ def load_modules(
     root_foldername = (
         f"{HydraConfig.get().runtime.cwd}/{cfg.core.structure.root_foldername}"
     )
+    
+    # Add custom modules folder to sys.path
+    user_input_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.input_modules_foldername}"
+    user_process_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.process_modules_foldername}"
+    user_output_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.output_modules_foldername}"
+    
+    custom_modules_folders = [
+        user_input_modules_folder,
+        user_process_modules_folder,
+        user_output_modules_folder,
+    ]
+    
+    for folder in custom_modules_folders:
+        if folder not in sys.path:
+            sys.path.append(folder)
 
     if "inputs" in cfg:
-        user_input_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.input_modules_foldername}"
         load_user_modules(
             cfg=cfg,
             state=state,
@@ -193,7 +207,6 @@ def load_modules(
         )
 
     if "processes" in cfg:
-        user_process_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.process_modules_foldername}"
         load_user_modules(
             cfg=cfg,
             state=state,
@@ -210,7 +223,6 @@ def load_modules(
         )
 
     if "outputs" in cfg:
-        user_output_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.output_modules_foldername}"
         load_user_modules(
             cfg=cfg,
             state=state,
