@@ -14,7 +14,7 @@ RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID igmuse
 ENV TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Core linux dependencies
+# Core linux dependencies.
 RUN apt-get install -y nano git
 
 CMD ["bash"]
