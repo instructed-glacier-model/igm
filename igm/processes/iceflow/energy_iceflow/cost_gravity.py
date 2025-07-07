@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy_iceflow.utils import stag4b, stag8
+from igm.processes.iceflow.energy_iceflow.utils import stag4, stag8
 from igm.processes.iceflow.energy_iceflow.utils import compute_gradient_stag
 
 @tf.function()
@@ -18,7 +18,7 @@ def cost_gravity(U, V, usurf, dX, dz, COND, Nz, ice_density, gravity_cst,
     if Nz > 1:
         uds = stag8(U) * slopsurfx + stag8(V) * slopsurfy
     else:
-        uds = stag4b(U) * slopsurfx + stag4b(V) * slopsurfy  
+        uds = stag4(U) * slopsurfx + stag4(V) * slopsurfy  
 
     if force_negative_gravitational_energy:
         uds = tf.minimum(uds, 0.0) # force non-postiveness

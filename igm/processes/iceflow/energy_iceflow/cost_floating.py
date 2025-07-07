@@ -45,10 +45,10 @@ def cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
         temd = levels[1:] - levels[:-1] 
         weight = tf.stack([tf.ones_like(thk) * z for z in temd], axis=1) # dimensionless, 
         C_float = (
-                P * tf.reduce_sum(weight * stag2(U), axis=1) * CF_W
-            - P * tf.reduce_sum(weight * stag2(U), axis=1) * CF_E 
-            + P * tf.reduce_sum(weight * stag2(V), axis=1) * CF_S 
-            - P * tf.reduce_sum(weight * stag2(V), axis=1) * CF_N 
+                P * tf.reduce_sum(weight * stag2(U), axis=1) * CF_W  # Check is stag2 is OK !!!
+            - P * tf.reduce_sum(weight * stag2(U), axis=1) * CF_E   # Check is stag2 is OK !!!
+            + P * tf.reduce_sum(weight * stag2(V), axis=1) * CF_S   # Check is stag2 is OK !!!
+            - P * tf.reduce_sum(weight * stag2(V), axis=1) * CF_N  # Check is stag2 is OK !!! 
         ) 
     else:
         # SSA
