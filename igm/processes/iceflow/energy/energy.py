@@ -6,7 +6,7 @@
 import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.energy.utils import gauss_points_and_weigths, stag4
+from igm.processes.iceflow.energy.utils import gauss_points_and_weights, stag4
 from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
 from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
 
@@ -33,7 +33,7 @@ def iceflow_energy(cfg, U, V, fieldin):
         gravity_cst = cfg.processes.iceflow.physics.gravity_cst
         new_friction_param = cfg.processes.iceflow.physics.new_friction_param
  
-        n, w = gauss_points_and_weigths(ord_gauss=3)
+        n, w = gauss_points_and_weights(ord_gauss=3)
   
         Cshear = cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen, w, n)
  
