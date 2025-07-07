@@ -5,7 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
-from igm.processes.iceflow.energy_iceflow.utils import stag4,compute_average_velocity_twolayers_tf
+from igm.processes.iceflow.energy_iceflow.utils import stag4
 
 @tf.function()
 def compute_strainrate_Glen_twolayers_tf(U, V, dX):
@@ -27,7 +27,9 @@ def compute_strainrate_Glen_twolayers_tf(U, V, dX):
 def cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen, w, n):
 
     dUdx, dVdx, dUdy, dVdy = compute_strainrate_Glen_twolayers_tf(U, V, dX)
-    Um, Vm = compute_average_velocity_twolayers_tf(U, V)
+
+    Um = stag4(U)
+    Vm = stag4(V)
 
     # B has Unit Mpa y^(1/n)
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)

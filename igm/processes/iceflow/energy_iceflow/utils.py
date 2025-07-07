@@ -7,14 +7,6 @@ import numpy as np
 import tensorflow as tf 
 
 from igm.processes.iceflow.vert_disc import compute_levels
- 
-@tf.function()
-def compute_average_velocity_twolayers_tf(U, V):
-
-    Um = (U[:, :, 1:, 1:] + U[:, :, 1:, :-1] + U[:, :, :-1, 1:] + U[:, :, :-1, :-1]) / 4
-    Vm = (V[:, :, 1:, 1:] + V[:, :, 1:, :-1] + V[:, :, :-1, 1:] + V[:, :, :-1, :-1]) / 4
-
-    return Um, Vm
 
 @tf.function()
 def compute_gradient_stag(s, dX, dY):

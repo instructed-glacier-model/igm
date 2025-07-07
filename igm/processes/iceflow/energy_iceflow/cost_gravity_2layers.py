@@ -4,14 +4,15 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy_iceflow.utils import stag4, compute_gradient_stag, compute_average_velocity_twolayers_tf
+from igm.processes.iceflow.energy_iceflow.utils import stag4, compute_gradient_stag
 
 @tf.function()
 def cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst, w, n):
 
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
-
-    Um, Vm = compute_average_velocity_twolayers_tf(U, V)
+ 
+    Um = stag4(U)
+    Vm = stag4(V)
 
 #    slopsurfx = tf.clip_by_value( slopsurfx , -0.25, 0.25)
 #    slopsurfy = tf.clip_by_value( slopsurfy , -0.25, 0.25)
