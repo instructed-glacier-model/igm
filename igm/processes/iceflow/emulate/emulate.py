@@ -51,7 +51,7 @@ def initialize_iceflow_emulator(cfg, state):
     direct_name += (
         str(cfg.processes.iceflow.physics.dim_arrhenius)
         + "_"
-        + str(int(cfg.processes.iceflow.physics.new_friction_param))
+        + str(int(1))
     )
 
     if cfg.processes.iceflow.emulator.pretrained:

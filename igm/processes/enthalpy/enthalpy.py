@@ -45,8 +45,7 @@ def initialize(cfg, state):
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
         cfg.processes.iceflow.physics.exp_weertman,
-        cfg.processes.enthalpy.uthreshold,
-        cfg.processes.iceflow.physics.new_friction_param,
+        cfg.processes.enthalpy.uthreshold, 
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,
     )
@@ -149,8 +148,7 @@ def update(cfg, state):
         state.slidingco,
         state.topg,
         state.dx,
-        cfg.processes.iceflow.physics.exp_weertman,
-        cfg.processes.iceflow.physics.new_friction_param,
+        cfg.processes.iceflow.physics.exp_weertman, 
     )
 
     # compute the surface enthalpy
@@ -207,8 +205,7 @@ def update(cfg, state):
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
         cfg.processes.iceflow.physics.exp_weertman,
-        cfg.processes.enthalpy.uthreshold,
-        cfg.processes.iceflow.physics.new_friction_param,
+        cfg.processes.enthalpy.uthreshold, 
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,
     )
@@ -283,8 +280,7 @@ def compute_slidingco_tf(
     tillwatmax,
     phi,
     exp_weertman,
-    uthreshold,
-    new_friction_param,
+    uthreshold, 
     tauc_min,
     tauc_max,
 ):
@@ -308,13 +304,8 @@ def compute_slidingco_tf(
     tauc = tf.where(thk > 0, tauc, 10**6)  # high value if ice-fre
 
     tauc = tf.clip_by_value(tauc, tauc_min, tauc_max)
-
-    if new_friction_param:
-        slidingco = (tauc * 10 ** (-6)) * uthreshold ** (
-            -1.0 / exp_weertman
-        )  # Mpa m^(-1/3) y^(1/3)
-    else:
-        slidingco = (tauc * 10 ** (-6)) ** (-exp_weertman) * uthreshold  # Mpa^-3 m y^-1
+ 
+    slidingco = (tauc * 10 ** (-6)) * uthreshold ** (-1.0 / exp_weertman)  # Mpa m^(-1/3) y^(1/3) 
 
     return tauc, slidingco
 
@@ -400,7 +391,7 @@ def compute_strainheat_tf(U, V, arrhenius, dx, dz, exp_glen, thr, dim_arrhenius)
 
 
 @tf.function()
-def compute_frictheat_tf(U, V, slidingco, topg, dx, exp_weertman, new_friction_param):
+def compute_frictheat_tf(U, V, slidingco, topg, dx, exp_weertman):
     # input U [m s^{-1} ]
     # input slidingo [m MPa^{-3} y^{-1} ]
     # return frictheat in [W m^{-2}]
@@ -409,22 +400,14 @@ def compute_frictheat_tf(U, V, slidingco, topg, dx, exp_weertman, new_friction_p
     wvelbase = U[0] * sloptopgx + V[0] * sloptopgy
     ub = (U[0, :, :] ** 2 + V[0, :, :] ** 2 + wvelbase**2) ** 0.5
 
-    if new_friction_param:
-        # slidingco is in Mpa m^{-1/3} y^{1/3}
-        # [Pa m^{-1/3} y^{1/3} s^{1/3} y^{-1/3} m^{4/3} s^{-4/3}] = [Pa m s^{-1}] = [W m^{-2}]
-        return (
-            (slidingco * 10**6)
-            * (31556926) ** (1.0 / exp_weertman)
-            * ub ** ((1.0 / exp_weertman) + 1)
-        )
-    else:
-        # slidingco is in Mpa^-3 m y-1
-        # [Pa s^{1/3} m^{-1/3} m^{4/3} s^{-4/3}] = [Pa m s^{-1}] = [W m^{-2}]
-        return ((slidingco / ((10**18) * 31556926)) + 10 ** (-12)) ** -(
-            1.0 / exp_weertman
-        ) * ub ** ((1.0 / exp_weertman) + 1)
-
-
+    # slidingco is in Mpa m^{-1/3} y^{1/3}
+    # [Pa m^{-1/3} y^{1/3} s^{1/3} y^{-1/3} m^{4/3} s^{-4/3}] = [Pa m s^{-1}] = [W m^{-2}]
+    return (
+        (slidingco * 10**6)
+        * (31556926) ** (1.0 / exp_weertman)
+        * ub ** ((1.0 / exp_weertman) + 1)
+    )
+ 
 @tf.function()
 def TpmpEpmp_from_depth_tf(
     depth, gravity_cst, ice_density, claus_clape_cst, melt_temp, ci, ref_temp

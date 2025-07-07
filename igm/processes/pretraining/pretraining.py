@@ -14,7 +14,7 @@ import sys
 from ..iceflow.diagnostic.diagnostic import *
 from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *
-from ..iceflow.energy_iceflow.energy_iceflow import *
+from ..iceflow.energy.energy import *
  
  
 def initialize(cfg, state):
@@ -35,7 +35,7 @@ def initialize(cfg, state):
         + "_"
     )
     state.direct_name += (
-        str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(cfg.processes.iceflow.physics.new_friction_param))
+        str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1))
     )
 
     os.makedirs( state.direct_name, exist_ok=True)

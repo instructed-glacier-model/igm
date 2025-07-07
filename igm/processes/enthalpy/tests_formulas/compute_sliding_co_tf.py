@@ -9,8 +9,7 @@ def compute_slidingco_tf(
     tillwatmax,
     phi,
     exp_weertman,
-    uthreshold,
-    new_friction_param,
+    uthreshold, 
     tauc_min,
     tauc_max
 ):
@@ -34,13 +33,8 @@ def compute_slidingco_tf(
     tauc = np.where(thk > 0, tauc, 10**6)  # high value if ice-fre
 
     tauc = np.clip(tauc, tauc_min, tauc_max)
-
-    if new_friction_param:
-        slidingco = (tauc * 10 ** (-6)) * uthreshold ** (
-            -1.0 / exp_weertman
-        )  # Mpa m^(-1/3) y^(1/3)
-    else:
-        slidingco = (tauc * 10 ** (-6)) ** (-exp_weertman) * uthreshold  # Mpa^-3 m y^-1
+ 
+    slidingco = (tauc * 10 ** (-6)) * uthreshold ** (-1.0 / exp_weertman)  # Mpa m^(-1/3) y^(1/3) 
 
     return tauc,slidingco
 
@@ -49,8 +43,7 @@ def compute_slidingco_tf(
 tillwatmax=2.0
 phi=30
 exp_weertman=4.0
-uthreshold=100
-new_friction_param=True
+uthreshold=100 
 tauc_min=1.0e4
 tauc_max=1.0e10
 gravity_cst=9.81
@@ -74,8 +67,7 @@ for tillwat in tillwat_values:
         tillwatmax,
         phi,
         exp_weertman,
-        uthreshold,
-        new_friction_param,
+        uthreshold, 
         tauc_min,
         tauc_max
     ) 
