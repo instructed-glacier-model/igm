@@ -45,7 +45,7 @@ def stag8(B):
     ) / 8
 
 tf.function()
-def get_dz_COND(thk, Nz, vert_spacing):
+def get_dz(thk, Nz, vert_spacing):
 
     # Vertical discretization
     dz = tf.expand_dims(stag4(thk), axis=0)
@@ -53,16 +53,8 @@ def get_dz_COND(thk, Nz, vert_spacing):
         levels = compute_levels(Nz, vert_spacing)
         temd = levels[1:] - levels[:-1]
         dz = tf.expand_dims(tf.expand_dims(temd,axis=-1),axis=-1) * dz
-
-    COND = (
-        (thk[:, 1:, 1:] > 0)
-        & (thk[:, 1:, :-1] > 0)
-        & (thk[:, :-1, 1:] > 0)
-        & (thk[:, :-1, :-1] > 0)
-    )
-    COND = tf.expand_dims(COND, axis=1)
-
-    return dz, COND
+ 
+    return dz
 
 def gauss_points_and_weigths(ord_gauss):
 

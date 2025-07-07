@@ -6,8 +6,10 @@
 import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.energy_iceflow.utils import gauss_points_and_weigths, get_dz_COND
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV
+from igm.processes.iceflow.energy_iceflow.utils import gauss_points_and_weigths, stag4
+from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
+from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
+
 
 from igm.processes.iceflow.energy_iceflow.cost_gravity_2layers import cost_gravity_2layers
 from igm.processes.iceflow.energy_iceflow.cost_shear_2layers import cost_shear_2layers
@@ -63,8 +65,14 @@ def iceflow_energy(cfg, U, V, fieldin):
         min_sr = cfg.processes.iceflow.physics.min_sr
         max_sr = cfg.processes.iceflow.physics.max_sr
         force_negative_gravitational_energy = cfg.processes.iceflow.physics.force_negative_gravitational_energy
+ 
+        levels = compute_levels(Nz, vert_spacing)
 
-        dz, COND = get_dz_COND(thk, Nz, vert_spacing)
+        dz =  compute_dz(stag4(thk), levels)
+
+        COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
+               & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
+        COND = tf.expand_dims(COND, axis=1)
 
         Cshear = cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, COND, 
                             exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, regu)

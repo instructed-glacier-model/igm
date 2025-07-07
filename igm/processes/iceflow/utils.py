@@ -31,19 +31,6 @@ def initialize_iceflow_fields(cfg, state):
         state.U = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
 
-# def define_vertical_weight(cfg, state):
-#     """
-#     define_vertical_weight
-#     """
-
-#     zeta = np.arange(cfg.processes.iceflow.numerics.Nz + 1) / cfg.processes.iceflow.numerics.Nz
-#     weight = (zeta / cfg.processes.iceflow.numerics.vert_spacing) * (
-#         1.0 + (cfg.processes.iceflow.numerics.vert_spacing - 1.0) * zeta
-#     )
-#     weight = tf.Variable(weight[1:] - weight[:-1], dtype=tf.float32, trainable=False)
-#     state.vert_weight = tf.expand_dims(tf.expand_dims(weight, axis=-1), axis=-1)
-
-
 def update_2d_iceflow_variables(cfg, state):
     state.uvelbase = state.U[0, :, :]
     state.vvelbase = state.V[0, :, :]
