@@ -2,6 +2,7 @@ iceflow:
   method: emulated
   force_max_velbar: 0.0
   physics:
+    energy_components: ['shear', 'sliding_weertman', 'gravity']
     gravity_cst: 9.81
     ice_density: 910.0
     init_slidingco: 0.0464
@@ -19,10 +20,10 @@ iceflow:
     max_sr: 1.0e+20
     force_negative_gravitational_energy: false
     cf_eswn: []
-    cf_cond: false
   numerics:
     Nz: 10
     vert_spacing: 4.0
+    staggered_grid: true
   solver:
     step_size: 1.0
     nbitmax: 100

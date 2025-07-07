@@ -43,16 +43,13 @@ def solve_iceflow(cfg, state, U, V):
             t.watch(U)
             t.watch(V)
 
-            C_shear, C_slid, C_grav, C_float = iceflow_energy(
+            energy_list = iceflow_energy(
                 cfg, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
-            )
+            ) 
 
-            C_shear_cost = tf.reduce_mean(C_shear)
-            C_slid_cost  = tf.reduce_mean(C_slid)
-            C_grav_cost  = tf.reduce_mean(C_grav)
-            C_float_cost = tf.reduce_mean(C_float)
+            energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
-            COST = C_shear_cost + C_slid_cost + C_grav_cost  + C_float_cost
+            COST = tf.add_n(energy_mean_list)
 
             Cost_Glen.append(COST)
 
@@ -77,8 +74,10 @@ def solve_iceflow(cfg, state, U, V):
         velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
 
         if state.it <= 1:    
-            print_info(state, i, C_shear_cost.numpy(), C_slid_cost.numpy(), \
-                                 C_grav_cost.numpy(), COST.numpy(), 
+            print_info(state, i, energy_mean_list[0].numpy(), \
+                                 energy_mean_list[1].numpy(), \
+                                 energy_mean_list[2].numpy(), \
+                                 COST.numpy(), \
                                  tf.reduce_max(velsurf_mag).numpy())
  
         if (i + 1) % 100 == 0:
@@ -126,12 +125,14 @@ def solve_iceflow_lbfgs(cfg, state, U, V):
             tf.expand_dims(vars(state)[f], axis=0) for f in cfg.processes.iceflow.emulator.fieldin
         ]
 
-        C_shear, C_slid, C_grav, C_float = iceflow_energy(
+        energy_list = iceflow_energy(
             cfg, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
         )
+ 
+        energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
-        COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
-             + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
+        COST = tf.add_n(energy_mean_list)
+
             
         return COST
 

@@ -212,24 +212,24 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                     Y = state.iceflow_model(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
                     
                     if iz>0:
-                        C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(cfg, X[i, :, iz:-iz, iz:-iz, :], Y[:, iz:-iz, iz:-iz, :])
+                        energy_list = iceflow_energy_XY(cfg, X[i, :, iz:-iz, iz:-iz, :], Y[:, iz:-iz, iz:-iz, :])
                     else:
-                        C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(cfg, X[i, :, :, :, :], Y[:, :, :, :])
+                        energy_list = iceflow_energy_XY(cfg, X[i, :, :, :, :], Y[:, :, :, :])
  
-                    C_shear_cost = tf.reduce_mean(C_shear)
-                    C_slid_cost  = tf.reduce_mean(C_slid)
-                    C_grav_cost  = tf.reduce_mean(C_grav)
-                    C_float_cost = tf.reduce_mean(C_float)
+                    energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
-                    COST = C_shear_cost + C_slid_cost + C_grav_cost + C_float_cost
+                    COST = tf.add_n(energy_mean_list)
 
                     cost_emulator = cost_emulator + COST
 
                     U, V = Y_to_UV(cfg, Y) ; velsurf_mag = tf.sqrt(U[0][-1] ** 2 + V[0][-1] ** 2)
 
                     if warm_up:
-                        print_info(state, epoch, C_shear_cost.numpy(), C_slid_cost.numpy(), \
-                                          C_grav_cost.numpy(), COST.numpy(), tf.reduce_max(velsurf_mag).numpy())
+                        print_info(state, epoch, energy_mean_list[0].numpy(), \
+                                                 energy_mean_list[1].numpy(), \
+                                                 energy_mean_list[2].numpy(), \
+                                                 COST.numpy(), \
+                                                 tf.reduce_max(velsurf_mag).numpy())
 
                     if (epoch + 1) % 100 == 0:
                          

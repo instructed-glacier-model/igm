@@ -7,6 +7,10 @@ force_max_velbar:
   Description: "This permits to artificially upper-bound velocities, active if > 0"
   Units: m y^{-1}
 physics:
+  energy_components:
+    Type: list
+    Description: "List of energy components to compute, it can be shear, sliding_weertman, gravity, or all"
+    Units: dimless
   gravity_cst:
     Type: float
     Description: "Gravitational constant"
