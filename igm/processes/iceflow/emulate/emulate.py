@@ -212,9 +212,10 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                     Y = state.iceflow_model(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
                     
                     if iz>0:
-                        energy_list = iceflow_energy_XY(cfg, X[i, :, iz:-iz, iz:-iz, :], Y[:, iz:-iz, iz:-iz, :])
+                        energy_list = iceflow_energy_XY(cfg, X[i, :, iz:Ny-iz, iz:Nx-iz, :], \
+                                                             Y[:,    iz:Ny-iz, iz:Nx-iz, :])
                     else:
-                        energy_list = iceflow_energy_XY(cfg, X[i, :, :, :, :], Y[:, :, :, :])
+                        energy_list = iceflow_energy_XY(cfg, X[i], Y)
  
                     energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
