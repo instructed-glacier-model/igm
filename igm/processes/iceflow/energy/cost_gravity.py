@@ -4,8 +4,8 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy_iceflow.utils import stag4, stag8
-from igm.processes.iceflow.energy_iceflow.utils import compute_gradient_stag
+from igm.processes.iceflow.energy.utils import stag4, stag8
+from igm.processes.iceflow.energy.utils import compute_gradient_stag
 
 @tf.function()
 def cost_gravity(U, V, usurf, dX, dz, COND, Nz, ice_density, gravity_cst, 

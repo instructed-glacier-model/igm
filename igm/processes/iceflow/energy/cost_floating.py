@@ -5,7 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
-from igm.processes.iceflow.energy_iceflow.utils import stag2
+from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
 @tf.function()

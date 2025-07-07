@@ -6,18 +6,18 @@
 import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.energy_iceflow.utils import gauss_points_and_weigths, stag4
+from igm.processes.iceflow.energy.utils import gauss_points_and_weigths, stag4
 from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
 from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
 
 
-from igm.processes.iceflow.energy_iceflow.cost_gravity_2layers import cost_gravity_2layers
-from igm.processes.iceflow.energy_iceflow.cost_shear_2layers import cost_shear_2layers
+from igm.processes.iceflow.energy.cost_gravity_2layers import cost_gravity_2layers
+from igm.processes.iceflow.energy.cost_shear_2layers import cost_shear_2layers
 
-from igm.processes.iceflow.energy_iceflow.cost_shear import cost_shear
-from igm.processes.iceflow.energy_iceflow.cost_sliding import cost_sliding
-from igm.processes.iceflow.energy_iceflow.cost_gravity import cost_gravity
-from igm.processes.iceflow.energy_iceflow.cost_floating import cost_floating
+from igm.processes.iceflow.energy.cost_shear import cost_shear
+from igm.processes.iceflow.energy.cost_sliding import cost_sliding
+from igm.processes.iceflow.energy.cost_gravity import cost_gravity
+from igm.processes.iceflow.energy.cost_floating import cost_floating
 
 def iceflow_energy(cfg, U, V, fieldin):
     thk, usurf, arrhenius, slidingco, dX = fieldin

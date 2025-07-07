@@ -8,7 +8,7 @@ import tensorflow as tf
 import os
 
 from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, update_2d_iceflow_variables, compute_PAD, print_info
-from igm.processes.iceflow.energy_iceflow.energy_iceflow import iceflow_energy_XY
+from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
 from igm.utils.math.getmag3d import getmag3d
