@@ -5,9 +5,12 @@
 
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, compute_gradient_stag
+from igm.processes.iceflow.energy.utils import gauss_points_and_weights
 
 @tf.function()
-def cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst, w, n):
+def cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst):
+
+    n, w = gauss_points_and_weights(ord_gauss=3)
 
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
  

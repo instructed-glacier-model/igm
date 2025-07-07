@@ -6,6 +6,7 @@
 import numpy as np
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4
+from igm.processes.iceflow.energy.utils import gauss_points_and_weights
 
 @tf.function()
 def compute_strainrate_Glen_twolayers_tf(U, V, dX):
@@ -24,7 +25,9 @@ def compute_strainrate_Glen_twolayers_tf(U, V, dX):
 
 # In the case of a 2 layers model, we assume a velcity profile is a SIA-like profile
 @tf.function()
-def cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen, w, n):
+def cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen):
+
+    n, w = gauss_points_and_weights(ord_gauss=3)
 
     dUdx, dVdx, dUdy, dVdy = compute_strainrate_Glen_twolayers_tf(U, V, dX)
 

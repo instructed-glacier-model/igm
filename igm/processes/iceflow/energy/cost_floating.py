@@ -3,13 +3,22 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
+
+def cost_floating(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
+
+    Nz = cfg.processes.iceflow.numerics.Nz
+    vert_spacing = cfg.processes.iceflow.numerics.vert_spacing
+    cf_eswn = cfg.processes.iceflow.physics.cf_eswn
+
+    return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn)
+
+
 @tf.function()
-def cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
+def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
 
     # if activae this applies the stress condition along the calving front
 

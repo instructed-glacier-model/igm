@@ -8,8 +8,17 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, compute_gradient_stag
 from igm.processes.iceflow.energy.utils import compute_gradient_stag
 
+def cost_sliding(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
+
+    exp_weertman = cfg.processes.iceflow.physics.exp_weertman
+    regu_weertman = cfg.processes.iceflow.physics.regu_weertman
+    new_friction_param = cfg.processes.iceflow.physics.new_friction_param
+
+    return _cost_sliding(U, V, thk, usurf, slidingco, dX,
+                         exp_weertman, regu_weertman, new_friction_param)
+
 @tf.function()
-def cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, new_friction_param):
+def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, new_friction_param):
  
     if new_friction_param:
         C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
