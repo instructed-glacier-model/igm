@@ -300,10 +300,11 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
                 X = X[:,:ny,:nx,:]
                 Y = Y[:,:ny,:nx,:]
 
-                C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(cfg, X, Y)
- 
-                COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
-                       + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
+                energy_list = iceflow_energy_XY(cfg, X, YP)
+  
+                energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
+
+                COST = tf.add_n(energy_mean_list)
 
             grads = t.gradient(COST, state.iceflow_model.trainable_variables)
 
@@ -363,10 +364,11 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
                 X  =  X[:,:Ny,:Nx,:]
                 YP = YP[:,:Ny,:Nx,:]
 
-                C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(cfg, X, YP)
- 
-                COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
-                     + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
+                energy_list = iceflow_energy_XY(cfg, X, YP)
+  
+                energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
+
+                COST = tf.add_n(energy_mean_list) 
                 
                 nl1, nl2, nbarl1, nbarl1a = _computemisfitall(cfg, state, X, Y, YP)
 
