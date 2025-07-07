@@ -47,17 +47,9 @@ physics:
     Type: float
     Description: "Weertman's law exponent"
     Units: dimless
-  new_friction_param:
-    Type: boolean
-    Description: "Sliding coefficient (this describes slidingco differently with slidingco**-(1.0 / exp_weertman) instead of slidingco as before)"
-    Units: dimless
   dim_arrhenius:
     Type: integer
     Description: "Dimension of the arrhenius factor (horizontal 2D or 3D)"
-    Units: dimless
-  regu:
-    Type: float
-    Description: "This regularizes the energy forcing ice flow to be smooth in the horizontal direction"
     Units: dimless
   thr_ice_thk:
     Type: float
@@ -77,10 +69,6 @@ physics:
     Units: dimless
   cf_eswn:
     Type: list
-    Description: "This forces calving front at the border of the domain in the side given in the list"
-    Units: dimless
-  cf_cond:
-    Type: boolean
     Description: "This forces calving front at the border of the domain in the side given in the list"
     Units: dimless
 numerics:

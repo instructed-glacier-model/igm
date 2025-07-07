@@ -12,22 +12,14 @@ def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 
     exp_weertman = cfg.processes.iceflow.physics.exp_weertman
     regu_weertman = cfg.processes.iceflow.physics.regu_weertman
-    new_friction_param = cfg.processes.iceflow.physics.new_friction_param
 
     return _cost_sliding(U, V, thk, usurf, slidingco, dX,
-                         exp_weertman, regu_weertman, new_friction_param)
+                         exp_weertman, regu_weertman)
 
 @tf.function()
-def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, new_friction_param):
+def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman):
  
-    if new_friction_param:
-        C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
-    else:
-        if exp_weertman == 1:
-            # C has unit Mpa y^m m^(-m)
-            C = 1.0 * slidingco
-        else:
-            C = (slidingco + 10 ** (-12)) ** -(1.0 / exp_weertman)
+    C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
  
     s = 1.0 + 1.0 / exp_weertman
   

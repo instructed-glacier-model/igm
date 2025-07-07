@@ -20,12 +20,11 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     else:
    
         thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
-        regu = cfg.processes.iceflow.physics.regu
         min_sr = cfg.processes.iceflow.physics.min_sr
         max_sr = cfg.processes.iceflow.physics.max_sr
  
         return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
-                            exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, regu)
+                            exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr)
 
 
 @tf.function()
@@ -85,7 +84,7 @@ def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptop
 
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
-                    exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, regu):
+                    exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr):
     
     COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
             & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
@@ -120,17 +119,6 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
         C_shear = stag4(B) * tf.reduce_sum(dz * ((srcapped + regu_glen**2) ** ((p-2) / 2)) * sr, axis=1 ) / p
     else:
         C_shear = tf.reduce_sum( stag8(B) * dz * ((srcapped + regu_glen**2) ** ((p-2) / 2)) * sr, axis=1 ) / p
-        
-    if regu > 0:
-        
-        srx = tf.where(COND, srx, 0.0)
- 
-        if len(B.shape) == 3:
-            C_shear_2 = stag4(B) * tf.reduce_sum(dz * ((srx + regu_glen**2) ** (p / 2)), axis=1 ) / p
-        else:
-            C_shear_2 = tf.reduce_sum( stag8(B) * dz * ((srx + regu_glen**2) ** (p / 2)), axis=1 ) / p 
-
-        C_shear = C_shear + regu*C_shear_2
 
     return C_shear
 
