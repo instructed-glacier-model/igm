@@ -17,7 +17,7 @@ def cost_floating(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn)
 
 
-@tf.function(jit_compile=True)
+@tf.function()
 def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
 
     # if activae this applies the stress condition along the calving front

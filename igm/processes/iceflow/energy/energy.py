@@ -18,10 +18,7 @@ def iceflow_energy(cfg, U, V, fieldin):
     levels = compute_levels(cfg.processes.iceflow.numerics.Nz, 
                             cfg.processes.iceflow.numerics.vert_spacing)
 
-#    if cfg.processes.iceflow.numerics.staggered_grid:
     dz =  compute_dz(stag4(thk), levels)
-#    else:
-#        dz =  compute_dz(thk, levels)
 
     energy_list = []
     for component in cfg.processes.iceflow.physics.energy_components:

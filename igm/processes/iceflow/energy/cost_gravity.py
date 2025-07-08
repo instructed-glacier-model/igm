@@ -7,6 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, stag8
 from igm.processes.iceflow.energy.utils import compute_gradient_stag 
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights
+from igm.processes.iceflow.energy.utils import psia
 
 def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 
@@ -69,16 +70,10 @@ def _cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_c
     Um = stag4(U)
     Vm = stag4(V)
 
-#    slopsurfx = tf.clip_by_value( slopsurfx , -0.25, 0.25)
-#    slopsurfy = tf.clip_by_value( slopsurfy , -0.25, 0.25)
-
-    def f(zeta):
-        return ( 1 - (1 - zeta) ** (exp_glen + 1) )
-
     def uds(zeta):
 
-        return (Um[:, 0, :, :] + (Um[:, -1, :, :]-Um[:, 0, :, :]) * f(zeta)) * slopsurfx \
-             + (Vm[:, 0, :, :] + (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * f(zeta)) * slopsurfy
+        return (Um[:, 0, :, :] + (Um[:, -1, :, :]-Um[:, 0, :, :]) * psia(zeta,exp_glen)) * slopsurfx \
+             + (Vm[:, 0, :, :] + (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * psia(zeta,exp_glen)) * slopsurfy
  
     # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
     C_grav = (

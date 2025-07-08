@@ -44,18 +44,6 @@ def stag8(B):
         + B[..., :-1, :-1, :-1]
     ) / 8
 
-tf.function()
-def get_dz(thk, Nz, vert_spacing):
-
-    # Vertical discretization
-    dz = tf.expand_dims(stag4(thk), axis=0)
-    if Nz > 1:
-        levels = compute_levels(Nz, vert_spacing)
-        temd = levels[1:] - levels[:-1]
-        dz = tf.expand_dims(tf.expand_dims(temd,axis=-1),axis=-1) * dz
- 
-    return dz
-
 def gauss_points_and_weights(ord_gauss):
     if ord_gauss == 3:
         n = tf.constant([0.11270, 0.5,     0.88730], dtype=tf.float32)
@@ -70,3 +58,9 @@ def gauss_points_and_weights(ord_gauss):
         raise ValueError("Only Gauss orders 3, 5, and 7 are supported.")
     
     return n, w
+
+def psia(zeta,exp_glen):
+    return ( 1 - (1 - zeta) ** (exp_glen + 1) )
+
+def psiap(zeta,exp_glen):
+    return (exp_glen + 1) * (1 - zeta) ** exp_glen

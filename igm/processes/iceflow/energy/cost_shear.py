@@ -7,6 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, stag8
 from igm.processes.iceflow.energy.utils import compute_gradient_stag
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights
+from igm.processes.iceflow.energy.utils import psia, psiap
 
 def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 
@@ -140,20 +141,15 @@ def _cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen):
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)
     p = 1.0 + 1.0 / exp_glen
 
-    def f(zeta):
-        return ( 1 - (1 - zeta) ** (exp_glen + 1) )
-    
-    def fp(zeta):
-        return (exp_glen + 1) * (1 - zeta) ** exp_glen
 
     def p_term(zeta):
   
-        UDX = (dUdx[:, 0, :, :] + (dUdx[:, -1, :, :]-dUdx[:, 0, :, :]) * f(zeta))
-        VDY = (dVdy[:, 0, :, :] + (dVdy[:, -1, :, :]-dVdy[:, 0, :, :]) * f(zeta))
-        UDY = (dUdy[:, 0, :, :] + (dUdy[:, -1, :, :]-dUdy[:, 0, :, :]) * f(zeta))
-        VDX = (dVdx[:, 0, :, :] + (dVdx[:, -1, :, :]-dVdx[:, 0, :, :]) * f(zeta))
-        UDZ = (Um[:, -1, :, :]-Um[:, 0, :, :]) * fp(zeta) / tf.maximum( stag4(thk) , 1)
-        VDZ = (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * fp(zeta) / tf.maximum( stag4(thk) , 1)
+        UDX = (dUdx[:, 0, :, :] + (dUdx[:, -1, :, :]-dUdx[:, 0, :, :]) * psia(zeta,exp_glen))
+        VDY = (dVdy[:, 0, :, :] + (dVdy[:, -1, :, :]-dVdy[:, 0, :, :]) * psia(zeta,exp_glen))
+        UDY = (dUdy[:, 0, :, :] + (dUdy[:, -1, :, :]-dUdy[:, 0, :, :]) * psia(zeta,exp_glen))
+        VDX = (dVdx[:, 0, :, :] + (dVdx[:, -1, :, :]-dVdx[:, 0, :, :]) * psia(zeta,exp_glen))
+        UDZ = (Um[:, -1, :, :]-Um[:, 0, :, :]) * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
+        VDZ = (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
         
         Exx = UDX
         Eyy = VDY
