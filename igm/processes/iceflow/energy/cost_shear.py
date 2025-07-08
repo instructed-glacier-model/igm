@@ -13,21 +13,14 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     regu_glen = cfg.processes.iceflow.physics.regu_glen
-
-    if cfg.processes.iceflow.numerics.Nz == 2:
-  
-        return _cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen)
-
-    else:
    
-        thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
-        min_sr = cfg.processes.iceflow.physics.min_sr
-        max_sr = cfg.processes.iceflow.physics.max_sr
- 
-        return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
-                            exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr)
+    thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
+    min_sr = cfg.processes.iceflow.physics.min_sr
+    max_sr = cfg.processes.iceflow.physics.max_sr
+    Nz = cfg.processes.iceflow.numerics.Nz
 
-##########################
+    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
+                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz)
 
 @tf.function()
 def compute_horizontal_strainrate_Glen_tf(U, V, dX):
@@ -43,8 +36,6 @@ def compute_horizontal_strainrate_Glen_tf(U, V, dX):
     dVdy = (dVdy[:, :, :, :-1] + dVdy[:, :, :, 1:]) / 2
 
     return dUdx, dVdx, dUdy, dVdy
-
-#########################################
 
 @tf.function()
 def compute_sr2(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz):
@@ -114,7 +105,7 @@ def compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta
  
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
-                    exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr):
+                    exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz):
     
     # B has Unit Mpa y^(1/n)
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)
@@ -126,50 +117,43 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
     Um = stag4(U)
     Vm = stag4(V)
 
-    # sr has unit y^(-1)
-    sr2 = compute_strainrate_Glen_tf(
-        dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, slidingco, dX, dz, usurf, thr=thr_ice_thk
-    )
+    if Nz > 2:
 
+        # sr has unit y^(-1)
+        sr2 = compute_strainrate_Glen_tf(
+            dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, slidingco, dX, dz, usurf, thr=thr_ice_thk
+        )
+
+        COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
+                & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
+        COND = tf.expand_dims(COND, axis=1)
+        
+        sr2 = tf.where(COND, sr2, 0.0)
+        
+        sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+
+        sr2capped = tf.where(COND, sr2capped, 0.0)
+
+        p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2
     
-    COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
-            & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
-    COND = tf.expand_dims(COND, axis=1)
-     
-    sr2 = tf.where(COND, sr2, 0.0)
-    
-    sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+        # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
+        if len(B.shape) == 3:
+            C_shear = stag4(B) * tf.reduce_sum(dz * p_term, axis=1 ) / p
+        else:
+            C_shear = tf.reduce_sum( stag8(B) * dz * p_term, axis=1 ) / p
 
-    sr2capped = tf.where(COND, sr2capped, 0.0)
-
-    p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2
-  
-    # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    if len(B.shape) == 3:
-        return stag4(B) * tf.reduce_sum(dz * p_term, axis=1 ) / p
     else:
-        return tf.reduce_sum( stag8(B) * dz * p_term, axis=1 ) / p
+
+        n, w = gauss_points_and_weights(ord_gauss=3)
+        zeta = n[None,:,None,None]
+        weight = w[None,:,None,None]
+
+        sr2 = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen)
+
+        p_term = (sr2 + regu_glen**2) ** (p / 2) / p
+    
+        # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
+        C_shear = stag4(B) * stag4(thk) *  tf.reduce_sum(weight * p_term, axis=1)
+
+    return C_shear  
  
-# In the case of a 2 layers model, we assume a velcity profile is a SIA-like profile
-@tf.function()
-def _cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen):
-
-    # B has Unit Mpa y^(1/n)
-    B = 2.0 * arrhenius ** (-1.0 / exp_glen)
-    p = 1.0 + 1.0 / exp_glen
-
-    dUdx, dVdx, dUdy, dVdy = compute_horizontal_strainrate_Glen_tf(U, V, dX)
-
-    Um = stag4(U)
-    Vm = stag4(V)
-
-    n, w = gauss_points_and_weights(ord_gauss=3)
-    zeta = n[None,:,None,None]
-    weight = w[None,:,None,None]
-
-    sr2 = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen)
-
-    p_term = (sr2 + regu_glen**2) ** (p / 2) / p
-  
-    # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    return stag4(B) * stag4(thk) *  tf.reduce_sum(weight * p_term, axis=1)
