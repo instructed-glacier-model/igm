@@ -117,7 +117,7 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
     Um = stag4(U)
     Vm = stag4(V)
 
-    if Nz > 2:
+    if not (Nz == 2):
 
         # sr has unit y^(-1)
         sr2 = compute_strainrate_Glen_tf(

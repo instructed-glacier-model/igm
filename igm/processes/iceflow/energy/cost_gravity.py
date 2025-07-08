@@ -25,7 +25,7 @@ def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst,
     
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
 
-    if Nz > 2:
+    if not (Nz == 2):
         
         COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
                 & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
@@ -61,10 +61,12 @@ def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst,
         Um = stag4(U)
         Vm = stag4(V)
 
-        uds = tf.expand_dims(Um[:, 0, :, :],1) \
-            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) * slopsurfx \
-            + tf.expand_dims(Vm[:, 0, :, :],1) \
-            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) * slopsurfy
+        uds = ( tf.expand_dims(Um[:, 0, :, :],1) \
+            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
+            * tf.expand_dims(slopsurfx,1) \
+            + ( tf.expand_dims(Vm[:, 0, :, :],1) \
+            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
+            * tf.expand_dims(slopsurfy,1)
 
         # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
         return (
