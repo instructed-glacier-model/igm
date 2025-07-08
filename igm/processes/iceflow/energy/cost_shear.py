@@ -26,20 +26,31 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
         return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
                             exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr)
 
+##########################
 
 @tf.function()
-def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptopgy, thr):
-    # Compute horinzontal derivatives
+def compute_horizontal_strainrate_Glen_tf(U, V, dX):
+
     dUdx = (U[:, :, :, 1:] - U[:, :, :, :-1]) / dX[0, 0, 0]
     dVdx = (V[:, :, :, 1:] - V[:, :, :, :-1]) / dX[0, 0, 0]
     dUdy = (U[:, :, 1:, :] - U[:, :, :-1, :]) / dX[0, 0, 0]
     dVdy = (V[:, :, 1:, :] - V[:, :, :-1, :]) / dX[0, 0, 0]
 
-    # Homgenize sizes in the horizontal plan on the stagerred grid
     dUdx = (dUdx[:, :, :-1, :] + dUdx[:, :, 1:, :]) / 2
     dVdx = (dVdx[:, :, :-1, :] + dVdx[:, :, 1:, :]) / 2
     dUdy = (dUdy[:, :, :, :-1] + dUdy[:, :, :, 1:]) / 2
     dVdy = (dVdy[:, :, :, :-1] + dVdy[:, :, :, 1:]) / 2
+
+    return dUdx, dVdx, dUdy, dVdy
+
+@tf.function()
+def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptopgy, thr):
+    
+    dUdx, dVdx, dUdy, dVdy = compute_horizontal_strainrate_Glen_tf(U, V, dX)
+
+    # compute the horizontal average, these quantitites will be used for vertical derivatives
+    Um = stag4(U)
+    Vm = stag4(V)
 
     # homgenize sizes in the vertical plan on the stagerred grid
     if U.shape[1] > 1:
@@ -47,12 +58,7 @@ def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptop
         dVdx = (dVdx[:, :-1, :, :] + dVdx[:, 1:, :, :]) / 2
         dUdy = (dUdy[:, :-1, :, :] + dUdy[:, 1:, :, :]) / 2
         dVdy = (dVdy[:, :-1, :, :] + dVdy[:, 1:, :, :]) / 2
-
-    # compute the horizontal average, these quantitites will be used for vertical derivatives
-    Um = (U[:, :, 1:, 1:] + U[:, :, 1:, :-1] + U[:, :, :-1, 1:] + U[:, :, :-1, :-1]) / 4
-    Vm = (V[:, :, 1:, 1:] + V[:, :, 1:, :-1] + V[:, :, :-1, 1:] + V[:, :, :-1, :-1]) / 4
-
-    if U.shape[1] > 1:
+ 
         # vertical derivative if there is at least two layears
         dUdz = (Um[:, 1:, :, :] - Um[:, :-1, :, :]) / tf.maximum(ddz, thr)
         dVdz = (Vm[:, 1:, :, :] - Vm[:, :-1, :, :]) / tf.maximum(ddz, thr)
@@ -77,10 +83,8 @@ def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptop
     Exz = 0.5 * dUdz
     Eyz = 0.5 * dVdz
     
-    srx = 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 )
-    srz = 0.5 * ( Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
-
-    return srx, srz
+    return 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 + Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
+ 
 
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
@@ -102,12 +106,10 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
     p = 1.0 + 1.0 / exp_glen
 
     # sr has unit y^(-1)
-    srx, srz = compute_strainrate_Glen_tf(
+    sr = compute_strainrate_Glen_tf(
         U, V, thk, slidingco, dX, dz, sloptopgx, sloptopgy, thr=thr_ice_thk
     )
-    
-    sr = srx + srz
-
+     
     sr = tf.where(COND, sr, 0.0)
     
     srcapped = tf.clip_by_value(sr, min_sr**2, max_sr**2)
@@ -122,22 +124,6 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
 
     return C_shear
 
-##########################
-
-@tf.function()
-def compute_strainrate_Glen_twolayers_tf(U, V, dX):
-
-    dUdx = (U[:, :, :, 1:] - U[:, :, :, :-1]) / dX[0, 0, 0]
-    dVdx = (V[:, :, :, 1:] - V[:, :, :, :-1]) / dX[0, 0, 0]
-    dUdy = (U[:, :, 1:, :] - U[:, :, :-1, :]) / dX[0, 0, 0]
-    dVdy = (V[:, :, 1:, :] - V[:, :, :-1, :]) / dX[0, 0, 0]
-
-    dUdx = (dUdx[:, :, :-1, :] + dUdx[:, :, 1:, :]) / 2
-    dVdx = (dVdx[:, :, :-1, :] + dVdx[:, :, 1:, :]) / 2
-    dUdy = (dUdy[:, :, :, :-1] + dUdy[:, :, :, 1:]) / 2
-    dVdy = (dVdy[:, :, :, :-1] + dVdy[:, :, :, 1:]) / 2
-
-    return dUdx, dVdx, dUdy, dVdy
 
 # In the case of a 2 layers model, we assume a velcity profile is a SIA-like profile
 @tf.function()
@@ -145,7 +131,7 @@ def _cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen):
 
     n, w = gauss_points_and_weights(ord_gauss=3)
 
-    dUdx, dVdx, dUdy, dVdy = compute_strainrate_Glen_twolayers_tf(U, V, dX)
+    dUdx, dVdx, dUdy, dVdy = compute_horizontal_strainrate_Glen_tf(U, V, dX)
 
     Um = stag4(U)
     Vm = stag4(V)
