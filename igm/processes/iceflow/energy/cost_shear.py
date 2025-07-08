@@ -44,6 +44,20 @@ def compute_horizontal_strainrate_Glen_tf(U, V, dX):
 
     return dUdx, dVdx, dUdy, dVdy
 
+#########################################
+
+@tf.function()
+def compute_sr2(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz):
+
+    Exx = dUdx
+    Eyy = dVdy
+    Ezz = -dUdx - dVdy
+    Exy = 0.5 * dVdx + 0.5 * dUdy
+    Exz = 0.5 * dUdz
+    Eyz = 0.5 * dVdz
+    
+    return 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 + Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
+
 @tf.function()
 def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptopgy, thr):
     
@@ -77,16 +91,8 @@ def compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptop
     dVdx = dVdx - dVdz * sloptopgx
     dVdy = dVdy - dVdz * sloptopgy
 
-    Exx = dUdx
-    Eyy = dVdy
-    Ezz = -dUdx - dVdy
-    Exy = 0.5 * dVdx + 0.5 * dUdy
-    Exz = 0.5 * dUdz
-    Eyz = 0.5 * dVdz
-    
-    return 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 + Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
+    return compute_sr2(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz)
  
-
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
                     exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr):
@@ -107,21 +113,23 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
     p = 1.0 + 1.0 / exp_glen
 
     # sr has unit y^(-1)
-    sr = compute_strainrate_Glen_tf(
+    sr2 = compute_strainrate_Glen_tf(
         U, V, thk, slidingco, dX, dz, sloptopgx, sloptopgy, thr=thr_ice_thk
     )
      
-    sr = tf.where(COND, sr, 0.0)
+    sr2 = tf.where(COND, sr2, 0.0)
     
-    srcapped = tf.clip_by_value(sr, min_sr**2, max_sr**2)
+    sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
 
-    srcapped = tf.where(COND, srcapped, 0.0)
+    sr2capped = tf.where(COND, sr2capped, 0.0)
+
+    p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2
   
     # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
     if len(B.shape) == 3:
-        C_shear = stag4(B) * tf.reduce_sum(dz * ((srcapped + regu_glen**2) ** ((p-2) / 2)) * sr, axis=1 ) / p
+        C_shear = stag4(B) * tf.reduce_sum(dz * p_term, axis=1 ) / p
     else:
-        C_shear = tf.reduce_sum( stag8(B) * dz * ((srcapped + regu_glen**2) ** ((p-2) / 2)) * sr, axis=1 ) / p
+        C_shear = tf.reduce_sum( stag8(B) * dz * p_term, axis=1 ) / p
 
     return C_shear
 
@@ -140,29 +148,29 @@ def _cost_shear_2layers(thk, arrhenius, U, V, dX, exp_glen, regu_glen):
     # B has Unit Mpa y^(1/n)
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)
     p = 1.0 + 1.0 / exp_glen
+ 
+    zeta = n[None,:,None,None]
+    weight = w[None,:,None,None]
 
-
-    def p_term(zeta):
-  
-        UDX = (dUdx[:, 0, :, :] + (dUdx[:, -1, :, :]-dUdx[:, 0, :, :]) * psia(zeta,exp_glen))
-        VDY = (dVdy[:, 0, :, :] + (dVdy[:, -1, :, :]-dVdy[:, 0, :, :]) * psia(zeta,exp_glen))
-        UDY = (dUdy[:, 0, :, :] + (dUdy[:, -1, :, :]-dUdy[:, 0, :, :]) * psia(zeta,exp_glen))
-        VDX = (dVdx[:, 0, :, :] + (dVdx[:, -1, :, :]-dVdx[:, 0, :, :]) * psia(zeta,exp_glen))
-        UDZ = (Um[:, -1, :, :]-Um[:, 0, :, :]) * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
-        VDZ = (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
-        
-        Exx = UDX
-        Eyy = VDY
-        Ezz = - UDX - VDY
-        Exy = 0.5 * VDX + 0.5 * UDY
-        Exz = 0.5 * UDZ
-        Eyz = 0.5 * VDZ
+    UDX = tf.expand_dims(dUdx[:, 0, :, :],1) \
+        + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(zeta,exp_glen)
+    VDY = tf.expand_dims(dVdy[:, 0, :, :],1) \
+        + tf.expand_dims(dVdy[:, -1, :, :]-dVdy[:, 0, :, :],1) * psia(zeta,exp_glen)
+    UDY = tf.expand_dims(dUdy[:, 0, :, :],1) \
+        + tf.expand_dims(dUdy[:, -1, :, :]-dUdy[:, 0, :, :],1) * psia(zeta,exp_glen)
+    VDX = tf.expand_dims(dVdx[:, 0, :, :],1) \
+        + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(zeta,exp_glen)
     
-        sr2 = 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 + Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
+    UDZ = tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) \
+        * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
+    VDZ = tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) \
+        * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
+        
+    sr2 = compute_sr2(UDX, VDX, UDY, VDY, UDZ, VDZ)
 
-        return (sr2 + regu_glen**2) ** (p / 2) / p
+    p_term = (sr2 + regu_glen**2) ** (p / 2) / p
   
     # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    C_shear = stag4(B) * stag4(thk) * sum(w[i] * p_term(n[i]) for i in range(len(n)))
+    C_shear = stag4(B) * stag4(thk) *  tf.reduce_sum(weight * p_term, axis=1)
 
     return C_shear
