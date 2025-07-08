@@ -14,74 +14,63 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     ice_density = cfg.processes.iceflow.physics.ice_density
     gravity_cst = cfg.processes.iceflow.physics.gravity_cst
-    force_negative_gravitational_energy = cfg.processes.iceflow.physics.force_negative_gravitational_energy
+    fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
     Nz = cfg.processes.iceflow.numerics.Nz
 
-    if cfg.processes.iceflow.numerics.Nz == 2:
-        return _cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst)
-    
-    else:
-
-        return _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, 
-                   force_negative_gravitational_energy)
-
+    return _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, exp_glen)
 
 @tf.function()
 def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, 
-                   force_negative_gravitational_energy):
+                   fnge,exp_glen):
     
-    
-    COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
-            & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
-    COND = tf.expand_dims(COND, axis=1)
-
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
-    slopsurfx = tf.expand_dims(slopsurfx, axis=1)
-    slopsurfy = tf.expand_dims(slopsurfy, axis=1)
+
+    if Nz > 2:
+        
+        COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
+                & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
+        COND = tf.expand_dims(COND, axis=1)
+
+        slopsurfx = tf.expand_dims(slopsurfx, axis=1)
+        slopsurfy = tf.expand_dims(slopsurfy, axis=1)
+    
+        if Nz > 1:
+            uds = stag8(U) * slopsurfx + stag8(V) * slopsurfy
+        else:
+            uds = stag4(U) * slopsurfx + stag4(V) * slopsurfy  
+
+        if fnge:
+            uds = tf.minimum(uds, 0.0) # force non-postiveness
+
+        uds = tf.where(COND, uds, 0.0)
+
+        # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
+        return (
+            ice_density
+            * gravity_cst
+            * 10 ** (-6)
+            * tf.reduce_sum(dz * uds, axis=1)
+        )
  
-    if Nz > 1:
-        uds = stag8(U) * slopsurfx + stag8(V) * slopsurfy
     else:
-        uds = stag4(U) * slopsurfx + stag4(V) * slopsurfy  
-
-    if force_negative_gravitational_energy:
-        uds = tf.minimum(uds, 0.0) # force non-postiveness
-
-    uds = tf.where(COND, uds, 0.0)
-
-    # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
-    C_grav = (
-        ice_density
-        * gravity_cst
-        * 10 ** (-6)
-        * tf.reduce_sum(dz * uds, axis=1)
-    )
-
-    return C_grav
-
-
-@tf.function()
-def _cost_gravity_2layers(U, V, thk, usurf, dX, exp_glen, ice_density, gravity_cst):
-
-    n, w = gauss_points_and_weights(ord_gauss=3)
-
-    slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
+    
+        n, w = gauss_points_and_weights(ord_gauss=3)
+        zeta = n[None,:,None,None]
+        weight = w[None,:,None,None]
  
-    Um = stag4(U)
-    Vm = stag4(V)
+        Um = stag4(U)
+        Vm = stag4(V)
 
-    def uds(zeta):
+        uds = tf.expand_dims(Um[:, 0, :, :],1) \
+            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) * slopsurfx \
+            + tf.expand_dims(Vm[:, 0, :, :],1) \
+            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) * slopsurfy
 
-        return (Um[:, 0, :, :] + (Um[:, -1, :, :]-Um[:, 0, :, :]) * psia(zeta,exp_glen)) * slopsurfx \
-             + (Vm[:, 0, :, :] + (Vm[:, -1, :, :]-Vm[:, 0, :, :]) * psia(zeta,exp_glen)) * slopsurfy
- 
-    # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
-    C_grav = (
-        ice_density
-        * gravity_cst
-        * 10 ** (-6)
-        * stag4(thk) 
-        * sum(w[i] * uds(n[i]) for i in range(len(n)))
-    )
-
-    return C_grav 
+        # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
+        return (
+            ice_density
+            * gravity_cst
+            * 10 ** (-6)
+            * stag4(thk) 
+            * tf.reduce_sum(weight * uds, axis=1)
+        ) 
