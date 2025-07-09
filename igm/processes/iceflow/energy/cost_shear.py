@@ -145,21 +145,15 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta,
 
         dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf)
 
-        sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
-
-        COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
-                & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
-        COND = tf.expand_dims(COND, axis=1)
-
-        sr2 = tf.where(COND, sr2, 0.0)
-
     else: 
         dUdx, dVdx, dUdy, dVdy, dUdz, dVdz = compute_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, \
-                                                                                Um, Vm, thk, zeta, exp_glen)
+                                                                         Um, Vm, thk, zeta, exp_glen)
 
-        sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
+    sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
 
     sr2 = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+
+#    sr2 = tf.where(tf.expand_dims(stag4(thk)>0, axis=1), sr2, 0.0)
 
     p_term = ((sr2 + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
  

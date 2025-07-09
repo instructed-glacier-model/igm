@@ -27,12 +27,6 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, ice_density, gravity_cs
     if not (Nz == 2):
      
         uds = stag8(U) * slopsurfx + stag8(V) * slopsurfy 
-
-        COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
-               & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
-        COND = tf.expand_dims(COND, axis=1)
-
-        uds = tf.where(COND, uds, 0.0)
  
     else:
      
@@ -49,6 +43,8 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, ice_density, gravity_cs
         
     if fnge:
         uds = tf.minimum(uds, 0.0) # force non-postiveness
+
+#    uds = tf.where(tf.expand_dims(stag4(thk)>0, axis=1), uds, 0.0)
 
     # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
     return (
