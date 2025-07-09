@@ -10,22 +10,25 @@ import os
 from . import processes
 from . import inputs, outputs
 
-from .common import (
-    State,
-    IGM_DESCRIPTION,
-    load_modules,
-    add_logger,
-    initialize_modules,
-    update_modules,
-    finalize_modules,
-    run_outputs,
-    setup_igm_modules,
-    add_logger,
-    print_gpu_info,
-    download_unzip_and_store,
-    print_comp,
-    EmptyClass,
-    load_yaml_as_cfg,
-    load_yaml_recursive,
-    check_incompatilities_in_parameters_file
-)
+var = "test"
+
+from . import common
+# from .common import (
+#     State,
+#     IGM_DESCRIPTION,
+#     load_modules,
+#     add_logger,
+#     initialize_modules,
+#     update_modules,
+#     finalize_modules,
+#     run_outputs,
+#     setup_igm_modules,
+#     add_logger,
+#     print_gpu_info,
+#     download_unzip_and_store,
+#     print_comp,
+#     EmptyClass,
+#     load_yaml_as_cfg,
+#     load_yaml_recursive,
+#     check_incompatilities_in_parameters_file
+# )

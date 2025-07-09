@@ -3,10 +3,17 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+
 import os
 import tensorflow as tf
+import igm
 from igm import (
-    State, 
+    inputs,
+    outputs,
+)
+
+from igm.common import (
+    State,
     initialize_modules,
     update_modules,
     finalize_modules,
@@ -16,8 +23,6 @@ from igm import (
     download_unzip_and_store,
     print_comp,
     check_incompatilities_in_parameters_file,
-    inputs,
-    outputs,
 )
 
 from pathlib import Path
