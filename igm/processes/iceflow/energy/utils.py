@@ -14,16 +14,10 @@ def stag4(B):
     ) / 4
 
 def stag8(B):
-    return (
-        B[..., 1:, 1:, 1:]
-        + B[..., 1:, 1:, :-1]
-        + B[..., 1:, :-1, 1:]
-        + B[..., 1:, :-1, :-1]
-        + B[..., :-1, 1:, 1:]
-        + B[..., :-1, 1:, :-1]
-        + B[..., :-1, :-1, 1:]
-        + B[..., :-1, :-1, :-1]
-    ) / 8
+    if B.shape[-3] == 1:
+        return tf.expand_dims(stag4(tf.squeeze(B, axis=-3)), axis=-3)
+    else: 
+        return (stag4(B[..., 1:, :, :]) + stag4(B[..., :-1, :, :])) / 2.0
 
 def gauss_points_and_weights(ord_gauss):
     if ord_gauss == 3:
