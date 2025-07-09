@@ -102,21 +102,21 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX
 @tf.function()
 def compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen):
         
-    UDX = tf.expand_dims(dUdx[:, 0, :, :],1) \
+    dUdx = tf.expand_dims(dUdx[:, 0, :, :],1) \
         + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(zeta,exp_glen)
-    VDY = tf.expand_dims(dVdy[:, 0, :, :],1) \
+    dVdy = tf.expand_dims(dVdy[:, 0, :, :],1) \
         + tf.expand_dims(dVdy[:, -1, :, :]-dVdy[:, 0, :, :],1) * psia(zeta,exp_glen)
-    UDY = tf.expand_dims(dUdy[:, 0, :, :],1) \
+    dUdy = tf.expand_dims(dUdy[:, 0, :, :],1) \
         + tf.expand_dims(dUdy[:, -1, :, :]-dUdy[:, 0, :, :],1) * psia(zeta,exp_glen)
-    VDX = tf.expand_dims(dVdx[:, 0, :, :],1) \
+    dVdx = tf.expand_dims(dVdx[:, 0, :, :],1) \
         + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(zeta,exp_glen)
     
-    UDZ = tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) \
+    dUdz = tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) \
         * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
-    VDZ = tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) \
+    dVdz = tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) \
         * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
         
-    return compute_srxy2(UDX, VDX, UDY, VDY) + compute_srz2(UDZ, VDZ)
+    return dUdx, dVdx, dUdy, dVdy, dUdz, dVdz
  
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
@@ -144,19 +144,22 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta,
         dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
 
         dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf)
- 
+
         sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
+
+        sr2 = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
 
         COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
                 & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
         COND = tf.expand_dims(COND, axis=1)
-        
+
         sr2 = tf.where(COND, sr2, 0.0)
-        
-        sr2 = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
 
     else: 
-        sr2 = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen)
+        dUdx, dVdx, dUdy, dVdy, dUdz, dVdz = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, \
+                                                                                Um, Vm, thk, zeta, exp_glen)
+
+        sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
 
     p_term = ((sr2 + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
  

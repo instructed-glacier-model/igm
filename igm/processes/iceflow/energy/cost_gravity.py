@@ -21,12 +21,11 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
 def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, ice_density, gravity_cst, fnge, exp_glen):
     
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
+    slopsurfx = tf.expand_dims(slopsurfx, axis=1)
+    slopsurfy = tf.expand_dims(slopsurfy, axis=1)
 
     if not (Nz == 2):
-    
-        slopsurfx = tf.expand_dims(slopsurfx, axis=1)
-        slopsurfy = tf.expand_dims(slopsurfy, axis=1)
-    
+     
         uds = stag8(U) * slopsurfx + stag8(V) * slopsurfy 
 
         COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
@@ -40,12 +39,13 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, ice_density, gravity_cs
         Um = stag4(U)
         Vm = stag4(V)
 
-        uds = ( tf.expand_dims(Um[:, 0, :, :],1) \
-            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
-            * tf.expand_dims(slopsurfx,1) \
-            + ( tf.expand_dims(Vm[:, 0, :, :],1) \
-            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
-            * tf.expand_dims(slopsurfy,1)
+        UU = ( tf.expand_dims(Um[:, 0, :, :],1) \
+             + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) ) 
+        
+        VV = ( tf.expand_dims(Vm[:, 0, :, :],1) \
+             + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) ) 
+        
+        uds = UU * slopsurfx + VV * slopsurfy 
         
     if fnge:
         uds = tf.minimum(uds, 0.0) # force non-postiveness
