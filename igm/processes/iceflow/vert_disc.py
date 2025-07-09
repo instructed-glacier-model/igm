@@ -19,7 +19,17 @@ def compute_dz(thk, levels):
     Nz = levels.shape[0]
     if Nz > 1:
         ddz = levels[1:] - levels[:-1]
-        return dz * tf.expand_dims(tf.expand_dims(ddz, -1), -1)
+        return dz * ddz[..., None, None]
+    
+# Shape of dz is (Nz-1, Ny, Nx)
+@tf.function()
+def compute_dzeta(levels):
+    Nz = levels.shape[0]
+    if Nz > 1:
+        ddz = levels[1:] - levels[:-1]
+        return ddz[..., None, None]
+    else:
+        return tf.ones((1, 1, 1), dtype=tf.float32)
 
 # Shape of depth is (Nz, Ny, Nx)
 @tf.function()
