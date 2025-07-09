@@ -7,7 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4
 from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
-def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
+def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dzeta):
 
     exp_weertman = cfg.processes.iceflow.physics.exp_weertman
     regu_weertman = cfg.processes.iceflow.physics.regu_weertman

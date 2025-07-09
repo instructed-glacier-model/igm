@@ -7,7 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, stag8, gauss_points_and_weights, psia, psiap
 from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
-def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
+def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dzeta):
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     regu_glen = cfg.processes.iceflow.physics.regu_glen
@@ -16,7 +16,7 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     max_sr = cfg.processes.iceflow.physics.max_sr
     Nz = cfg.processes.iceflow.numerics.Nz
 
-    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
+    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dzeta, 
                         exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz)
 
 @tf.function()
@@ -63,25 +63,27 @@ def compute_srz2(dUdz, dVdz):
     return 0.5 * ( Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
 
 @tf.function()
-def compute_vertical_derivatives(Um, Vm, thk, slidingco, ddz, thr):
-    
-    # homgenize sizes in the vertical plan on the stagerred grid
-    if Um.shape[1] > 1: 
-        # vertical derivative if there is at least two layears
-        dUdz = (Um[:, 1:, :, :] - Um[:, :-1, :, :]) / tf.maximum(ddz, thr)
-        dVdz = (Vm[:, 1:, :, :] - Vm[:, :-1, :, :]) / tf.maximum(ddz, thr)
-        slc = tf.expand_dims(stag4(slidingco), axis=1)
-        dUdz = tf.where(slc > 0, dUdz, 0.01 * dUdz)
-        dVdz = tf.where(slc > 0, dVdz, 0.01 * dVdz)
-    else:
-        # zero otherwise
+def compute_vertical_derivatives(Um, Vm, thk, dzeta, thr):
+     
+    if Um.shape[1] > 1:  
+        dUdz = (Um[:, 1:, :, :] - Um[:, :-1, :, :]) / (dzeta * tf.maximum(stag4(thk), thr))
+        dVdz = (Vm[:, 1:, :, :] - Vm[:, :-1, :, :]) / (dzeta * tf.maximum(stag4(thk), thr))
+    else: 
         dUdz = 0.0
         dVdz = 0.0
     
     return dUdz, dVdz
 
+def dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco):
+    
+    slc = tf.expand_dims(stag4(slidingco), axis=1)
+    dUdz = tf.where(slc > 0, dUdz, 0.01 * dUdz)
+    dVdz = tf.where(slc > 0, dVdz, 0.01 * dVdz)
+
+    return dUdz, dVdz
+
 @tf.function()
-def correct_for_slope(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf):
+def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf):
      
     sloptopgx, sloptopgy = compute_gradient_stag(usurf - thk, dX, dX)
     sloptopgx = tf.expand_dims(sloptopgx, axis=1)
@@ -117,7 +119,7 @@ def compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, poin
     return compute_srxy2(UDX, VDX, UDY, VDY) + compute_srz2(UDZ, VDZ)
  
 @tf.function()
-def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz, 
+def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dzeta, 
                     exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz):
     
     # B has Unit Mpa y^(1/n)
@@ -135,9 +137,11 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
         if (Nz > 2):
            dUdx, dVdx, dUdy, dVdy = average_vertically(dUdx, dVdx, dUdy, dVdy)
 
-        dUdz, dVdz =  compute_vertical_derivatives(Um, Vm, thk, slidingco, dz, thr=thr_ice_thk)
+        dUdz, dVdz =  compute_vertical_derivatives(Um, Vm, thk, dzeta, thr=thr_ice_thk)
 
-        dUdx, dVdx, dUdy, dVdy = correct_for_slope(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf)
+        dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
+
+        dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf)
  
         sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
 
@@ -154,9 +158,9 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dz,
         p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2
      
         if len(B.shape) == 3:
-            C_shear = stag4(B) * tf.reduce_sum(dz * p_term, axis=1 ) / p
+            C_shear = stag4(B) * stag4(thk) * tf.reduce_sum(dzeta * p_term, axis=1 ) / p
         else:
-            C_shear = tf.reduce_sum( stag8(B) * dz * p_term, axis=1 ) / p
+            C_shear = stag4(thk) * tf.reduce_sum( stag8(B) * dzeta * p_term, axis=1 ) / p
 
     else:
 

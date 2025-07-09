@@ -7,7 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4, stag8, gauss_points_and_weights, psia
 from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
-def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
+def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dzeta):
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     ice_density = cfg.processes.iceflow.physics.ice_density
@@ -15,10 +15,10 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
     Nz = cfg.processes.iceflow.numerics.Nz
 
-    return _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, exp_glen)
+    return _cost_gravity(U, V, usurf, dX, dzeta, thk, Nz, ice_density, gravity_cst, fnge, exp_glen)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, exp_glen):
+def _cost_gravity(U, V, usurf, dX, dzeta, thk, Nz, ice_density, gravity_cst, fnge, exp_glen):
     
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
 
@@ -46,7 +46,8 @@ def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, 
             ice_density
             * gravity_cst
             * 10 ** (-6)
-            * tf.reduce_sum(dz * uds, axis=1)
+            * stag4(thk)
+            * tf.reduce_sum(dzeta * uds, axis=1)
         )
  
     else:
