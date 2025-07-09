@@ -100,7 +100,7 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX
     return dUdx, dVdx, dUdy, dVdy
 
 @tf.function()
-def compute_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen):
+def compute_horizontal_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen):
         
     dUdx = tf.expand_dims(dUdx[:, 0, :, :],1) \
         + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(zeta,exp_glen)
@@ -111,12 +111,17 @@ def compute_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_g
     dVdx = tf.expand_dims(dVdx[:, 0, :, :],1) \
         + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(zeta,exp_glen)
     
+    return dUdx, dVdx, dUdy, dVdy
+    
+@tf.function()
+def compute_vertical_derivatives_2layers(Um, Vm, thk, zeta, exp_glen):
+    
     dUdz = tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) \
         * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
     dVdz = tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) \
         * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
         
-    return dUdx, dVdx, dUdy, dVdy, dUdz, dVdz
+    return dUdz, dVdz
  
 @tf.function()
 def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
@@ -146,8 +151,9 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta,
         dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX, usurf)
 
     else: 
-        dUdx, dVdx, dUdy, dVdy, dUdz, dVdz = compute_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, \
-                                                                         Um, Vm, thk, zeta, exp_glen)
+        dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen)
+        
+        dUdz, dVdz = compute_vertical_derivatives_2layers(Um, Vm, thk, zeta, exp_glen)
 
     sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
 
