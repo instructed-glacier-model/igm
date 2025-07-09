@@ -28,8 +28,18 @@ def compute_dzeta(levels):
     if Nz > 1:
         ddz = levels[1:] - levels[:-1]
         return ddz[..., None, None]
-    else:
+    else: 
         return tf.ones((1, 1, 1), dtype=tf.float32)
+
+# Shape of dz is (Nz-1, Ny, Nx)
+@tf.function()
+def compute_zeta(levels):
+    Nz = levels.shape[0]
+    if Nz > 1:
+        ddz = (levels[1:] + levels[:-1]) / 2
+        return ddz[..., None, None]
+    else: 
+        return 0.5 * tf.ones((1, 1, 1), dtype=tf.float32)
 
 # Shape of depth is (Nz, Ny, Nx)
 @tf.function()

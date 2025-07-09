@@ -4,10 +4,10 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4, stag8, gauss_points_and_weights, psia, psiap
+from igm.processes.iceflow.energy.utils import stag4, stag8, psia, psiap
 from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
-def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dzeta):
+def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     regu_glen = cfg.processes.iceflow.physics.regu_glen
@@ -16,7 +16,7 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dzeta):
     max_sr = cfg.processes.iceflow.physics.max_sr
     Nz = cfg.processes.iceflow.numerics.Nz
 
-    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dzeta, 
+    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
                         exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz)
 
 @tf.function()
@@ -100,30 +100,32 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, thk, dX
     return dUdx, dVdx, dUdy, dVdy
 
 @tf.function()
-def compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, points, exp_glen):
+def compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen):
         
     UDX = tf.expand_dims(dUdx[:, 0, :, :],1) \
-        + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(points,exp_glen)
+        + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(zeta,exp_glen)
     VDY = tf.expand_dims(dVdy[:, 0, :, :],1) \
-        + tf.expand_dims(dVdy[:, -1, :, :]-dVdy[:, 0, :, :],1) * psia(points,exp_glen)
+        + tf.expand_dims(dVdy[:, -1, :, :]-dVdy[:, 0, :, :],1) * psia(zeta,exp_glen)
     UDY = tf.expand_dims(dUdy[:, 0, :, :],1) \
-        + tf.expand_dims(dUdy[:, -1, :, :]-dUdy[:, 0, :, :],1) * psia(points,exp_glen)
+        + tf.expand_dims(dUdy[:, -1, :, :]-dUdy[:, 0, :, :],1) * psia(zeta,exp_glen)
     VDX = tf.expand_dims(dVdx[:, 0, :, :],1) \
-        + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(points,exp_glen)
+        + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(zeta,exp_glen)
     
     UDZ = tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) \
-        * psiap(points,exp_glen) / tf.maximum( stag4(thk) , 1)
+        * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
     VDZ = tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) \
-        * psiap(points,exp_glen) / tf.maximum( stag4(thk) , 1)
+        * psiap(zeta,exp_glen) / tf.maximum( stag4(thk) , 1)
         
     return compute_srxy2(UDX, VDX, UDY, VDY) + compute_srz2(UDZ, VDZ)
  
 @tf.function()
-def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dzeta, 
+def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
                     exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, Nz):
     
     # B has Unit Mpa y^(1/n)
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)
+    if len(B.shape) == 3:
+        B = B[:,None, :, :]
     p = 1.0 + 1.0 / exp_glen
 
     dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(U, V, dX)
@@ -151,26 +153,13 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, dzeta,
         
         sr2 = tf.where(COND, sr2, 0.0)
         
-        sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+        sr2 = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
 
-        sr2capped = tf.where(COND, sr2capped, 0.0)
+    else: 
+        sr2 = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, zeta, exp_glen)
 
-        p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2
-     
-        if len(B.shape) == 3:
-            C_shear = stag4(B) * stag4(thk) * tf.reduce_sum(dzeta * p_term, axis=1 ) / p
-        else:
-            C_shear = stag4(thk) * tf.reduce_sum( stag8(B) * dzeta * p_term, axis=1 ) / p
-
-    else:
-
-        points, weight = gauss_points_and_weights(ord_gauss=3)
-
-        sr2 = compute_strainrate_Glen_2layers_tf(dUdx, dVdx, dUdy, dVdy, Um, Vm, thk, points, exp_glen)
-
-        p_term = (sr2 + regu_glen**2) ** (p / 2) / p
-    
-        C_shear = stag4(B) * stag4(thk) *  tf.reduce_sum(weight * p_term, axis=1)
-
-    return C_shear  # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
+    p_term = ((sr2 + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
+ 
+    # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
+    return stag4(thk) * tf.reduce_sum( stag8(B) * dzeta * p_term, axis=1)  
  
