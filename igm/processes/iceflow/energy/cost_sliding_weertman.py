@@ -3,10 +3,9 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
 import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4, compute_gradient_stag
-from igm.processes.iceflow.energy.utils import compute_gradient_stag
+from igm.processes.iceflow.energy.utils import stag4
+from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
 def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 

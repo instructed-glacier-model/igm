@@ -4,10 +4,8 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4, stag8
-from igm.processes.iceflow.energy.utils import compute_gradient_stag 
-from igm.processes.iceflow.energy.utils import gauss_points_and_weights
-from igm.processes.iceflow.energy.utils import psia
+from igm.processes.iceflow.energy.utils import stag4, stag8, gauss_points_and_weights, psia
+from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
 
 def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
 
@@ -20,15 +18,14 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, dz):
     return _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, exp_glen)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, 
-                   fnge,exp_glen):
+def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst, fnge, exp_glen):
     
     slopsurfx, slopsurfy = compute_gradient_stag(usurf, dX, dX)
 
     if not (Nz == 2):
         
         COND = ( (thk[:, 1:, 1:] > 0) & (thk[:, 1:, :-1] > 0)
-                & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
+               & (thk[:, :-1, 1:] > 0) & (thk[:, :-1, :-1] > 0) )
         COND = tf.expand_dims(COND, axis=1)
 
         slopsurfx = tf.expand_dims(slopsurfx, axis=1)
@@ -54,18 +51,16 @@ def _cost_gravity(U, V, usurf, dX, dz, thk, Nz, ice_density, gravity_cst,
  
     else:
     
-        n, w = gauss_points_and_weights(ord_gauss=3)
-        zeta = n[None,:,None,None]
-        weight = w[None,:,None,None]
+        points, weight = gauss_points_and_weights(ord_gauss=3)
  
         Um = stag4(U)
         Vm = stag4(V)
 
         uds = ( tf.expand_dims(Um[:, 0, :, :],1) \
-            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
+            + tf.expand_dims(Um[:, -1, :, :]-Um[:, 0, :, :],1) * psia(points,exp_glen) ) \
             * tf.expand_dims(slopsurfx,1) \
             + ( tf.expand_dims(Vm[:, 0, :, :],1) \
-            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(zeta,exp_glen) ) \
+            + tf.expand_dims(Vm[:, -1, :, :]-Vm[:, 0, :, :],1) * psia(points,exp_glen) ) \
             * tf.expand_dims(slopsurfy,1)
 
         # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
