@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf  
 
 from igm.processes.iceflow.energy.utils import stag4
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
+from igm.processes.iceflow.vert_disc import compute_levels, compute_dzeta, compute_dz
 from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
 import igm.processes.iceflow.energy as energy
 
@@ -19,6 +19,7 @@ def iceflow_energy(cfg, U, V, fieldin):
                             cfg.processes.iceflow.numerics.vert_spacing)
 
     dz =  compute_dz(stag4(thk), levels)
+    #dzeta =  compute_dzeta(levels)
 
     energy_list = []
     for component in cfg.processes.iceflow.physics.energy_components:
