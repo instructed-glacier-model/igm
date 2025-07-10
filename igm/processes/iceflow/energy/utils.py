@@ -3,7 +3,8 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf 
+import tensorflow as tf
+import numpy as np
 
 @tf.function()
 def stag2(B):
@@ -21,23 +22,31 @@ def stag4h(B):
         B[..., 1:, 1:] + B[..., 1:, :-1] + B[..., :-1, 1:] + B[..., :-1, :-1]
     ) / 4
 
-def gauss_points_and_weights(ord_gauss):
-    if ord_gauss == 3:
-        n = tf.constant([0.11270, 0.5,     0.88730], dtype=tf.float32)
-        w = tf.constant([0.27778, 0.44444, 0.27778], dtype=tf.float32)
-    elif ord_gauss == 5:
-        n = tf.constant([0.04691, 0.23077, 0.5,     0.76923, 0.95309], dtype=tf.float32)
-        w = tf.constant([0.11847, 0.23932, 0.28444, 0.23932, 0.11847], dtype=tf.float32)
-    elif ord_gauss == 7:
-        n = tf.constant([0.025446, 0.129234, 0.297078, 0.5, 0.702922, 0.870766, 0.974554], dtype=tf.float32)
-        w = tf.constant([0.064742, 0.139852, 0.190915, 0.208979, 0.190915, 0.139852, 0.064742], dtype=tf.float32)
-    else:
-        raise ValueError("Only Gauss orders 3, 5, and 7 are supported.")
-    
-    return n[None,:,None,None], w[None,:,None,None]
-
 def psia(zeta,exp_glen):
     return ( 1 - (1 - zeta) ** (exp_glen + 1) )
 
 def psiap(zeta,exp_glen):
     return (exp_glen + 1) * (1 - zeta) ** exp_glen
+
+def gauss_points_and_weights(ord_gauss):
+    # Get nodes and weights on [-1, 1]
+    x, w = np.polynomial.legendre.leggauss(ord_gauss)
+
+    # Shift to [0, 1]
+    zeta = 0.5 * (x + 1)
+    dzeta = 0.5 * w
+
+    # Convert to TensorFlow tensors (with dummy dims for batch/spatial broadcasting)
+    zeta_tf = tf.constant(zeta, dtype=tf.float32)[None, :, None, None]
+    dzeta_tf = tf.constant(dzeta, dtype=tf.float32)[None, :, None, None]
+    return zeta_tf, dzeta_tf
+
+def legendre_basis(zeta):
+    ord = zeta.shape[-3]
+    x = 2.0 * zeta - 1.0  # Map from [0,1] to [-1,1]
+    P = [tf.ones_like(x), x]  # P_0, P_1
+    for k in range(1, ord):
+        Pk = ((2 * k + 1) * x * P[k] - k * P[k - 1]) / (k + 1)
+        P.append(Pk)
+
+    return tf.stack(P[:ord + 1], axis=-3) 

@@ -6,8 +6,7 @@
 import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.energy.utils import stag4h
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dzeta, compute_zeta
+from igm.processes.iceflow.vert_disc import compute_levels, compute_zeta_dzeta
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights
 from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
 import igm.processes.iceflow.energy as energy
@@ -20,13 +19,12 @@ def iceflow_energy(cfg, U, V, fieldin):
                             cfg.processes.iceflow.numerics.vert_spacing)
  
     if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
-        zeta  =  compute_zeta(levels)
-        dzeta =  compute_dzeta(levels)
+        zeta, dzeta = compute_zeta_dzeta(levels)
     elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
-        print("No Legendre basis for vertical discretization IMPLMENTED YET")
+        zeta, dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
     elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
-        assert cfg.processes.iceflow.numerics.Nz == 2  # Only works in this case
-        zeta, dzeta = gauss_points_and_weights(ord_gauss=3)
+        assert cfg.processes.iceflow.numerics.Nz == 2 # Only works in this case
+        zeta, dzeta = gauss_points_and_weights(ord_gauss=5)
     else:
         raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
 

@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia
+from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
 
 def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
@@ -36,7 +36,11 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,
 
     elif vert_basis == "Legendre":
 
-        print("Warning: Legendre basis is not implemented for shear stress cost function, using Lagrange instead.") 
+        print("Warning: Legendre basis is not implemented") 
+
+#        Pzeta = legendre_basis(zeta) # Should not be recomputed all the time as constant
+
+#        uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :]
     
     elif vert_basis == "SIA":
  
