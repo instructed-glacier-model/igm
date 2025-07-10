@@ -13,15 +13,14 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
     ice_density = cfg.processes.iceflow.physics.ice_density
     gravity_cst = cfg.processes.iceflow.physics.gravity_cst
     fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
-    Nz = cfg.processes.iceflow.numerics.Nz
     staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, 
+    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,  
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz, 
+def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,  
                   ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis):
      
     slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  
