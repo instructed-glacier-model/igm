@@ -4,32 +4,34 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4
-from igm.utils.gradient.compute_gradient_stag import compute_gradient_stag
+from igm.processes.iceflow.energy.utils import stag4h
+from igm.utils.gradient.compute_gradient import compute_gradient
 
 def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
 
     exp_weertman = cfg.processes.iceflow.physics.exp_weertman
     regu_weertman = cfg.processes.iceflow.physics.regu_weertman
+    staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
+    vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
     return _cost_sliding(U, V, thk, usurf, slidingco, dX,
-                         exp_weertman, regu_weertman)
+                         exp_weertman, regu_weertman, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman):
+def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid, vert_basis):
  
     C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
  
     s = 1.0 + 1.0 / exp_weertman
   
-    sloptopgx, sloptopgy = compute_gradient_stag(usurf - thk, dX, dX)
+    sloptopgx, sloptopgy = compute_gradient(usurf - thk, dX, dX, staggered_grid) 
 
-    # C_slid is unit Mpa y^m m^(-m) * m^(1+m) * y^(-1-m)  = Mpa  m/y
-    N = (
-        stag4(U[:, 0, :, :] ** 2 + V[:, 0, :, :] ** 2)
-        + regu_weertman**2
-        + (stag4(U[:, 0, :, :]) * sloptopgx + stag4(V[:, 0, :, :]) * sloptopgy) ** 2
-    )
-    C_slid = stag4(C) * N ** (s / 2) / s
+    if staggered_grid:
+        U = stag4h(U)
+        V = stag4h(V)
+        C = stag4h(C)
 
-    return C_slid
+    N = ( (U[:, 0, :, :] ** 2 + V[:, 0, :, :] ** 2) + regu_weertman**2 \
+        + (U[:, 0, :, :] * sloptopgx + V[:, 0, :, :] * sloptopgy) ** 2 )
+
+    return C * N ** (s / 2) / s # C_slid is unit Mpa y^m m^(-m) * m^(1+m) * y^(-1-m)  = Mpa  m/y

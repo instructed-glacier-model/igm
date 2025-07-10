@@ -13,12 +13,17 @@ def cost_floating(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
     Nz = cfg.processes.iceflow.numerics.Nz
     vert_spacing = cfg.processes.iceflow.numerics.vert_spacing
     cf_eswn = cfg.processes.iceflow.physics.cf_eswn
+    staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
+    vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn)
+    return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis)
 
 
 @tf.function()
-def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn):
+def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis):
+
+    if not staggered_grid:
+        raise ValueError("Floating cost function requires staggered grid, non-staggered grid is not implmented yet.")        
 
     # if activae this applies the stress condition along the calving front
 
