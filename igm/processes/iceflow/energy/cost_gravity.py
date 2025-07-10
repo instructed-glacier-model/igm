@@ -41,13 +41,10 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Nz,
     
     elif vert_basis == "SIA":
  
-        UU = ( tf.expand_dims(U[:, 0, :, :],1) \
-             + tf.expand_dims(U[:, -1, :, :]-U[:, 0, :, :],1) * psia(zeta,exp_glen) ) 
+        U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) * psia(zeta, exp_glen)
+        V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) * psia(zeta, exp_glen)
         
-        VV = ( tf.expand_dims(V[:, 0, :, :],1) \
-             + tf.expand_dims(V[:, -1, :, :]-V[:, 0, :, :],1) * psia(zeta,exp_glen) ) 
-        
-        uds = UU * slopsurfx[:, None, :, :] + VV * slopsurfy[:, None, :, :] 
+        uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :] 
  
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")

@@ -81,10 +81,9 @@ def compute_vertical_derivatives(Um, Vm, thk, dzeta, thr):
     return dUdz, dVdz
 
 def dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco):
-    
-    slc = tf.expand_dims(slidingco, axis=1)
-    dUdz = tf.where(slc > 0, dUdz, 0.01 * dUdz)
-    dVdz = tf.where(slc > 0, dVdz, 0.01 * dVdz)
+     
+    dUdz = tf.where(slidingco[:, None, :, :] > 0, dUdz, 0.01 * dUdz)
+    dVdz = tf.where(slidingco[:, None, :, :] > 0, dVdz, 0.01 * dVdz)
 
     return dUdz, dVdz
 
@@ -100,26 +99,20 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptop
     return dUdx, dVdx, dUdy, dVdy
 
 @tf.function()
-def compute_horizontal_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen):
+def compute_horizontal_derivatives_sia(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen):
         
-    dUdx = tf.expand_dims(dUdx[:, 0, :, :],1) \
-        + tf.expand_dims(dUdx[:, -1, :, :]-dUdx[:, 0, :, :],1) * psia(zeta,exp_glen)
-    dVdy = tf.expand_dims(dVdy[:, 0, :, :],1) \
-        + tf.expand_dims(dVdy[:, -1, :, :]-dVdy[:, 0, :, :],1) * psia(zeta,exp_glen)
-    dUdy = tf.expand_dims(dUdy[:, 0, :, :],1) \
-        + tf.expand_dims(dUdy[:, -1, :, :]-dUdy[:, 0, :, :],1) * psia(zeta,exp_glen)
-    dVdx = tf.expand_dims(dVdx[:, 0, :, :],1) \
-        + tf.expand_dims(dVdx[:, -1, :, :]-dVdx[:, 0, :, :],1) * psia(zeta,exp_glen)
-    
+    dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) * psia(zeta, exp_glen)
+    dVdy = dVdy[:, 0:1, :, :] + (dVdy[:, -1:, :, :] - dVdy[:, 0:1, :, :]) * psia(zeta, exp_glen)
+    dUdy = dUdy[:, 0:1, :, :] + (dUdy[:, -1:, :, :] - dUdy[:, 0:1, :, :]) * psia(zeta, exp_glen)
+    dVdx = dVdx[:, 0:1, :, :] + (dVdx[:, -1:, :, :] - dVdx[:, 0:1, :, :]) * psia(zeta, exp_glen)
+
     return dUdx, dVdx, dUdy, dVdy
     
 @tf.function()
-def compute_vertical_derivatives_2layers(U, V, thk, zeta, exp_glen):
-    
-    dUdz = tf.expand_dims(U[:, -1, :, :]-U[:, 0, :, :],1) \
-        * psiap(zeta,exp_glen) / tf.maximum( thk , 1)
-    dVdz = tf.expand_dims(V[:, -1, :, :]-V[:, 0, :, :],1) \
-        * psiap(zeta,exp_glen) / tf.maximum( thk , 1)
+def compute_vertical_derivatives_sia(U, V, thk, zeta, exp_glen, thr):
+
+    dUdz = (U[:, -1:, :, :] - U[:, 0:1, :, :]) * psiap(zeta, exp_glen) / tf.maximum(thk, thr)
+    dVdz = (V[:, -1:, :, :] - V[:, 0:1, :, :]) * psiap(zeta, exp_glen) / tf.maximum(thk, thr)
         
     return dUdz, dVdz
  
@@ -167,9 +160,9 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta,
     
     elif vert_basis == "SIA":
 
-        dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives_2layers(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen)
+        dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives_sia(dUdx, dVdx, dUdy, dVdy, zeta, exp_glen)
         
-        dUdz, dVdz = compute_vertical_derivatives_2layers(U, V, thk, zeta, exp_glen)
+        dUdz, dVdz = compute_vertical_derivatives_sia(U, V, thk, zeta, exp_glen, thr=thr_ice_thk)
 
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
