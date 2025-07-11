@@ -101,7 +101,7 @@ class EarlyStopping:
                 return True
             
 
-def print_info(state, it, C_shear, C_slid, C_grav, COST, velsurf_mag):
+def print_info(state, it, cfg, energy_mean_list, velsurf_mag):
  
     if it % 100 == 1:
         if hasattr(state, "pbar_train"):
@@ -109,16 +109,14 @@ def print_info(state, it, C_shear, C_slid, C_grav, COST, velsurf_mag):
         state.pbar_train = tqdm(desc=f" Phys assim.", ascii=False, dynamic_ncols=True, bar_format="{desc} {postfix}")
 
     if hasattr(state, "pbar_train"):
-        dic_postfix= { 
-            "🕒": datetime.datetime.now().strftime("%H:%M:%S"),
-            "🔄": f"{it:04.0f}",
-            "C_shear": f"{C_shear:06.3f}",
-            "C_slid": f"{C_slid:06.3f}",
-            "C_grav": f"{C_grav:06.3f}",
-            "glen": f"{COST:06.3f}",
-            " Max vel": f"{velsurf_mag:06.1f}"
-        }
-#        dic_postfix["💾 GPU Mem (MB)"] = tf.config.experimental.get_memory_info("GPU:0")['current'] / 1024**2
+        dic_postfix = {}
+        dic_postfix["🕒"] = datetime.datetime.now().strftime("%H:%M:%S")
+        dic_postfix["🔄"] = f"{it:04.0f}"
+        for i, f in enumerate(cfg.processes.iceflow.physics.energy_components):
+            dic_postfix[f] = f"{energy_mean_list[i]:06.3f}"
+        dic_postfix["glen"] = f"{np.sum(energy_mean_list):06.3f}"
+        dic_postfix["Max vel"] = f"{velsurf_mag:06.1f}"
+#       dic_postfix["💾 GPU Mem (MB)"] = tf.config.experimental.get_memory_info("GPU:0")['current'] / 1024**2
 
         state.pbar_train.set_postfix(dic_postfix)
         state.pbar_train.update(1)
