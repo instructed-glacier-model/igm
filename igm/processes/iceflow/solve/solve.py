@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf 
 from igm.utils.math.getmag3d import getmag3d 
 from igm.processes.iceflow.energy.energy import iceflow_energy
+from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
 from igm.processes.iceflow.utils import EarlyStopping, update_2d_iceflow_variables, print_info
 import matplotlib.pyplot as plt
 import matplotlib
@@ -39,13 +40,16 @@ def solve_iceflow(cfg, state, U, V):
         state.ax.set_aspect("equal")
 
     for i in range(cfg.processes.iceflow.solver.nbitmax):
-        with tf.GradientTape() as t:
+        with tf.GradientTape(persistent=True) as t:
             t.watch(U)
             t.watch(V)
 
             energy_list = iceflow_energy(
-                cfg, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
+                cfg, U[None,:,:,:], V[None,:,:,:], fieldin
             ) 
+
+            if len(cfg.processes.iceflow.physics.sliding_law) > 0:
+                basis_vectors, sliding_shear_stress = sliding_law(cfg, U[None,:,:,:], V[None,:,:,:], fieldin)
 
             energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
@@ -68,17 +72,19 @@ def solve_iceflow(cfg, state, U, V):
             #             break
 
         grads = t.gradient(COST, [U, V])
+
+        if len(cfg.processes.iceflow.physics.sliding_law) > 0:
+            sliding_gradients = t.gradient(basis_vectors, [U, V], output_gradients=sliding_shear_stress )
+            grads = [ grad + (sgrad / tf.cast(U.shape[-2] * U.shape[-1], tf.float32)) \
+                        for grad, sgrad in zip(grads, sliding_gradients) ]
  
         state.optimizer.apply_gradients(zip(grads, [U, V]))
 
         velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
 
         if state.it <= 1:    
-            print_info(state, i, energy_mean_list[0].numpy(), \
-                                 energy_mean_list[1].numpy(), \
-                                 energy_mean_list[2].numpy(), \
-                                 COST.numpy(), \
-                                 tf.reduce_max(velsurf_mag).numpy())
+            print_info(state, i, cfg, [e.numpy() for e in energy_mean_list], 
+                                         tf.reduce_max(velsurf_mag).numpy())
  
         if (i + 1) % 100 == 0:
 
@@ -97,6 +103,8 @@ def solve_iceflow(cfg, state, U, V):
                 state.fig.canvas.draw()  # re-drawing the figure
                 state.fig.canvas.flush_events()  # to flush the GUI events
                 state.ax.set_title("i : " + str(i), size=15)
+
+        del t 
 
         if early_stopping.should_stop(COST.numpy()): 
 #            print("Early stopping at iteration", i)
