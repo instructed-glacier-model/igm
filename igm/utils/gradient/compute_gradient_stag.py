@@ -1,5 +1,7 @@
 import tensorflow as tf
 
+# THIS NEED TO REOVED ON THE LONG TERM SINCE EMBEDED IN  compute_gradient.py
+
 @tf.function()
 def compute_gradient_stag(s, dX, dY):
     """
