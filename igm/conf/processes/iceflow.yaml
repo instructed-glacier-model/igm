@@ -3,6 +3,7 @@ iceflow:
   force_max_velbar: 0.0
   physics:
     energy_components: ['shear', 'sliding_weertman', 'gravity']
+    sliding_law: ''
     gravity_cst: 9.81
     ice_density: 910.0
     init_slidingco: 0.0464

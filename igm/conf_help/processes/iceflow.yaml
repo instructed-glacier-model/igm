@@ -11,6 +11,10 @@ physics:
     Type: list
     Description: "List of energy components to compute, it can be shear, sliding_weertman, gravity, or all"
     Units: dimless
+  sliding_law: 
+    Type: string
+    Description: "Type of sliding law, it can be empty or weertman yet. If you use this, make sure to remove the corresponding energy component in the list above. WARNING: this is not working well yet, do not use it yet."
+    Units: dimless
   gravity_cst:
     Type: float
     Description: "Gravitational constant"
