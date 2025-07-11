@@ -127,7 +127,7 @@ def update_iceflow_emulated(cfg, state):
 
     if cfg.processes.iceflow.emulator.exclude_borders>0:
         iz = cfg.processes.iceflow.emulator.exclude_borders
-        Y = Y[:, iz:Ny-iz, iz:Nx-iz, :]
+        Y = Y[:, iz:-iz, iz:-iz, :]
 
     U, V = Y_to_UV(cfg, Y)
     U = U[0]
