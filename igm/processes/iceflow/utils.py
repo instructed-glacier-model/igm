@@ -31,13 +31,15 @@ def initialize_iceflow_fields(cfg, state):
         state.U = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
 
-def update_2d_iceflow_variables(cfg, state):
-    state.uvelbase = state.U[0, :, :]
-    state.vvelbase = state.V[0, :, :]
-    state.ubar = tf.reduce_sum(state.U * state.vert_weight, axis=0)
-    state.vbar = tf.reduce_sum(state.V * state.vert_weight, axis=0)
-    state.uvelsurf = state.U[-1, :, :]
-    state.vvelsurf = state.V[-1, :, :]
+def get_velbase(U,V):
+    return U[0], V[0]
+
+def get_velsurf(U,V):
+    return U[-1], V[-1]
+
+def get_velbar(U,V,vert_weight):
+    return tf.reduce_sum(U * vert_weight, axis=0), \
+           tf.reduce_sum(V * vert_weight, axis=0)
 
 def compute_PAD(cfg,Nx,Ny):
 

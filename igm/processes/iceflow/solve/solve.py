@@ -1,9 +1,10 @@
 import numpy as np 
 import tensorflow as tf 
-from igm.utils.math.getmag3d import getmag3d 
+from igm.utils.math.getmag import getmag
 from igm.processes.iceflow.energy.energy import iceflow_energy
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
-from igm.processes.iceflow.utils import EarlyStopping, update_2d_iceflow_variables, print_info
+from igm.processes.iceflow.utils import EarlyStopping, print_info
+from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -80,7 +81,7 @@ def solve_iceflow(cfg, state, U, V):
  
         state.optimizer.apply_gradients(zip(grads, [U, V]))
 
-        velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
+        velsurf_mag = getmag(*get_velsurf(U,V))
 
         if state.it <= 1:    
             print_info(state, i, cfg, [e.numpy() for e in energy_mean_list], 
@@ -176,7 +177,7 @@ def update_iceflow_solved(cfg, state):
 
     
     if cfg.processes.iceflow.force_max_velbar > 0:
-        velbar_mag = getmag3d(state.U, state.V)
+        velbar_mag = getmag(state.U, state.V)
         state.U = \
             tf.where(
                 velbar_mag >= cfg.processes.iceflow.force_max_velbar,
@@ -195,5 +196,7 @@ def update_iceflow_solved(cfg, state):
 
     state.COST_Glen = Cost_Glen[-1].numpy()
 
-    update_2d_iceflow_variables(cfg, state)
+    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V)
+    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V)
+    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight)
  

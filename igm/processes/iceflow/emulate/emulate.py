@@ -7,12 +7,13 @@ import numpy as np
 import tensorflow as tf 
 import os
 
-from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, update_2d_iceflow_variables, compute_PAD, print_info
+from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, compute_PAD, print_info
+from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law_XY
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
-from igm.utils.math.getmag3d import getmag3d
+from igm.utils.math.getmag import getmag
 import importlib_resources 
 import igm  
 import matplotlib.pyplot as plt
@@ -138,7 +139,7 @@ def update_iceflow_emulated(cfg, state):
 
     # If requested, the speeds are artifically upper-bounded
     if cfg.processes.iceflow.force_max_velbar > 0:
-        velbar_mag = getmag3d(state.U, state.V)
+        velbar_mag = getmag(state.U, state.V)
         state.U = \
             tf.where(
                 velbar_mag >= cfg.processes.iceflow.force_max_velbar,
@@ -152,7 +153,9 @@ def update_iceflow_emulated(cfg, state):
                 state.V,
             ) 
 
-    update_2d_iceflow_variables(cfg, state)
+    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V)
+    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V)
+    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight)
 
 
 def update_iceflow_emulator(cfg, state, it, pertubate=False):
@@ -226,7 +229,7 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
 
                     cost_emulator = cost_emulator + COST
 
-                    U, V = Y_to_UV(cfg, Y) ; velsurf_mag = tf.sqrt(U[0][-1] ** 2 + V[0][-1] ** 2)
+                    U, V = Y_to_UV(cfg, Y) ; velsurf_mag = getmag(*get_velsurf(U[0],V[0]))
 
                     if warm_up:
                         print_info(state,epoch, cfg, [e.numpy() for e in energy_mean_list], 

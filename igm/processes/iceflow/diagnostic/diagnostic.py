@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf 
 
 from igm.utils.math.getmag import getmag
+from igm.processes.iceflow.utils import get_velsurf, get_velbase, get_velbar
 from igm.processes.iceflow.solve.solve import solve_iceflow, initialize_iceflow_solver
 from igm.processes.iceflow.emulate.emulate import initialize_iceflow_emulator
 
@@ -38,8 +39,8 @@ def update_iceflow_diagnostic(cfg, state):
  
         U, V, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V)
  
-        state.velsurf_mag_app = getmag(state.U[-1],state.V[-1])
-        state.velsurf_mag_exa = getmag(U[-1],V[-1])
+        state.velsurf_mag_app = getmag(*get_velsurf(state.U,state.V))
+        state.velsurf_mag_exa = getmag(*get_velsurf(U,V))
 
         time_solve -= time.time()
         time_solve *= -1
@@ -71,8 +72,7 @@ def update_iceflow_diagnostic(cfg, state):
 
 
 def computemisfit(state, thk, U, V):
-    ubar = tf.reduce_sum(state.vert_weight * U, axis=0)
-    vbar = tf.reduce_sum(state.vert_weight * V, axis=0)
+    ubar, vbar = get_velbar(U, V, state.vert_weight)
 
     VEL = tf.stack([ubar, vbar], axis=0)
     MA = tf.where(thk > 1, tf.ones_like(VEL), 0)
