@@ -6,7 +6,7 @@
 import tensorflow as tf 
 
 from igm.utils.math.interpolate_bilinear_tf import interpolate_bilinear_tf
-from igm.processes.particles.seeding_particles_tf import seeding_particles
+from igm.processes.particles.seeding_particles import seeding_particles
 from igm.processes.particles.utils import rhs_to_zeta
 
 def update_tf(cfg, state):

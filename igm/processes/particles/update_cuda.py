@@ -5,7 +5,7 @@
 
 import tensorflow as tf       
 
-from igm.processes.particles.seeding_particles_cupy import seeding_particles
+from igm.processes.particles.seeding_particles import seeding_particles
 from igm.processes.particles.utils import rhs_to_zeta
 
 import os
@@ -48,16 +48,26 @@ def update_cuda(cfg, state):
         state.t.numpy() - state.tlast_seeding
     ) >= cfg.processes.particles.frequency_seeding:
 
-        # seed new particles
-        (
-            nparticle_x,
-            nparticle_y,
-            nparticle_z,
-            nparticle_r,
-            nparticle_w,
-            nparticle_t,
-            nparticle_englt,
-        ) = seeding_particles(cfg, state)
+        seeding_particles(cfg, state)
+
+        nparticle_x = state.nparticle_x
+        nparticle_y = state.nparticle_y
+        nparticle_z = state.nparticle_z
+        nparticle_r = state.nparticle_r
+        nparticle_w = state.nparticle_w
+        nparticle_t = state.nparticle_t
+        nparticle_englt = state.nparticle_englt
+
+        # # seed new particles
+        # (
+        #     nparticle_x,
+        #     nparticle_y,
+        #     nparticle_z,
+        #     nparticle_r,
+        #     nparticle_w,
+        #     nparticle_t,
+        #     nparticle_englt,
+        # ) = seeding_particles(cfg, state)
 
         # merge the new seeding points with the former ones
         particle_x = tf.Variable(
