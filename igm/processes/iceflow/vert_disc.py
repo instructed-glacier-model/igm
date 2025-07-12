@@ -15,11 +15,12 @@ def compute_levels(Nz, vert_spacing):
 # Shape of dz is (Nz-1, Ny, Nx)
 @tf.function()
 def compute_dz(thk, levels):
-    dz = tf.expand_dims(thk, axis=0)
     Nz = levels.shape[0]
     if Nz > 1:
         ddz = levels[1:] - levels[:-1]
-        return dz * ddz[..., None, None]
+        return thk[None, ...] * ddz[..., None, None]
+    else:
+        return thk[None, ...]
     
 # Shape of dz is (Nz-1, Ny, Nx)
 @tf.function()
@@ -43,4 +44,4 @@ def define_vertical_weight(Nz, vert_spacing):
     zeta = tf.cast(tf.range(Nz+1) / Nz, "float32")
     weight = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
     weight = tf.Variable(weight[1:] - weight[:-1], dtype=tf.float32, trainable=False)
-    return tf.expand_dims(tf.expand_dims(weight, axis=-1), axis=-1)
+    return weight[..., None, None]

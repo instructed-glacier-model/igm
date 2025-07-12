@@ -64,7 +64,7 @@ def base_surf_to_U(uvelbase, uvelsurf, Nz, vert_spacing, iflo_exp_glen):
 
     levels = compute_levels(Nz, vert_spacing)
 
-    levels = tf.expand_dims(tf.expand_dims(levels, axis=-1), axis=-1)
+    levels = levels[..., None, None]
 
     return tf.expand_dims(uvelbase, axis=0) \
          + tf.expand_dims(uvelsurf - uvelbase, axis=0) \
@@ -126,23 +126,16 @@ def print_info(state, it, cfg, energy_mean_list, velsurf_mag):
 def Y_to_UV(cfg, Y):
     N = cfg.processes.iceflow.numerics.Nz
 
-    U = tf.experimental.numpy.moveaxis(Y[:, :, :, :N], [-1], [1])
-    V = tf.experimental.numpy.moveaxis(Y[:, :, :, N:], [-1], [1])
+    U = tf.experimental.numpy.moveaxis(Y[..., :N], [-1], [1])
+    V = tf.experimental.numpy.moveaxis(Y[..., N:], [-1], [1])
 
     return U, V
 
 def UV_to_Y(cfg, U, V):
     UU = tf.experimental.numpy.moveaxis(U, [0], [-1])
     VV = tf.experimental.numpy.moveaxis(V, [0], [-1])
-    RR = tf.expand_dims(
-        tf.concat(
-            [UU, VV],
-            axis=-1,
-        ),
-        axis=0,
-    )
 
-    return RR
+    return tf.concat([UU, VV], axis=-1)[None,...]
 
 def fieldin_to_X(cfg, fieldin):
     X = []
@@ -167,12 +160,12 @@ def X_to_fieldin(cfg, X):
 
     for f, s in zip(cfg.processes.iceflow.emulator.fieldin, fieldin_dim):
         if s == 0:
-            fieldin.append(X[:, :, :, i])
+            fieldin.append(X[..., i])
             i += 1
         else:
             fieldin.append(
                 tf.experimental.numpy.moveaxis(
-                    X[:, :, :, i : i + cfg.processes.iceflow.numerics.Nz], [-1], [1]
+                    X[..., i : i + cfg.processes.iceflow.numerics.Nz], [-1], [1]
                 )
             )
             i += cfg.processes.iceflow.numerics.Nz

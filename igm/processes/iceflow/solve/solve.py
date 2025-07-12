@@ -29,7 +29,7 @@ def solve_iceflow(cfg, state, U, V):
 
     Cost_Glen = []
 
-    fieldin = [tf.expand_dims(vars(state)[f], axis=0) for f in cfg.processes.iceflow.emulator.fieldin]
+    fieldin = [vars(state)[f][None,...] for f in cfg.processes.iceflow.emulator.fieldin]
 
     early_stopping = EarlyStopping(relative_min_delta=0.0002, patience=10)
 
@@ -130,13 +130,9 @@ def solve_iceflow_lbfgs(cfg, state, U, V):
         U = UV[0]
         V = UV[1]
 
-        fieldin = [
-            tf.expand_dims(vars(state)[f], axis=0) for f in cfg.processes.iceflow.emulator.fieldin
-        ]
+        fieldin = [vars(state)[f][None,...] for f in cfg.processes.iceflow.emulator.fieldin]
 
-        energy_list = iceflow_energy(
-            cfg, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
-        )
+        energy_list = iceflow_energy(cfg, U[None,...], V[None,...], fieldin)
  
         energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
