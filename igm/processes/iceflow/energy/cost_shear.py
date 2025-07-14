@@ -7,7 +7,10 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
+def cost_shear(cfg, U, V, fieldin, vert_disc):
+
+    thk, usurf, arrhenius, slidingco, dX = fieldin
+    zeta, dzeta, P, dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     regu_glen = cfg.processes.iceflow.physics.regu_glen
@@ -17,7 +20,7 @@ def cost_shear(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
     staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
+    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz,
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)
 
 @tf.function()
@@ -96,7 +99,7 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptop
     return dUdx, dVdx, dUdy, dVdy
  
 @tf.function()
-def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, 
+def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz,
                 exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, staggered_grid, vert_basis):
     
     # B has Unit Mpa y^(1/n)
@@ -135,8 +138,16 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta,
 
     elif vert_basis == "Legendre":
 
-        print("Warning: Legendre basis is not implemented for shear stress cost function, using Lagrange instead.") 
-    
+        print("Using Legendre basis for vertical derivatives")
+ 
+        dUdx = tf.einsum('ij,bjkl->bikl', P, dUdx) 
+        dVdx = tf.einsum('ij,bjkl->bikl', P, dVdx)
+        dUdy = tf.einsum('ij,bjkl->bikl', P, dUdy)
+        dVdy = tf.einsum('ij,bjkl->bikl', P, dVdy)
+
+        dUdz = tf.einsum('ij,bjkl->bikl', dPdz, U) / tf.maximum(thk, thr_ice_thk)
+        dVdz = tf.einsum('ij,bjkl->bikl', dPdz, V) / tf.maximum(thk, thr_ice_thk)
+ 
     elif vert_basis == "SIA":
 
         dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) * psia(zeta, exp_glen)

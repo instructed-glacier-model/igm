@@ -6,39 +6,22 @@
 import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.vert_disc import compute_levels, compute_zeta_dzeta
-from igm.processes.iceflow.energy.utils import gauss_points_and_weights
 from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
 import igm.processes.iceflow.energy as energy
 
-def iceflow_energy(cfg, U, V, fieldin):
-
-    thk, usurf, arrhenius, slidingco, dX = fieldin
- 
-    levels = compute_levels(cfg.processes.iceflow.numerics.Nz, 
-                            cfg.processes.iceflow.numerics.vert_spacing)
- 
-    if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
-        zeta, dzeta = compute_zeta_dzeta(levels)
-    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
-        zeta, dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
-    elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
-        assert cfg.processes.iceflow.numerics.Nz == 2 # Only works in this case
-        zeta, dzeta = gauss_points_and_weights(ord_gauss=5)
-    else:
-        raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
+def iceflow_energy(cfg, U, V, fieldin, vert_disc):
 
     energy_list = []
     for component in cfg.processes.iceflow.physics.energy_components:
         func = getattr(energy, f"cost_{component}")
-        energy_list.append(func(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta))
+        energy_list.append(func(cfg, U, V, fieldin, vert_disc))
 
     return energy_list
 
-def iceflow_energy_XY(cfg, X, Y):
+def iceflow_energy_XY(cfg, X, Y, vert_disc):
     
     U, V = Y_to_UV(cfg, Y)
 
     fieldin = X_to_fieldin(cfg, X)
 
-    return iceflow_energy(cfg, U, V, fieldin)
+    return iceflow_energy(cfg, U, V, fieldin, vert_disc)

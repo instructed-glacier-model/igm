@@ -153,9 +153,9 @@ def update_iceflow_emulated(cfg, state):
                 state.V,
             ) 
 
-    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V)
-    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V)
-    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight)
+    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
+    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
+    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight, cfg.processes.iceflow.numerics.vert_basis)
 
 
 def update_iceflow_emulator(cfg, state, it, pertubate=False):
@@ -172,6 +172,8 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
         state.GRAD_EMULATOR = []
      
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+
+        vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'P', 'dPdz']]
 
         XX = fieldin_to_X(cfg, fieldin) 
 
@@ -216,7 +218,7 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                     Y = state.iceflow_model(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
                     
                     energy_list = iceflow_energy_XY(cfg, X[i, :, iz:Ny-iz, iz:Nx-iz, :], \
-                                                         Y[:,    iz:Ny-iz, iz:Nx-iz, :])
+                                                         Y[:,    iz:Ny-iz, iz:Nx-iz, :], vert_disc)
                     
                     if len(cfg.processes.iceflow.physics.sliding_law) > 0:
                         basis_vectors, sliding_shear_stress = \
@@ -229,7 +231,8 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
 
                     cost_emulator = cost_emulator + COST
 
-                    U, V = Y_to_UV(cfg, Y) ; velsurf_mag = getmag(*get_velsurf(U[0],V[0]))
+                    U, V = Y_to_UV(cfg, Y) 
+                    velsurf_mag = getmag(*get_velsurf(U[0],V[0], cfg.processes.iceflow.numerics.vert_basis))
 
                     if warm_up:
                         print_info(state,epoch, cfg, [e.numpy() for e in energy_mean_list], 

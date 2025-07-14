@@ -31,6 +31,8 @@ def solve_iceflow(cfg, state, U, V):
 
     fieldin = [vars(state)[f][None,...] for f in cfg.processes.iceflow.emulator.fieldin]
 
+    vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'P', 'dPdz']]
+
     early_stopping = EarlyStopping(relative_min_delta=0.0002, patience=10)
 
     if cfg.processes.iceflow.solver.plot_sol:
@@ -46,7 +48,7 @@ def solve_iceflow(cfg, state, U, V):
             t.watch(V)
 
             energy_list = iceflow_energy(
-                cfg, U[None,:,:,:], V[None,:,:,:], fieldin
+                cfg, U[None,:,:,:], V[None,:,:,:], fieldin, vert_disc
             ) 
 
             if len(cfg.processes.iceflow.physics.sliding_law) > 0:
@@ -80,8 +82,8 @@ def solve_iceflow(cfg, state, U, V):
                         for grad, sgrad in zip(grads, sliding_gradients) ]
  
         state.optimizer.apply_gradients(zip(grads, [U, V]))
-
-        velsurf_mag = getmag(*get_velsurf(U,V))
+        
+        velsurf_mag = getmag(*get_velsurf(U,V, cfg.processes.iceflow.numerics.vert_basis))
 
         if state.it <= 1:    
             print_info(state, i, cfg, [e.numpy() for e in energy_mean_list], 
@@ -192,7 +194,6 @@ def update_iceflow_solved(cfg, state):
 
     state.COST_Glen = Cost_Glen[-1].numpy()
 
-    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V)
-    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V)
-    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight)
- 
+    state.uvelbase, state.vvelbase = get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
+    state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
+    state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight, cfg.processes.iceflow.numerics.vert_basis)

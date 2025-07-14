@@ -6,19 +6,24 @@
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.processes.iceflow.utils import get_velbase
 
-def cost_sliding_weertman(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
+def cost_sliding_weertman(cfg, U, V, fieldin, vert_disc):
+
+    thk, usurf, arrhenius, slidingco, dX = fieldin
+    zeta, dzeta, P, dPdz = vert_disc
 
     exp_weertman = cfg.processes.iceflow.physics.exp_weertman
     regu_weertman = cfg.processes.iceflow.physics.regu_weertman
     staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_sliding(U, V, thk, usurf, slidingco, dX,
+    return _cost_sliding(U, V, thk, usurf, slidingco, dX, zeta, dzeta,
                          exp_weertman, regu_weertman, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid, vert_basis):
+def _cost_sliding(U, V, thk, usurf, slidingco, dX, zeta, dzeta, \
+                  exp_weertman, regu_weertman, staggered_grid, vert_basis):
  
     C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
  
@@ -31,7 +36,10 @@ def _cost_sliding(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, 
         V = stag4h(V)
         C = stag4h(C)
 
-    N = ( (U[:, 0, :, :] ** 2 + V[:, 0, :, :] ** 2) + regu_weertman**2 \
-        + (U[:, 0, :, :] * sloptopgx + V[:, 0, :, :] * sloptopgy) ** 2 )
+    uvelbase, vvelbase = get_velbase(U[0], V[0], vert_basis)
+    uvelbase, vvelbase = uvelbase[None,...], vvelbase[None,...] 
+
+    N = ( (uvelbase ** 2 + vvelbase ** 2) + regu_weertman**2 \
+        + (uvelbase * sloptopgx + vvelbase * sloptopgy) ** 2 )
 
     return C * N ** (s / 2) / s # C_slid is unit Mpa y^m m^(-m) * m^(1+m) * y^(-1-m)  = Mpa  m/y

@@ -41,12 +41,28 @@ def gauss_points_and_weights(ord_gauss):
     dzeta_tf = tf.constant(dzeta, dtype=tf.float32)[None, :, None, None]
     return zeta_tf, dzeta_tf
 
-def legendre_basis(zeta):
-    ord = zeta.shape[-3]
-    x = 2.0 * zeta - 1.0  # Map from [0,1] to [-1,1]
-    P = [tf.ones_like(x), x]  # P_0, P_1
-    for k in range(1, ord):
-        Pk = ((2 * k + 1) * x * P[k] - k * P[k - 1]) / (k + 1)
-        P.append(Pk)
+def legendre_basis(zeta, order):
+    """
+    Compute the derivative of Legendre basis matrix evaluated at points zeta in [0,1].
 
-    return tf.stack(P[:ord + 1], axis=-3) 
+    Parameters:
+    - zeta: tf.Tensor of shape (..., n_points), values in [0, 1]
+    - order: int, number of basis functions (max degree = order - 1)
+
+    Returns the Vandermonde matrix V and its derivative dV/dz.
+    """
+    x = 2.0 * zeta - 1.0
+ 
+    P = [tf.ones_like(x), x]
+    for k in range(2, order):
+        P.append(((2 * k - 1) * x * P[-1] - (k - 1) * P[-2]) / k)
+
+    V = tf.stack(P, axis=-2)
+
+    dP = [tf.zeros_like(x)]
+    for k in range(1, order):
+        dP.append(k * (x * P[k] - P[k - 1]) / (x**2 - 1.0)) 
+
+    dVdz = 2.0 * tf.stack(dP, axis=-2)
+
+    return tf.transpose(V), tf.transpose(dVdz)  

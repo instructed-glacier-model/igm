@@ -39,8 +39,8 @@ def update_iceflow_diagnostic(cfg, state):
  
         U, V, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V)
  
-        state.velsurf_mag_app = getmag(*get_velsurf(state.U,state.V))
-        state.velsurf_mag_exa = getmag(*get_velsurf(U,V))
+        state.velsurf_mag_app = getmag(*get_velsurf(state.U,state.V, cfg.processes.iceflow.numerics.vert_basis))
+        state.velsurf_mag_exa = getmag(*get_velsurf(U,V, cfg.processes.iceflow.numerics.vert_basis))
 
         time_solve -= time.time()
         time_solve *= -1

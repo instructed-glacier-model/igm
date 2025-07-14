@@ -7,7 +7,10 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
+def cost_gravity(cfg, U, V, fieldin, vert_disc):
+
+    thk, usurf, arrhenius, slidingco, dX = fieldin
+    zeta, dzeta, P, dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     ice_density = cfg.processes.iceflow.physics.ice_density
@@ -16,11 +19,11 @@ def cost_gravity(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
     staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,  
+    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,  
+def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
                   ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis):
      
     slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  
@@ -31,26 +34,24 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk,
         thk = stag4h(thk)
 
     if vert_basis == "Lagrange":
- 
-        uds = stag2v(U) * slopsurfx[:, None, :, :] + stag2v(V) * slopsurfy[:, None, :, :] 
+
+        U = stag2v(U)
+        V = stag2v(V)
 
     elif vert_basis == "Legendre":
-
-        print("Warning: Legendre basis is not implemented") 
-
-#        Pzeta = legendre_basis(zeta) # Should not be recomputed all the time as constant
-
-#        uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :]
+ 
+        U = tf.einsum('ij,bjkl->bikl', P, U)
+        V = tf.einsum('ij,bjkl->bikl', P, V)
     
     elif vert_basis == "SIA":
  
         U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) * psia(zeta, exp_glen)
         V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) * psia(zeta, exp_glen)
-        
-        uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :] 
  
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
+    
+    uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :] 
   
     if fnge:
         uds = tf.minimum(uds, 0.0) # force non-postiveness

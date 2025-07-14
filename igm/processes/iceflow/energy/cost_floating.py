@@ -8,8 +8,11 @@ from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
 
-def cost_floating(cfg, U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta):
+def cost_floating(cfg, U, V, fieldin, vert_disc):
 
+    thk, usurf, arrhenius, slidingco, dX = fieldin
+    zeta, dzeta, P, dPdz = vert_disc
+    
     Nz = cfg.processes.iceflow.numerics.Nz
     vert_spacing = cfg.processes.iceflow.numerics.vert_spacing
     cf_eswn = cfg.processes.iceflow.physics.cf_eswn
