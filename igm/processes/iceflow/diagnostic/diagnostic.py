@@ -51,7 +51,7 @@ def update_iceflow_diagnostic(cfg, state):
         nb_it_solve = len(Cost_Glen)
         nb_it_emul = len(state.COST_EMULATOR)
 
-        l1, l2 = computemisfit(state, state.thk, state.U - U, state.V - V)
+        l1, l2 = computemisfit(state, state.thk, state.U - U, state.V - V,cfg.processes.iceflow.numerics.vert_basis)
 
         vol = np.sum(state.thk) * (state.dx**2) / 10**9
 
@@ -71,8 +71,8 @@ def update_iceflow_diagnostic(cfg, state):
         state.tlast_diagno.assign(state.t)
 
 
-def computemisfit(state, thk, U, V):
-    ubar, vbar = get_velbar(U, V, state.vert_weight)
+def computemisfit(state, thk, U, V, vert_basis):
+    ubar, vbar = get_velbar(U, V,vert_basis)
 
     VEL = tf.stack([ubar, vbar], axis=0)
     MA = tf.where(thk > 1, tf.ones_like(VEL), 0)
@@ -84,5 +84,4 @@ def computemisfit(state, thk, U, V):
     return nl1diff.numpy(), np.sqrt(nl2diff)
 
 def finalize_iceflow_diagnostic(cfg, state):
- 
     pass

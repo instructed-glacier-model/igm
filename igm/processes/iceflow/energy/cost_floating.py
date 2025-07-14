@@ -26,7 +26,10 @@ def cost_floating(cfg, U, V, fieldin, vert_disc):
 def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis):
 
     if not staggered_grid:
-        raise ValueError("Floating cost function requires staggered grid, non-staggered grid is not implmented yet.")        
+        raise ValueError("Floating cost function requires staggered grid, non-staggered grid is not implmented yet.")      
+
+    if vert_basis == "Legendre": 
+        raise ValueError("Floating cost function requires Lagrange or SIA vert_basis, Legendre is not implmented yet.")  
 
     # if activae this applies the stress condition along the calving front
 

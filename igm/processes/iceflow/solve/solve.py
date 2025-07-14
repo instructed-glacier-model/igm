@@ -169,12 +169,14 @@ def solve_iceflow_lbfgs(cfg, state, U, V):
 def update_iceflow_solved(cfg, state):
 
     if cfg.processes.iceflow.solver.lbfgs:
+        raise ValueError("solve_iceflow_lbfgs formely implemented, not working yet, will be updated.")
         state.U, state.V, Cost_Glen = solve_iceflow_lbfgs(cfg, state, state.U, state.V)
     else:
         state.U, state.V, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V)
 
     
     if cfg.processes.iceflow.force_max_velbar > 0:
+        assert not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
         velbar_mag = getmag(state.U, state.V)
         state.U = \
             tf.where(

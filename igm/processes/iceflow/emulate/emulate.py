@@ -139,6 +139,7 @@ def update_iceflow_emulated(cfg, state):
 
     # If requested, the speeds are artifically upper-bounded
     if cfg.processes.iceflow.force_max_velbar > 0:
+        assert not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
         velbar_mag = getmag(state.U, state.V)
         state.U = \
             tf.where(
