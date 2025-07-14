@@ -163,11 +163,11 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz
 
     sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)  
 
-    sr2 = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+    sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
 
 #    sr2 = tf.where(thk[:, None, :, :]>0, sr2, 0.0) 
 
-    p_term = ((sr2 + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
+    p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
  
     # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
     return thk * tf.reduce_sum( B * dzeta * p_term, axis=1)  
