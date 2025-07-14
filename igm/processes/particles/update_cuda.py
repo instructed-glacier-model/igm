@@ -13,7 +13,7 @@ import igm
 
 igm_path = os.path.dirname(igm.__file__)
 particles_path = os.path.join(igm_path, "processes", "particles")
-interpolate_op = tf.load_op_library(os.path.join(particles_path, 'interpolate_2d.so'))
+interpolate_op = tf.load_op_library(os.path.join(particles_path, 'interpolate_2d', 'interpolate_2d.so'))
 
 def get_weights(vert_spacing, number_z_layers, particle_r, u):
     "What is this function doing? Name it properly.."
