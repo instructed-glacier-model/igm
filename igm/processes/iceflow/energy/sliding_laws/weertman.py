@@ -6,8 +6,9 @@
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.processes.iceflow.utils import get_velbase
   
-def weertman(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid):
+def weertman(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid, vert_basis):
   
     C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
  
@@ -20,15 +21,14 @@ def weertman(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, stagg
         V = stag4h(V)
         C = stag4h(C)
 
-    U_basal = U[:, 0, :, :]
-    V_basal = V[:, 0, :, :]
+    uvelbase, vvelbase = get_velbase(U, V, vert_basis)
 
-    N = (U_basal ** 2 + V_basal ** 2) + regu_weertman**2 \
-      + (U_basal * sloptopgx + V_basal * sloptopgy) ** 2
+    N = (uvelbase ** 2 + vvelbase ** 2) + regu_weertman**2 \
+      + (uvelbase * sloptopgx + vvelbase * sloptopgy) ** 2
       
-    basis_vectors = [U_basal, V_basal]
+    basis_vectors = [uvelbase, vvelbase]
 
-    sliding_shear_stress = [ C * N ** ((s - 2)/2) * U_basal,
-                             C * N ** ((s - 2)/2) * V_basal ]
+    sliding_shear_stress = [ C * N ** ((s - 2)/2) * uvelbase,
+                             C * N ** ((s - 2)/2) * vvelbase ]
     
     return basis_vectors, sliding_shear_stress
