@@ -8,9 +8,7 @@ import tensorflow as tf
 from igm.processes.particles.seeding_particles import seeding_particles
 from igm.processes.particles.utils import get_weights, get_weights_legendre
  
-def update_cupy(cfg, state):
-
-    from igm.processes.particles.utils_cupy import interpolate_particles_2d
+def update_cu(cfg, state):
 
     if (
         state.t.numpy() - state.tlast_seeding
@@ -74,16 +72,12 @@ def update_cupy(cfg, state):
         topg_input = state.topg
         # smb_input = state.smb
 
-        u, v, w, thk, topg = (
-            interpolate_particles_2d(  # only need smb for the simple tracking
-                U_input,
-                V_input,
-                W_input,
-                thk_input,
-                topg_input,
-                indices,
-            )
-        )
+        if cfg.processes.particles.computation_library == "cupy":
+            from igm.processes.particles.utils_cupy import interpolate_particles_2d
+        elif cfg.processes.particles.computation_library == "cuda":
+            from igm.processes.particles.utils_cuda import interpolate_particles_2d
+
+        u, v, w, thk, topg = interpolate_particles_2d(U_input, V_input, W_input, thk_input, topg_input, indices)
 
         state.particle_thk = thk
         state.particle_topg = topg

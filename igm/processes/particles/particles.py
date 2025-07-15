@@ -14,8 +14,7 @@ from igm.processes.particles.write_particle_cudf import update_write_particle_cu
 from igm.processes.particles.write_particle_pyvista import initialize_write_particle_pyvista
 from igm.processes.particles.write_particle_pyvista import update_write_particle_pyvista 
 from igm.processes.particles.update_tf import update_tf
-from igm.processes.particles.update_cupy import update_cupy
-from igm.processes.particles.update_cuda import update_cuda
+from igm.processes.particles.update_cu import update_cu
 
 def srange(message, color):
     tf.test.experimental.sync_devices()
@@ -78,10 +77,8 @@ def update(cfg, state):
 
     if cfg.processes.particles.computation_library == "tensorflow":
         update_tf(cfg, state)
-    elif cfg.processes.particles.computation_library == "cupy":
-        update_cupy(cfg, state)
-    elif cfg.processes.particles.computation_library == "cuda":
-        update_cuda(cfg, state)
+    elif cfg.processes.particles.computation_library in ["cupy","cuda"]:
+        update_cu(cfg, state)
     else:
         raise ValueError("Must be either 'tensorflow', 'cuda', or 'cupy'.")
     
