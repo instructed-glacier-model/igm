@@ -26,9 +26,14 @@ def update(cfg, state):
 
     thkexp = tf.repeat(tf.expand_dims(state.thk, axis=0), state.U.shape[0], axis=0)
 
-    state.U = tf.where(thkexp > 0, state.U, dirx)
-    state.V = tf.where(thkexp > 0, state.V, diry)
-
+    if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
+        state.U = tf.where(thkexp > 0, state.U, dirx)
+        state.V = tf.where(thkexp > 0, state.V, diry)
+    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+        state.U = tf.where(thkexp > 0, state.U, 
+                           tf.concat([dirx[None,...] , 0.0*state.U[1:]], axis=0))
+        state.V = tf.where(thkexp > 0, state.V, 
+                           tf.concat([diry[None,...] , 0.0*state.V[1:]], axis=0))
 
 def finalize(cfg, state):
     pass

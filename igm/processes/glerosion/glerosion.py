@@ -9,6 +9,7 @@ import time
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
+from igm.processes.iceflow.utils import get_velbase
 
 def initialize(cfg, state):
     
@@ -25,7 +26,7 @@ def update(cfg, state):
                 "update topg_glacial_erosion at time : " + str(state.t.numpy())
             )
 
-        velbase_mag = getmag(state.U[0], state.V[0])
+        velbase_mag = getmag(*get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis))
 
         # apply erosion law, erosion rate is proportional to a power of basal sliding speed
         dtopgdt = cfg.processes.glerosion.cst * (velbase_mag**cfg.processes.glerosion.exp)
