@@ -31,7 +31,7 @@ def solve_iceflow(cfg, state, U, V):
 
     fieldin = [vars(state)[f][None,...] for f in cfg.processes.iceflow.emulator.fieldin]
 
-    vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'P', 'dPdz']]
+    vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'Leg_P', 'Leg_dPdz']]
 
     early_stopping = EarlyStopping(relative_min_delta=0.0002, patience=10)
 
