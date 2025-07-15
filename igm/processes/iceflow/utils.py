@@ -77,21 +77,6 @@ def compute_PAD(cfg,Nx,Ny):
     else:
         return [[0, 0], [0, 0], [0, 0], [0, 0]]
     
-
-# @tf.function()
-# def base_surf_to_U(uvelbase, uvelsurf, Nz, vert_spacing, iflo_exp_glen):
-
-#     # zeta = tf.cast(tf.range(Nz) / (Nz - 1), "float32")
-#     # levels = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
-
-#     levels = compute_levels(Nz, vert_spacing)
-
-#     levels = levels[..., None, None]
-
-#     return tf.expand_dims(uvelbase, axis=0) \
-#          + tf.expand_dims(uvelsurf - uvelbase, axis=0) \
-#          * ( 1 - (1 - levels) ** (iflo_exp_glen + 1) )
-
 class EarlyStopping:
     def __init__(self, relative_min_delta=1e-3, patience=10):
         """
