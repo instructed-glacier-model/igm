@@ -32,6 +32,9 @@ def initialize(cfg, state):
             raise ValueError(
                 "The 'vert_flow' module is required to use the 3d tracking method in the 'particles' module."
             )
+        
+    if cfg.processes.particles.tracking_method == "simple":
+        assert cfg.processes.particles.computation_library == "tensorflow" 
 
     state.tlast_seeding = cfg.processes.particles.tlast_seeding_init
 
