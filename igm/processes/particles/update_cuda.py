@@ -6,7 +6,7 @@
 import tensorflow as tf       
 
 from igm.processes.particles.seeding_particles import seeding_particles
-from igm.processes.particles.utils import rhs_to_zeta
+from igm.processes.particles.utils import get_weights
 
 import os
 import igm
@@ -14,33 +14,6 @@ import igm
 igm_path = os.path.dirname(igm.__file__)
 particles_path = os.path.join(igm_path, "processes", "particles")
 interpolate_op = tf.load_op_library(os.path.join(particles_path, 'interpolate_2d', 'interpolate_2d.so'))
-
-def get_weights(vert_spacing, number_z_layers, particle_r, u):
-    "What is this function doing? Name it properly.."
-
-    # rng_outer = srange("indices in weights", color="blue")
-    zeta = rhs_to_zeta(vert_spacing, particle_r)  # get the position in the column
-    I0 = tf.math.floor(zeta * (number_z_layers - 1))
-
-    I0 = tf.minimum(I0, number_z_layers - 2)  # make sure to not reach the upper-most pt
-    I1 = I0 + 1
-
-    zeta0 = I0 / (number_z_layers - 1)
-    zeta1 = I1 / (number_z_layers - 1)
-    lamb = (zeta - zeta0) / (zeta1 - zeta0)
-
-    ind0 = tf.stack([tf.cast(I0, tf.int64), tf.range(I0.shape[0], dtype=tf.int64)], axis=1)
-    ind1 = tf.stack([tf.cast(I1, tf.int64), tf.range(I1.shape[0], dtype=tf.int64)], axis=1)
-    
-    weights = tf.zeros_like(u)
-    weights = tf.tensor_scatter_nd_add(
-        weights, indices=ind0, updates=1 - lamb
-    )
-    weights = tf.tensor_scatter_nd_add(
-        weights, indices=ind1, updates=lamb
-    )
-
-    return weights
  
 def update_cuda(cfg, state):
 

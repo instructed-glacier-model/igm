@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from igm.utils.math.interpolate_bilinear_tf import interpolate_bilinear_tf
 from igm.processes.particles.seeding_particles import seeding_particles
-from igm.processes.particles.utils import rhs_to_zeta
+from igm.processes.particles.utils import get_weights
 
 def update_tf(cfg, state):
 
@@ -98,26 +98,12 @@ def update_tf(cfg, state):
         )[0, :, 0]
 
         # get the position in the column
-        zeta = rhs_to_zeta(cfg.processes.iceflow.numerics.vert_spacing, state.particle_r)  
-        I0 = tf.cast(
-            tf.math.floor(zeta * (cfg.processes.iceflow.numerics.Nz - 1)),
-            dtype="int32",
+        weights = get_weights(
+            vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
+            number_z_layers=cfg.processes.iceflow.numerics.Nz,
+            particle_r=state.particle_r,
+            u=u,
         )
-        I0 = tf.minimum(
-            I0, cfg.processes.iceflow.numerics.Nz - 2
-        )  # make sure to not reach the upper-most pt
-        I1 = I0 + 1
-        zeta0 = tf.cast(I0 / (cfg.processes.iceflow.numerics.Nz - 1), dtype="float32")
-        zeta1 = tf.cast(I1 / (cfg.processes.iceflow.numerics.Nz - 1), dtype="float32")
-
-        lamb = (zeta - zeta0) / (zeta1 - zeta0)
-
-        ind0 = tf.transpose(tf.stack([I0, tf.range(I0.shape[0])]))
-        ind1 = tf.transpose(tf.stack([I1, tf.range(I1.shape[0])]))
-
-        wei = tf.zeros_like(u)
-        wei = tf.tensor_scatter_nd_add(wei, indices=ind0, updates=1 - lamb)
-        wei = tf.tensor_scatter_nd_add(wei, indices=ind1, updates=lamb)
 
         if cfg.processes.particles.tracking_method == "simple":
             # adjust the relative height within the ice column with smb
@@ -128,10 +114,10 @@ def update_tf(cfg, state):
             )
 
             state.particle_x = state.particle_x + state.dt * tf.reduce_sum(
-                wei * u, axis=0
+                weights * u, axis=0
             )
             state.particle_y = state.particle_y + state.dt * tf.reduce_sum(
-                wei * v, axis=0
+                weights * v, axis=0
             )
             state.particle_z = topg + thk * state.particle_r
 
@@ -145,13 +131,13 @@ def update_tf(cfg, state):
             )[:, :, 0]
 
             state.particle_x = state.particle_x + state.dt * tf.reduce_sum(
-                wei * u, axis=0
+                weights * u, axis=0
             )
             state.particle_y = state.particle_y + state.dt * tf.reduce_sum(
-                wei * v, axis=0
+                weights * v, axis=0
             )
             state.particle_z = state.particle_z + state.dt * tf.reduce_sum(
-                wei * w, axis=0
+                weights * w, axis=0
             )
 
             # make sure the particle vertically remain within the ice body
