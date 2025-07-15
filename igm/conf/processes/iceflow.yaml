@@ -22,7 +22,7 @@ iceflow:
   numerics:
     Nz: 10
     vert_spacing: 4.0
-    staggered_grid: true
+    staggered_grid: 1
     vert_basis: "Lagrange"
   solver:
     step_size: 1.0

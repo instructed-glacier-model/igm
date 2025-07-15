@@ -7,23 +7,22 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_gravity(cfg, U, V, fieldin, vert_disc):
+def cost_gravity(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
-    zeta, dzeta, P, dPdz = vert_disc
+    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     ice_density = cfg.processes.iceflow.physics.ice_density
     gravity_cst = cfg.processes.iceflow.physics.gravity_cst
     fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
-    staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
+    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
+def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
                   ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis):
      
     slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  
@@ -40,13 +39,15 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
 
     elif vert_basis == "Legendre":
  
-        U = tf.einsum('ij,bjkl->bikl', P, U)
-        V = tf.einsum('ij,bjkl->bikl', P, V)
+        U = tf.einsum('ij,bjkl->bikl', Leg_P, U)
+        V = tf.einsum('ij,bjkl->bikl', Leg_P, V)
     
     elif vert_basis == "SIA":
  
-        U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) * psia(zeta, exp_glen)
-        V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) * psia(zeta, exp_glen)
+        U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) \
+                            * psia(zeta[None, :, None, None], exp_glen)
+        V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
+                            * psia(zeta[None, :, None, None], exp_glen)
  
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
@@ -64,6 +65,6 @@ def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, P,
         * gravity_cst
         * 10 ** (-6)
         * thk
-        * tf.reduce_sum(dzeta * uds, axis=1)
+        * tf.reduce_sum(dzeta[None, :, None, None] * uds, axis=1)
     ) 
  

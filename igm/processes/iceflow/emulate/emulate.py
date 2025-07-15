@@ -161,7 +161,7 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
      
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
 
-        vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'P', 'dPdz']]
+        vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'Leg_P', 'Leg_dPdz']]
 
         XX = fieldin_to_X(cfg, fieldin) 
 

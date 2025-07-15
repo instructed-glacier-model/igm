@@ -39,8 +39,8 @@ def gauss_points_and_weights(ord_gauss):
     dzeta = 0.5 * w
 
     # Convert to TensorFlow tensors (with dummy dims for batch/spatial broadcasting)
-    zeta_tf = tf.constant(zeta, dtype=tf.float32)[None, :, None, None]
-    dzeta_tf = tf.constant(dzeta, dtype=tf.float32)[None, :, None, None]
+    zeta_tf = tf.constant(zeta, dtype=tf.float32)
+    dzeta_tf = tf.constant(dzeta, dtype=tf.float32)
     return zeta_tf, dzeta_tf
  
 def get_shifted_legendre_antideriv_coeffs(order):

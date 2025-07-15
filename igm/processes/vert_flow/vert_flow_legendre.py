@@ -24,8 +24,8 @@ def compute_vertical_velocity_legendre(cfg, state):
  
     # Lagrange basis
     WLA = wvelbase[None,...] \
-        - tf.tensordot(state.I, dUdx + dVdy, axes=[[1], [0]]) \
+        - tf.tensordot(state.Leg_I, dUdx + dVdy, axes=[[1], [0]]) \
         * state.thk[None,...]  
 
     # Legendre basis
-    return tf.einsum('ij,jkl->ikl', state.P, WLA * state.dzeta[0])
+    return tf.einsum('ij,jkl->ikl', state.Leg_P, WLA * state.dzeta[0])

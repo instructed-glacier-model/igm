@@ -7,20 +7,19 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_shear(cfg, U, V, fieldin, vert_disc):
+def cost_shear(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
-    zeta, dzeta, P, dPdz = vert_disc
+    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen
     regu_glen = cfg.processes.iceflow.physics.regu_glen
     thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
     min_sr = cfg.processes.iceflow.physics.min_sr
     max_sr = cfg.processes.iceflow.physics.max_sr
-    staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz,
+    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)
 
 @tf.function()
@@ -73,8 +72,10 @@ def compute_srz2(dUdz, dVdz):
 def compute_vertical_derivatives(U, V, thk, dzeta, thr):
      
     if U.shape[-3] > 1:  
-        dUdz = (U[:, 1:, :, :] - U[:, :-1, :, :]) / (dzeta * tf.maximum(thk, thr))
-        dVdz = (V[:, 1:, :, :] - V[:, :-1, :, :]) / (dzeta * tf.maximum(thk, thr))
+        dUdz = (U[:, 1:, :, :] - U[:, :-1, :, :]) \
+            / (dzeta[None, :, None, None] * tf.maximum(thk, thr))
+        dVdz = (V[:, 1:, :, :] - V[:, :-1, :, :]) \
+            / (dzeta[None, :, None, None] * tf.maximum(thk, thr))
     else: 
         dUdz = tf.zeros_like(U)
         dVdz = tf.zeros_like(V)
@@ -100,7 +101,7 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptop
     return dUdx, dVdx, dUdy, dVdy
  
 @tf.function()
-def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz,
+def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                 exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, staggered_grid, vert_basis):
     
     # B has Unit Mpa y^(1/n)
@@ -141,23 +142,29 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz
 
         print("Using Legendre basis for vertical derivatives")
  
-        dUdx = tf.einsum('ij,bjkl->bikl', P, dUdx) 
-        dVdx = tf.einsum('ij,bjkl->bikl', P, dVdx)
-        dUdy = tf.einsum('ij,bjkl->bikl', P, dUdy)
-        dVdy = tf.einsum('ij,bjkl->bikl', P, dVdy)
+        dUdx = tf.einsum('ij,bjkl->bikl', Leg_P, dUdx) 
+        dVdx = tf.einsum('ij,bjkl->bikl', Leg_P, dVdx)
+        dUdy = tf.einsum('ij,bjkl->bikl', Leg_P, dUdy)
+        dVdy = tf.einsum('ij,bjkl->bikl', Leg_P, dVdy)
 
-        dUdz = tf.einsum('ij,bjkl->bikl', dPdz, U) / tf.maximum(thk, thr_ice_thk)
-        dVdz = tf.einsum('ij,bjkl->bikl', dPdz, V) / tf.maximum(thk, thr_ice_thk)
+        dUdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, U) / tf.maximum(thk, thr_ice_thk)
+        dVdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, V) / tf.maximum(thk, thr_ice_thk)
  
     elif vert_basis == "SIA":
 
-        dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) * psia(zeta, exp_glen)
-        dVdy = dVdy[:, 0:1, :, :] + (dVdy[:, -1:, :, :] - dVdy[:, 0:1, :, :]) * psia(zeta, exp_glen)
-        dUdy = dUdy[:, 0:1, :, :] + (dUdy[:, -1:, :, :] - dUdy[:, 0:1, :, :]) * psia(zeta, exp_glen)
-        dVdx = dVdx[:, 0:1, :, :] + (dVdx[:, -1:, :, :] - dVdx[:, 0:1, :, :]) * psia(zeta, exp_glen)
+        dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) \
+                                  * psia(zeta[None, :, None, None], exp_glen)
+        dVdy = dVdy[:, 0:1, :, :] + (dVdy[:, -1:, :, :] - dVdy[:, 0:1, :, :]) \
+                                  * psia(zeta[None, :, None, None], exp_glen)
+        dUdy = dUdy[:, 0:1, :, :] + (dUdy[:, -1:, :, :] - dUdy[:, 0:1, :, :]) \
+                                  * psia(zeta[None, :, None, None], exp_glen)
+        dVdx = dVdx[:, 0:1, :, :] + (dVdx[:, -1:, :, :] - dVdx[:, 0:1, :, :]) \
+                                  * psia(zeta[None, :, None, None], exp_glen)
 
-        dUdz = (U[:, -1:, :, :] - U[:, 0:1, :, :]) * psiap(zeta, exp_glen) / tf.maximum(thk, thr_ice_thk)
-        dVdz = (V[:, -1:, :, :] - V[:, 0:1, :, :]) * psiap(zeta, exp_glen) / tf.maximum(thk, thr_ice_thk)
+        dUdz = (U[:, -1:, :, :] - U[:, 0:1, :, :]) \
+             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk, thr_ice_thk)
+        dVdz = (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
+             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk, thr_ice_thk)
 
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
@@ -171,5 +178,5 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, P, dPdz
     p_term = ((sr2capped + regu_glen**2) ** ((p-2) / 2)) * sr2 / p 
  
     # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    return thk * tf.reduce_sum( B * dzeta * p_term, axis=1)  
+    return thk * tf.reduce_sum( B * dzeta[None, :, None, None] * p_term, axis=1)  
  

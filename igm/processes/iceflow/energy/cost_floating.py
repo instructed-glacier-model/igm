@@ -8,15 +8,14 @@ from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
 
-def cost_floating(cfg, U, V, fieldin, vert_disc):
+def cost_floating(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
-    zeta, dzeta, P, dPdz = vert_disc
+    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
     
     Nz = cfg.processes.iceflow.numerics.Nz
     vert_spacing = cfg.processes.iceflow.numerics.vert_spacing
     cf_eswn = cfg.processes.iceflow.physics.cf_eswn
-    staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
     return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis)

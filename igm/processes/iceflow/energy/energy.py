@@ -14,7 +14,10 @@ def iceflow_energy(cfg, U, V, fieldin, vert_disc):
     energy_list = []
     for component in cfg.processes.iceflow.physics.energy_components:
         func = getattr(energy, f"cost_{component}")
-        energy_list.append(func(cfg, U, V, fieldin, vert_disc))
+        if cfg.processes.iceflow.numerics.staggered_grid in [1,2]:
+            energy_list.append(func(cfg, U, V, fieldin, vert_disc, 1))
+        if cfg.processes.iceflow.numerics.staggered_grid in [0,2]:
+            energy_list.append(func(cfg, U, V, fieldin, vert_disc, 0))
 
     return energy_list
 
