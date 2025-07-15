@@ -32,39 +32,36 @@ def initialize_iceflow_fields(cfg, state):
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
     
 def get_velbase_1(U, vert_basis):
-    if vert_basis == "Lagrange":
-        return U[0]
+    if vert_basis in ["Lagrange","SIA"]:
+        return U[...,0,:,:]
     elif vert_basis == "Legendre":
-        pm = tf.pow(-1.0, tf.range(U.shape[0], dtype=tf.float32))
-        return tf.tensordot(pm, U, axes=[[0], [0]])
-    elif vert_basis == "SIA":
-        return U[0]
+        pm = tf.pow(-1.0, tf.range(U.shape[-3], dtype=tf.float32))
+        return tf.tensordot(pm, U, axes=[[0], [-3]]) 
 
 def get_velbase(U, V, vert_basis):
     return get_velbase_1(U, vert_basis), get_velbase_1(V, vert_basis)
 
 def get_velsurf_1(U, vert_basis):
-    if vert_basis == "Lagrange":
-        return U[-1]
+    if vert_basis in ["Lagrange","SIA"]:
+        return U[...,-1,:,:]
     elif vert_basis == "Legendre":
-        pm = tf.pow(1.0, tf.range(U.shape[0], dtype=tf.float32))
-        return tf.tensordot(pm, U, axes=[[0], [0]])
-    elif vert_basis == "SIA":
-        return U[-1]
+        pm = tf.pow(1.0, tf.range(U.shape[-3], dtype=tf.float32))
+        return tf.tensordot(pm, U, axes=[[0], [-3]])
     
 def get_velsurf(U, V, vert_basis):
     return get_velsurf_1(U, vert_basis), get_velsurf_1(V, vert_basis)
 
 def get_velbar_1(U, vert_weight, vert_basis):
     if vert_basis == "Lagrange":
-        return tf.reduce_sum(U * vert_weight, axis=0)
+        return tf.reduce_sum(U * vert_weight, axis=-3)
     elif vert_basis == "Legendre":
-        return U[0]
+        return U[...,0,:,:]
     elif vert_basis == "SIA":
-        return U[0]+0.8*(U[-1]-U[0])
+        return U[...,0,:,:]+0.8*(U[...,-1,:,:]-U[...,0,:,:])
 
 def get_velbar(U, V, vert_weight, vert_basis):
-    return get_velbar_1(U, vert_weight, vert_basis), get_velbar_1(V, vert_weight, vert_basis)
+    return get_velbar_1(U, vert_weight, vert_basis), \
+           get_velbar_1(V, vert_weight, vert_basis)
 
 def compute_PAD(cfg,Nx,Ny):
 
