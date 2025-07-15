@@ -8,7 +8,7 @@ import tensorflow as tf
 import os
 
 from igm.processes.iceflow.utils import fieldin_to_X, Y_to_UV, compute_PAD, print_info
-from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar
+from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, force_max_velbar
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law_XY
 from igm.processes.iceflow.emulate.neural_network import *
@@ -139,20 +139,7 @@ def update_iceflow_emulated(cfg, state):
 
     # If requested, the speeds are artifically upper-bounded
     if cfg.processes.iceflow.force_max_velbar > 0:
-        assert not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
-        velbar_mag = getmag(state.U, state.V)
-        state.U = \
-            tf.where(
-                velbar_mag >= cfg.processes.iceflow.force_max_velbar,
-                cfg.processes.iceflow.force_max_velbar * (state.U / velbar_mag),
-                state.U,
-            )
-        state.V = \
-            tf.where(
-                velbar_mag >= cfg.processes.iceflow.force_max_velbar,
-                cfg.processes.iceflow.force_max_velbar * (state.V / velbar_mag),
-                state.V,
-            ) 
+        force_max_velbar(cfg, state)
 
     state.uvelbase, state.vvelbase = get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
     state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)

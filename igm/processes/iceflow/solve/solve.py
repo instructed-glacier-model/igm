@@ -4,7 +4,7 @@ from igm.utils.math.getmag import getmag
 from igm.processes.iceflow.energy.energy import iceflow_energy
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
 from igm.processes.iceflow.utils import EarlyStopping, print_info
-from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar
+from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, force_max_velbar
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -176,20 +176,7 @@ def update_iceflow_solved(cfg, state):
 
     
     if cfg.processes.iceflow.force_max_velbar > 0:
-        assert not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
-        velbar_mag = getmag(state.U, state.V)
-        state.U = \
-            tf.where(
-                velbar_mag >= cfg.processes.iceflow.force_max_velbar,
-                cfg.processes.iceflow.force_max_velbar * (state.U / velbar_mag),
-                state.U,
-            ) 
-        state.V = \
-            tf.where(
-                velbar_mag >= cfg.processes.iceflow.force_max_velbar,
-                cfg.processes.iceflow.force_max_velbar * (state.V / velbar_mag),
-                state.V,
-            ) 
+        force_max_velbar(cfg, state)
         
     if len(cfg.processes.iceflow.solver.save_cost)>0:
         np.savetxt(cfg.processes.iceflow.emulator.output_directory+cfg.processes.iceflow.solver.save_cost+'-'+str(state.it)+'.dat', np.array(Cost_Glen),  fmt="%5.10f")
