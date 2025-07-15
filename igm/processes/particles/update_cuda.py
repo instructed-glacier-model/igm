@@ -6,7 +6,7 @@
 import tensorflow as tf       
 
 from igm.processes.particles.seeding_particles import seeding_particles
-from igm.processes.particles.utils import get_weights
+from igm.processes.particles.utils import get_weights, get_weights_legendre
 
 import os
 import igm
@@ -30,17 +30,6 @@ def update_cuda(cfg, state):
         nparticle_w = state.nparticle_w
         nparticle_t = state.nparticle_t
         nparticle_englt = state.nparticle_englt
-
-        # # seed new particles
-        # (
-        #     nparticle_x,
-        #     nparticle_y,
-        #     nparticle_z,
-        #     nparticle_r,
-        #     nparticle_w,
-        #     nparticle_t,
-        #     nparticle_englt,
-        # ) = seeding_particles(cfg, state)
 
         # merge the new seeding points with the former ones
         particle_x = tf.Variable(
@@ -81,12 +70,7 @@ def update_cuda(cfg, state):
         i = (particle_x) / state.dx
         j = (particle_y) / state.dx
 
-        indices = tf.expand_dims(
-            tf.concat(
-                [tf.expand_dims(j, axis=-1), tf.expand_dims(i, axis=-1)], axis=-1
-            ),
-            axis=0,
-        )
+        indices = tf.stack([j, i], axis=-1)[tf.newaxis, ...]
 
         U_input = state.U
         V_input = state.V
@@ -94,7 +78,6 @@ def update_cuda(cfg, state):
         thk_input = state.thk
         topg_input = state.topg
         # smb_input = state.smb
-
         
         # Make depth = 1 since the interpolate2d function expects a 3D tensor
         thk_input = tf.expand_dims(thk_input, axis=0)
@@ -114,12 +97,15 @@ def update_cuda(cfg, state):
         state.particle_thk = thk
         state.particle_topg = topg
 
-        weights = get_weights(
-            vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
-            number_z_layers=cfg.processes.iceflow.numerics.Nz,
-            particle_r=state.particle_r,
-            u=u,
-        )
+        if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
+            weights = get_weights(
+                vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
+                Nz=cfg.processes.iceflow.numerics.Nz,
+                particle_r=state.particle_r,
+                u=u,
+            )
+        elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+            weights = get_weights_legendre(state.particle_r,cfg.processes.iceflow.numerics.Nz)
 
         particle_x = particle_x + state.dt * tf.reduce_sum(weights * u, axis=0)
         particle_y = particle_y + state.dt * tf.reduce_sum(weights * v, axis=0)
@@ -136,13 +122,7 @@ def update_cuda(cfg, state):
         state.particle_x = tf.clip_by_value(particle_x, 0, state.x[-1] - state.x[0])
         state.particle_y = tf.clip_by_value(particle_y, 0, state.y[-1] - state.y[0])
 
-        indices = tf.concat(
-            [
-                tf.expand_dims(j, axis=-1),
-                tf.expand_dims(i, axis=-1),
-            ],
-            axis=-1,
-        )
+        indices = tf.stack([j, i], axis=-1)
         updates = tf.where(state.particle_r == 1, state.particle_w, 0.0)
 
         # this computes the sum of the weight of particles on a 2D grid

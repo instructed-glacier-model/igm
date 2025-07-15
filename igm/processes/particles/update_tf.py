@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from igm.utils.math.interpolate_bilinear_tf import interpolate_bilinear_tf
 from igm.processes.particles.seeding_particles import seeding_particles
-from igm.processes.particles.utils import get_weights
+from igm.processes.particles.utils import get_weights, get_weights_legendre
 
 def update_tf(cfg, state):
 
@@ -57,53 +57,30 @@ def update_tf(cfg, state):
         # these indicies are real values to permit 2D interpolations (particles are not necessary on points of the grid)
         i = (state.particle_x) / state.dx
         j = (state.particle_y) / state.dx
+ 
+        indices = tf.stack([j, i], axis=-1)[tf.newaxis, ...]
 
-        indices = tf.expand_dims(
-            tf.concat(
-                [tf.expand_dims(j, axis=-1), tf.expand_dims(i, axis=-1)], axis=-1
-            ),
-            axis=0,
-        )
+        u = interpolate_bilinear_tf(state.U[..., None], indices, indexing="ij")[:, :, 0]
 
-        u = interpolate_bilinear_tf(
-            tf.expand_dims(state.U, axis=-1),
-            indices,
-            indexing="ij",
-        )[:, :, 0]
+        v = interpolate_bilinear_tf(state.V[..., None], indices, indexing="ij")[:, :, 0]
 
-        v = interpolate_bilinear_tf(
-            tf.expand_dims(state.V, axis=-1),
-            indices,
-            indexing="ij",
-        )[:, :, 0]
-
-        thk = interpolate_bilinear_tf(
-            tf.expand_dims(tf.expand_dims(state.thk, axis=0), axis=-1),
-            indices,
-            indexing="ij",
-        )[0, :, 0]
+        thk = interpolate_bilinear_tf(state.thk[None, ..., None], indices, indexing="ij")[0, :, 0]
         state.particle_thk = thk
 
-        topg = interpolate_bilinear_tf(
-            tf.expand_dims(tf.expand_dims(state.topg, axis=0), axis=-1),
-            indices,
-            indexing="ij",
-        )[0, :, 0]
+        topg = interpolate_bilinear_tf(state.topg[None, ..., None], indices, indexing="ij")[0, :, 0]
         state.particle_topg = topg
 
-        smb = interpolate_bilinear_tf(
-            tf.expand_dims(tf.expand_dims(state.smb, axis=0), axis=-1),
-            indices,
-            indexing="ij",
-        )[0, :, 0]
+        smb = interpolate_bilinear_tf(state.smb[None, ..., None], indices, indexing="ij")[0, :, 0]
 
-        # get the position in the column
-        weights = get_weights(
-            vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
-            number_z_layers=cfg.processes.iceflow.numerics.Nz,
-            particle_r=state.particle_r,
-            u=u,
-        )
+        if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
+            weights = get_weights(
+                vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
+                Nz=cfg.processes.iceflow.numerics.Nz,
+                particle_r=state.particle_r,
+                u=u,
+            )
+        elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+            weights = get_weights_legendre(state.particle_r,cfg.processes.iceflow.numerics.Nz)
 
         if cfg.processes.particles.tracking_method == "simple":
             # adjust the relative height within the ice column with smb
@@ -124,11 +101,7 @@ def update_tf(cfg, state):
         elif cfg.processes.particles.tracking_method == "3d":
             # uses the vertical velocity w computed in the vert_flow module
 
-            w = interpolate_bilinear_tf(
-                tf.expand_dims(state.W, axis=-1),
-                indices,
-                indexing="ij",
-            )[:, :, 0]
+            w = interpolate_bilinear_tf(state.W[..., None], indices, indexing="ij")[:, :, 0]
 
             state.particle_x = state.particle_x + state.dt * tf.reduce_sum(
                 weights * u, axis=0
@@ -160,13 +133,7 @@ def update_tf(cfg, state):
             state.particle_y, 0, state.y[-1] - state.y[0]
         )
 
-        indices = tf.concat(
-            [
-                tf.expand_dims(tf.cast(j, dtype="int32"), axis=-1),
-                tf.expand_dims(tf.cast(i, dtype="int32"), axis=-1),
-            ],
-            axis=-1,
-        )
+        indices = tf.stack([tf.cast(j, tf.int32), tf.cast(i, tf.int32)], axis=-1)
         updates = tf.cast(
             tf.where(state.particle_r == 1, state.particle_w, 0), dtype="float32"
         )

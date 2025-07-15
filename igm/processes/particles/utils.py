@@ -20,18 +20,18 @@ def rhs_to_zeta(vert_spacing, rhs):
  
     return zeta
  
-def get_weights(vert_spacing, number_z_layers, particle_r, u):
+def get_weights(vert_spacing, Nz, particle_r, u):
     "What is this function doing? Name it properly.."
 
     # rng_outer = srange("indices in weights", color="blue")
     zeta = rhs_to_zeta(vert_spacing, particle_r)  # get the position in the column
-    I0 = tf.math.floor(zeta * (number_z_layers - 1))
+    I0 = tf.math.floor(zeta * (Nz - 1))
 
-    I0 = tf.minimum(I0, number_z_layers - 2)  # make sure to not reach the upper-most pt
+    I0 = tf.minimum(I0, Nz - 2)  # make sure to not reach the upper-most pt
     I1 = I0 + 1
 
-    zeta0 = I0 / (number_z_layers - 1)
-    zeta1 = I1 / (number_z_layers - 1)
+    zeta0 = I0 / (Nz - 1)
+    zeta1 = I1 / (Nz - 1)
     lamb = (zeta - zeta0) / (zeta1 - zeta0)
 
     ind0 = tf.stack([tf.cast(I0, tf.int64), tf.range(I0.shape[0], dtype=tf.int64)], axis=1)
@@ -46,3 +46,16 @@ def get_weights(vert_spacing, number_z_layers, particle_r, u):
     )
 
     return weights
+
+def get_weights_legendre(zeta, order):
+
+    x = 2.0 * zeta - 1.0 
+ 
+    P = [tf.ones_like(x)]
+    if order > 1:
+        P.append(x)
+    for k in range(2, order):
+        Pk = ((2 * k - 1) * x * P[-1] - (k - 1) * P[-2]) / k
+        P.append(Pk)
+     
+    return tf.stack(P, axis=-2)
