@@ -70,14 +70,14 @@ def initialize(cfg, state):
     if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
         levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
         state.zeta, state.dzeta = compute_zeta_dzeta(levels)
-        state.P, state.dPdz = None, None
+        state.P, state.dPdz, state.I = None, None, None
     elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
-        state.P, state.dPdz = legendre_basis(state.zeta[0,:,0,0],order=state.zeta.shape[1]) 
+        state.P, state.dPdz, state.I = legendre_basis(state.zeta[0,:,0,0],order=state.zeta.shape[1]) 
     elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
         assert cfg.processes.iceflow.numerics.Nz == 2 
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
-        state.P, state.dPdz = None, None
+        state.P, state.dPdz, state.I = None, None, None
     else:
         raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
     
