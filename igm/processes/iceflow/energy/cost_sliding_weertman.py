@@ -36,8 +36,7 @@ def _cost_sliding(U, V, thk, usurf, slidingco, dX, zeta, dzeta, \
         V = stag4h(V)
         C = stag4h(C)
 
-    uvelbase, vvelbase = get_velbase(U[0], V[0], vert_basis)
-    uvelbase, vvelbase = uvelbase[None,...], vvelbase[None,...] 
+    uvelbase, vvelbase = get_velbase(U, V, vert_basis)
 
     N = ( (uvelbase ** 2 + vvelbase ** 2) + regu_weertman**2 \
         + (uvelbase * sloptopgx + vvelbase * sloptopgy) ** 2 )
