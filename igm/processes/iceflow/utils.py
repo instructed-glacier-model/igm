@@ -10,6 +10,7 @@ from tqdm import tqdm
 import datetime
 
 from igm.processes.iceflow.vert_disc import compute_levels
+from igm.utils.math.getmag import getmag 
 
 def initialize_iceflow_fields(cfg, state):
 
@@ -29,33 +30,41 @@ def initialize_iceflow_fields(cfg, state):
     if not hasattr(state, "U"):
         state.U = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
-
-def get_velbase(U,V, vert_basis):
+    
+def get_velbase_1(U, vert_basis):
     if vert_basis == "Lagrange":
-        return U[0], V[0]
+        return U[0]
     elif vert_basis == "Legendre":
         pm = tf.pow(-1.0, tf.range(U.shape[0], dtype=tf.float32))
-        return tf.tensordot(pm, U, axes=[[0], [0]]),tf.tensordot(pm, V, axes=[[0], [0]]) 
+        return tf.tensordot(pm, U, axes=[[0], [0]])
     elif vert_basis == "SIA":
-        return U[0], V[0]
+        return U[0]
 
-def get_velsurf(U,V, vert_basis):
+def get_velbase(U, V, vert_basis):
+    return get_velbase_1(U, vert_basis), get_velbase_1(V, vert_basis)
+
+def get_velsurf_1(U, vert_basis):
     if vert_basis == "Lagrange":
-        return U[-1], V[-1]
+        return U[-1]
     elif vert_basis == "Legendre":
         pm = tf.pow(1.0, tf.range(U.shape[0], dtype=tf.float32))
-        return tf.tensordot(pm, U, axes=[[0], [0]]),tf.tensordot(pm, V, axes=[[0], [0]]) 
+        return tf.tensordot(pm, U, axes=[[0], [0]])
     elif vert_basis == "SIA":
-        return U[-1], V[-1]
+        return U[-1]
+    
+def get_velsurf(U, V, vert_basis):
+    return get_velsurf_1(U, vert_basis), get_velsurf_1(V, vert_basis)
 
-def get_velbar(U,V, vert_weight, vert_basis):
+def get_velbar_1(U, vert_weight, vert_basis):
     if vert_basis == "Lagrange":
-        return tf.reduce_sum(U * vert_weight, axis=0), \
-               tf.reduce_sum(V * vert_weight, axis=0)
+        return tf.reduce_sum(U * vert_weight, axis=0)
     elif vert_basis == "Legendre":
-        return U[0], V[0]
+        return U[0]
     elif vert_basis == "SIA":
-        return U[0]+0.8*(U[-1]-U[0]), V[0]+0.8*(V[-1]-V[0])
+        return U[0]+0.8*(U[-1]-U[0])
+
+def get_velbar(U, V, vert_weight, vert_basis):
+    return get_velbar_1(U, vert_weight, vert_basis), get_velbar_1(V, vert_weight, vert_basis)
 
 def compute_PAD(cfg,Nx,Ny):
 
@@ -187,3 +196,27 @@ def X_to_fieldin(cfg, X):
             i += cfg.processes.iceflow.numerics.Nz
 
     return fieldin
+
+def boundvel(velbar_mag, VEL, force_max_velbar):
+    return tf.where(velbar_mag >= force_max_velbar, force_max_velbar * (VEL / velbar_mag), VEL)
+
+def force_max_velbar(cfg, state):
+
+    force_max_velbar = cfg.processes.iceflow.force_max_velbar
+    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+
+    if vert_basis in ["Lagrange","SIA"]:
+        velbar_mag = getmag(state.U, state.V)
+        state.U = boundvel(velbar_mag, state.U, force_max_velbar)
+        state.V = boundvel(velbar_mag, state.V, force_max_velbar)
+
+    elif vert_basis == "Legendre":
+        velbar_mag = getmag(*get_velbar(state.U, state.V, \
+                                        state.vert_weight, vert_basis))
+        uvelbar = boundvel(velbar_mag, state.U[0], force_max_velbar)
+        vvelbar = boundvel(velbar_mag, state.V[0], force_max_velbar)
+        state.U = tf.concat([uvelbar[None,...] , state.U[1:]], axis=0)
+        state.V = tf.concat([vvelbar[None,...] , state.V[1:]], axis=0)
+        
+    else:
+        raise ValueError("Unknown vertical basis: " + cfg.processes.iceflow.numerics.vert_basis)
