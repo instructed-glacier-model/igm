@@ -15,6 +15,11 @@ from ..iceflow.diagnostic.diagnostic import *
 from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *
 from ..iceflow.energy.energy import *
+
+from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV, UV_to_Y
+
+from igm.processes.iceflow.vert_disc import define_vertical_weight, compute_levels, compute_zeta_dzeta
+from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
  
  
 def initialize(cfg, state):
@@ -67,6 +72,22 @@ def initialize(cfg, state):
         if cfg.processes.pretraining.min_coarsen < cfg.processes.pretraining.max_coarsen:
             state.PAR.append([p, it, midva2, midvs2, cfg.processes.pretraining.min_coarsen + 1])
 
+    if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
+        levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
+        state.zeta, state.dzeta = compute_zeta_dzeta(levels)
+        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
+    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
+        state.Leg_P, state.Leg_dPdz, state.Leg_I = legendre_basis(state.zeta,order=state.zeta.shape[0]) 
+    elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
+        assert cfg.processes.iceflow.numerics.Nz == 2 
+        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
+        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
+    else:
+        raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
+
+    state.it = 0
+
     compute_solutions(cfg, state)
 
     train_iceflow_emulator(cfg, state, subdatasetpath_train)
@@ -102,7 +123,7 @@ def compute_solutions(cfg, state):
         co = int(2**val_R)
 
         ds = xarray.open_dataset(os.path.join(p, "ex.nc"), engine="netcdf4")
-        rec = ds.dims["time"]
+        rec = ds.sizes["time"]
 
         thk = tf.convert_to_tensor(ds["thk"])[it, ::co, ::co]
         usurf = tf.convert_to_tensor(ds["usurf"])[it, ::co, ::co]
@@ -209,7 +230,11 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
     state.MISFIT = []
     state.MISFIT_CO = []
 
-    define_vertical_weight(cfg, state)
+    state.vert_weight = define_vertical_weight(
+        cfg.processes.iceflow.numerics.Nz,cfg.processes.iceflow.numerics.vert_spacing
+                                              )
+
+    vert_disc = [vars(state)[f] for f in ['zeta', 'dzeta', 'Leg_P', 'Leg_dPdz']]
 
     for epoch in range(cfg.processes.pretraining.epochs):
         nsub = list(trainingset)
@@ -218,7 +243,7 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
         for p in nsub:
             ds = xarray.open_dataset(os.path.join(p, "ex.nc"), engine="netcdf4")
 
-            rec = ds.dims["time"]
+            rec = ds.sizes["time"]
 
             bs = cfg.processes.pretraining.batch_size
 
@@ -300,7 +325,7 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
                 X = X[:,:ny,:nx,:]
                 Y = Y[:,:ny,:nx,:]
 
-                energy_list = iceflow_energy_XY(cfg, X, YP)
+                energy_list = iceflow_energy_XY(cfg, X, Y, vert_disc)
   
                 energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
@@ -364,7 +389,7 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
                 X  =  X[:,:Ny,:Nx,:]
                 YP = YP[:,:Ny,:Nx,:]
 
-                energy_list = iceflow_energy_XY(cfg, X, YP)
+                energy_list = iceflow_energy_XY(cfg, X, YP, vert_disc)
   
                 energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
@@ -492,8 +517,9 @@ def _computemisfitall(cfg, state, X, Y, YP):
     up, vp = Y_to_UV(cfg, YP)
     up = up[0]
     vp = vp[0]
-
-    nl1bardiff, nl2bardiff = computemisfit(state, thk, ut - up, vt - vp)
+ 
+    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    nl1bardiff, nl2bardiff = computemisfit(state, thk, ut - up, vt - vp, vert_basis)
 
     ut = 0.5 * (ut[1:, :, :] + ut[:-1, :, :])
     up = 0.5 * (up[1:, :, :] + up[:-1, :, :])
