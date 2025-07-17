@@ -72,7 +72,7 @@ def update_iceflow_diagnostic(cfg, state):
 
 
 def computemisfit(state, thk, U, V, vert_basis):
-    ubar, vbar = get_velbar(U, V,vert_basis)
+    ubar, vbar = get_velbar(U, V,state.vert_weight, vert_basis)
 
     VEL = tf.stack([ubar, vbar], axis=0)
     MA = tf.where(thk > 1, tf.ones_like(VEL), 0)

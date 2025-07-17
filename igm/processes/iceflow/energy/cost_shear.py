@@ -27,10 +27,10 @@ def compute_horizontal_derivatives(U, V, dX, staggered_grid):
 
     if staggered_grid:
 
-        dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dX[..., 0, 0]
-        dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dX[..., 0, 0]
-        dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dX[..., 0, 0]
-        dVdy = (V[..., :, 1:, :] - V[..., :, :-1, :]) / dX[..., 0, 0]
+        dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dX[0, 0, 0]
+        dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dX[0, 0, 0]
+        dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dX[0, 0, 0]
+        dVdy = (V[..., :, 1:, :] - V[..., :, :-1, :]) / dX[0, 0, 0]
 
         dUdx = (dUdx[..., :, :-1, :] + dUdx[..., :, 1:, :]) / 2
         dVdx = (dVdx[..., :, :-1, :] + dVdx[..., :, 1:, :]) / 2
@@ -43,10 +43,10 @@ def compute_horizontal_derivatives(U, V, dX, staggered_grid):
         U = tf.pad(U, paddings, mode="SYMMETRIC")
         V = tf.pad(V, paddings, mode="SYMMETRIC")
 
-        dUdx = (U[..., :, 1:-1, 2:] - U[..., :, 1:-1, :-2]) / (2 * dX[..., 0, 0])
-        dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dX[..., 0, 0])
-        dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dX[..., 0, 0])
-        dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dX[..., 0, 0])
+        dUdx = (U[..., :, 1:-1, 2:] - U[..., :, 1:-1, :-2]) / (2 * dX[0, 0, 0])
+        dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dX[0, 0, 0])
+        dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dX[0, 0, 0])
+        dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dX[0, 0, 0])
 
     return dUdx, dVdx, dUdy, dVdy
 
@@ -139,16 +139,14 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, 
                                                                   sloptopgx, sloptopgy)  
 
     elif vert_basis == "Legendre":
-
-        print("Using Legendre basis for vertical derivatives")
  
         dUdx = tf.einsum('ij,bjkl->bikl', Leg_P, dUdx) 
         dVdx = tf.einsum('ij,bjkl->bikl', Leg_P, dVdx)
         dUdy = tf.einsum('ij,bjkl->bikl', Leg_P, dUdy)
         dVdy = tf.einsum('ij,bjkl->bikl', Leg_P, dVdy)
 
-        dUdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, U) / tf.maximum(thk, thr_ice_thk)
-        dVdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, V) / tf.maximum(thk, thr_ice_thk)
+        dUdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, U) / tf.maximum(thk[:, None, :, :], thr_ice_thk) 
+        dVdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, V) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
  
     elif vert_basis == "SIA":
 
@@ -162,9 +160,9 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, 
                                   * psia(zeta[None, :, None, None], exp_glen)
 
         dUdz = (U[:, -1:, :, :] - U[:, 0:1, :, :]) \
-             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk, thr_ice_thk)
+             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
         dVdz = (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
-             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk, thr_ice_thk)
+             * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
 
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
