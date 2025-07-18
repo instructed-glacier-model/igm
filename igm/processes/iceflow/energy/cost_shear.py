@@ -23,14 +23,14 @@ def cost_shear(cfg, U, V, fieldin, vert_disc, staggered_grid):
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)
 
 @tf.function()
-def compute_horizontal_derivatives(U, V, dX, staggered_grid):
+def compute_horizontal_derivatives(U, V, dx, staggered_grid):
 
     if staggered_grid:
 
-        dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dX[0, 0, 0]
-        dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dX[0, 0, 0]
-        dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dX[0, 0, 0]
-        dVdy = (V[..., :, 1:, :] - V[..., :, :-1, :]) / dX[0, 0, 0]
+        dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dx
+        dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dx
+        dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dx
+        dVdy = (V[..., :, 1:, :] - V[..., :, :-1, :]) / dx
 
         dUdx = (dUdx[..., :, :-1, :] + dUdx[..., :, 1:, :]) / 2
         dVdx = (dVdx[..., :, :-1, :] + dVdx[..., :, 1:, :]) / 2
@@ -43,10 +43,10 @@ def compute_horizontal_derivatives(U, V, dX, staggered_grid):
         U = tf.pad(U, paddings, mode="SYMMETRIC")
         V = tf.pad(V, paddings, mode="SYMMETRIC")
 
-        dUdx = (U[..., :, 1:-1, 2:] - U[..., :, 1:-1, :-2]) / (2 * dX[0, 0, 0])
-        dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dX[0, 0, 0])
-        dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dX[0, 0, 0])
-        dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dX[0, 0, 0])
+        dUdx = (U[..., :, 1:-1, 2:] - U[..., :, 1:-1, :-2]) / (2 * dx)
+        dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dx)
+        dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dx)
+        dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dx)
 
     return dUdx, dVdx, dUdy, dVdy
 
@@ -110,7 +110,7 @@ def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, 
         B = B[:,None, :, :]
     p = 1.0 + 1.0 / exp_glen
 
-    dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(U, V, dX, staggered_grid) 
+    dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(U, V, dX[0,0,0], staggered_grid) 
 
     # TODO : sloptopgx, sloptopgy must be the elevaion of layers! not the bedrock, little effects?
     sloptopgx, sloptopgy = compute_gradient(usurf - thk, dX, dX, staggered_grid) 
