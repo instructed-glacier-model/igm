@@ -36,11 +36,9 @@ def update_write_particle_numpy(cfg, state):
         array = tf.transpose(
             tf.stack(
                 [
-                    state.particle["id"].numpy().astype(np.int32),
-                    state.particle["x"].numpy().astype(np.float64),
-                    + state.x[0].numpy().astype(np.float64),
-                    state.particle["y"].numpy().astype(np.float64)
-                    + state.y[0].numpy().astype(np.float64),
+                    state.particle["id"].numpy(),
+                    (state.particle["x"]+ state.x[0]).numpy().astype(np.float64),
+                    (state.particle["y"]+ state.y[0]).numpy().astype(np.float64),
                     state.particle["z"],
                     state.particle["r"],
                     state.particle["t"],

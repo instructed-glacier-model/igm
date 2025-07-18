@@ -12,14 +12,16 @@ def update_particles(cfg, state):
         state.t.numpy() - state.tlast_seeding
     ) >= cfg.processes.particles.frequency_seeding:
         
-        if cfg.processes.particles.seeding_method == "accumulation":
-            from igm.processes.particles.seeding_particles \
-                import seeding_particles_accumulation as seeding_particles
-        elif cfg.processes.particles.seeding_method == "all":
-            from igm.processes.particles.seeding_particles \
-                import seeding_particles_all as seeding_particles
-
-        seeding_particles(cfg, state)
+        if not cfg.processes.particles.seeding_method == "user":
+            if cfg.processes.particles.seeding_method == "accumulation":
+                from igm.processes.particles.seeding_particles \
+                    import seeding_particles_accumulation as seeding_particles
+            elif cfg.processes.particles.seeding_method == "all":
+                from igm.processes.particles.seeding_particles \
+                    import seeding_particles_all as seeding_particles
+            seeding_particles(cfg, state)
+        else:
+            seeding_particles_user(cfg, state)
 
         # merge the new seeding points with the former ones
         state.particle["x"] = tf.concat([state.particle["x"], state.nparticle["x"]], axis=-1)
