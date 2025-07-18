@@ -41,20 +41,17 @@ def update_write_particle_cudf(cfg, state):
             "traj-" + "{:06d}".format(int(state.t.numpy())),
         )
 
-        particle_id = tf.cast(tf.range(state.particle_x.shape[0]), dtype=tf.float32)
         array = tf.transpose(
             tf.stack(
                 [
-                    particle_id,
-                    state.particle_x
-                    + state.x[0],
-                    state.particle_y
-                    + state.y[0],
-                    state.particle_z,
-                    state.particle_r,
-                    state.particle_t,
-                    state.particle_topg,
-                    state.particle_thk,
+                    state.particle["id"],
+                    state.particle["x"] + state.x[0],
+                    state.particle["y"] + state.y[0],
+                    state.particle["z"],
+                    state.particle["r"],
+                    state.particle["t"],
+                    state.particle["topg"],
+                    state.particle["thk"],
                 ],
                 axis=0,
             )

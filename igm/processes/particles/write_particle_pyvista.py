@@ -28,9 +28,9 @@ def update_write_particle_pyvista(cfg, state):
         )
 
         # Compute positions
-        x = state.particle_x.numpy() + state.x[0].numpy()
-        y = state.particle_y.numpy() + state.y[0].numpy()
-        z = state.particle_z.numpy()
+        x = state.particle["x"].numpy() + state.x[0].numpy()
+        y = state.particle["y"].numpy() + state.y[0].numpy()
+        z = state.particle["z"].numpy()
 
         # Create point coordinates array
         points = np.vstack((x, y, z)).T  # shape (n, 3)
@@ -38,20 +38,20 @@ def update_write_particle_pyvista(cfg, state):
         # Create point data
         data = {
             "Id": np.arange(x.shape[0], dtype=np.float32),
-            "rh": state.particle_r.numpy(),
-            "t": state.particle_t.numpy(),
-            "topg": state.particle_topg.numpy(),
-            "thk": state.particle_thk.numpy(),
+            "rh": state.particle["r"].numpy(),
+            "t": state.particle["t"].numpy(),
+            "topg": state.particle["topg"].numpy(),
+            "thk": state.particle["thk"].numpy(),
         }
 
         if "weights" in cfg.processes.particles.fields:
-            data["weights"] = state.particle_w.numpy()
-            
+            data["weights"] = state.particle["w"].numpy()
+
         if "englt" in cfg.processes.particles.fields:
-            data["englt"] = state.particle_englt.numpy()
+            data["englt"] = state.particle["englt"].numpy()
 
         if "velmag" in cfg.processes.particles.fields:
-            data["velmag"] = state.particle_velmag.numpy()
+            data["velmag"] = state.particle["velmag"].numpy()
 
         # Create the PyVista point cloud
         cloud = pv.PolyData(points)

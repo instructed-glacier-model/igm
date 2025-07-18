@@ -33,21 +33,25 @@ def initialize(cfg, state):
 
     state.tlast_seeding = cfg.processes.particles.tlast_seeding_init
 
+    state.particle = {}  # this is a dictionary to store the particles
+    state.nparticle = {}  # this is a dictionary to store the new particles
+
     # initialize trajectories
-    state.particle_x = tf.Variable([])
-    state.particle_y = tf.Variable([])
-    state.particle_z = tf.Variable([])
-    state.particle_r = tf.Variable([])
-    state.particle_topg = tf.Variable([])
-    state.particle_thk = tf.Variable([]) 
-    state.particle_t = tf.Variable([])
+    state.particle["id"] = tf.Variable([],dtype=tf.int32)
+    state.particle["x"] = tf.Variable([])
+    state.particle["y"] = tf.Variable([])
+    state.particle["z"] = tf.Variable([])
+    state.particle["r"] = tf.Variable([])
+    state.particle["topg"] = tf.Variable([])
+    state.particle["thk"] = tf.Variable([]) 
+    state.particle["t"] = tf.Variable([])
 
     if "weights" in cfg.processes.particles.fields:
-        state.particle_w = tf.Variable([])  # this is to give a weight to the particle
+        state.particle["w"] = tf.Variable([])  # this is to give a weight to the particle
     if "englt" in cfg.processes.particles.fields:
-        state.particle_englt = tf.Variable([])
+        state.particle["englt"] = tf.Variable([])
     if "velmag" in cfg.processes.particles.fields:
-        state.particle_velmag = tf.Variable([])
+        state.particle["velmag"] = tf.Variable([])
 
     # build the gridseed, we don't want to seed all pixels!
     state.gridseed = np.zeros_like(state.thk) == 1

@@ -38,4 +38,9 @@ fields:
   Type: list
   Units: dimless
   Description: List of fields to write in the output file (englt, velbar, weight)
+seeding_method:
+  Type: str
+  Units: dimless
+  Description: name of the seeding method to use (accumulation or all)
+
 

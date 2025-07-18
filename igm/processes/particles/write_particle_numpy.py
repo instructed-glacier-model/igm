@@ -33,20 +33,19 @@ def update_write_particle_numpy(cfg, state):
             "traj-" + "{:06d}".format(int(state.t.numpy())) + ".csv",
         )
 
-        ID = tf.cast(tf.range(state.particle_x.shape[0]), dtype="float32")
         array = tf.transpose(
             tf.stack(
                 [
-                    ID,
-                    state.particle_x.numpy().astype(np.float64)
+                    state.particle["id"].numpy().astype(np.int32),
+                    state.particle["x"].numpy().astype(np.float64),
                     + state.x[0].numpy().astype(np.float64),
-                    state.particle_y.numpy().astype(np.float64)
+                    state.particle["y"].numpy().astype(np.float64)
                     + state.y[0].numpy().astype(np.float64),
-                    state.particle_z,
-                    state.particle_r,
-                    state.particle_t,
-                    state.particle_topg,
-                    state.particle_thk,
+                    state.particle["z"],
+                    state.particle["r"],
+                    state.particle["t"],
+                    state.particle["topg"],
+                    state.particle["thk"],
                 ],
                 axis=0,
             )

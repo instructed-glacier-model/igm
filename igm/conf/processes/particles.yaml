@@ -12,3 +12,4 @@ particles:
     - weights
     - englt
     - velmag
+  seeding_method: accumulation

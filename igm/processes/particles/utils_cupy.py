@@ -59,7 +59,7 @@ def interpolate_2d(interpolated_grid, grid_values, array_particles, depth):
             interpolated_grid[depth_layer, particle_id] = P
 
 
-def interpolate_particles_2d(U, V, W, thk, topg, indices):
+def interpolate_particles_2d(U, V, W, smb, thk, topg, indices):
 
     # True for all variables (maybe make it not dependent on U...)
     depth = U.shape[0]
@@ -90,6 +90,11 @@ def interpolate_particles_2d(U, V, W, thk, topg, indices):
     )
     thk_numba = cp.from_dlpack(thk_numba)
 
+    smb_numba = tf.experimental.dlpack.to_dlpack(
+        tf.expand_dims(tf.constant(smb), axis=0)
+    )
+    smb_numba = cp.from_dlpack(smb_numba)
+
     topg_numba = tf.experimental.dlpack.to_dlpack(
         tf.expand_dims(tf.constant(topg), axis=0)
     )  # had to use tf.constant since topg is a tf variable and not tensor
@@ -107,8 +112,8 @@ def interpolate_particles_2d(U, V, W, thk, topg, indices):
     stream_w = cuda.stream()
     stream_thk = cuda.stream()
     stream_topg = cuda.stream()
+    stream_smb = cuda.stream()
 
-    
     u_device = cuda.device_array(
         shape=(depth, number_of_particles), dtype="float32", stream=stream_u
     )
@@ -124,9 +129,9 @@ def interpolate_particles_2d(U, V, W, thk, topg, indices):
     topg_device = cuda.device_array(
         shape=(1, number_of_particles), dtype="float32", stream=stream_topg
     )
-    # smb_device = cuda.device_array(
-    #     shape=(1, number_of_particles), dtype="float32", stream=stream_smb
-    # )
+    smb_device = cuda.device_array(
+         shape=(1, number_of_particles), dtype="float32", stream=stream_smb
+    )
 
     
     interpolate_2d[blockspergrid, threadsperblock, stream_u](
@@ -147,10 +152,10 @@ def interpolate_particles_2d(U, V, W, thk, topg, indices):
     interpolate_2d[blockspergrid, threadsperblock, stream_topg](
         topg_device, topg_numba, array_particles, 1
     )
-    # stream_topg.synchronize()
-    # interpolate_2d[blockspergrid, threadsperblock, stream_smb](
-    #     smb_device, smb_numba, array_particles, 1
-    # )
+    #stream_topg.synchronize()
+    interpolate_2d[blockspergrid, threadsperblock, stream_smb](
+         smb_device, smb_numba, array_particles, 1
+    )
 
     u = cp.asarray(u_device)
     u = tf.experimental.dlpack.from_dlpack(u.toDlpack())
@@ -169,10 +174,10 @@ def interpolate_particles_2d(U, V, W, thk, topg, indices):
     topg = tf.experimental.dlpack.from_dlpack(topg.toDlpack())
     topg = tf.squeeze(topg, axis=0)
 
-    # smb = cp.asarray(smb_device)
-    # smb = tf.experimental.dlpack.from_dlpack(smb.toDlpack())
-    # smb = tf.squeeze(smb, axis=0)
+    smb = cp.asarray(smb_device)
+    smb = tf.experimental.dlpack.from_dlpack(smb.toDlpack())
+    smb = tf.squeeze(smb, axis=0)
 
-    return u, v, w, thk, topg
+    return u, v, w, smb, thk, topg
 
 
