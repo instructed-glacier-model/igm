@@ -34,4 +34,8 @@ output_format:
   Type: str
   Units: dimless
   Description: Type of output format for particles (csv, parquet)
+fields:
+  Type: list
+  Units: dimless
+  Description: List of fields to write in the output file (englt, velbar, weight)
 

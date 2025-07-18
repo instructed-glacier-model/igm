@@ -20,8 +20,8 @@ def rhs_to_zeta(vert_spacing, rhs):
  
     return zeta
  
-def get_weights(vert_spacing, Nz, particle_r, u):
-    "What is this function doing? Name it properly.."
+def get_weights(vert_spacing, Nz, particle_r):
+    "This function gets the weight to extract the value of any field at a given position along the ice column"
 
     # rng_outer = srange("indices in weights", color="blue")
     zeta = rhs_to_zeta(vert_spacing, particle_r)  # get the position in the column
@@ -37,7 +37,7 @@ def get_weights(vert_spacing, Nz, particle_r, u):
     ind0 = tf.stack([tf.cast(I0, tf.int64), tf.range(I0.shape[0], dtype=tf.int64)], axis=1)
     ind1 = tf.stack([tf.cast(I1, tf.int64), tf.range(I1.shape[0], dtype=tf.int64)], axis=1)
     
-    weights = tf.zeros_like(u)
+    weights = tf.zeros((Nz, particle_r.shape[0]))
     weights = tf.tensor_scatter_nd_add(
         weights, indices=ind0, updates=1 - lamb
     )

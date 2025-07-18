@@ -53,7 +53,6 @@ def update_write_particle_cudf(cfg, state):
                     state.particle_z,
                     state.particle_r,
                     state.particle_t,
-                    state.particle_englt,
                     state.particle_topg,
                     state.particle_thk,
                 ],
@@ -70,7 +69,6 @@ def update_write_particle_cudf(cfg, state):
             "z",
             "rh",
             "t",
-            "englt",
             "topg",
             "thk",
         ]  # for some reason, my header shows '# Id' for the numpy version but 'Id' for GPU... fyi

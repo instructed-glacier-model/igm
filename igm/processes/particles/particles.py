@@ -13,16 +13,15 @@ from igm.processes.particles.write_particle_cudf import initialize_write_particl
 from igm.processes.particles.write_particle_cudf import update_write_particle_cudf 
 from igm.processes.particles.write_particle_pyvista import initialize_write_particle_pyvista
 from igm.processes.particles.write_particle_pyvista import update_write_particle_pyvista 
-from igm.processes.particles.update_tf import update_tf
-from igm.processes.particles.update_cu import update_cu
+from igm.processes.particles.update_particles import update_particles
 
-def srange(message, color):
-    tf.test.experimental.sync_devices()
-    return nvtx.start_range(message, color)
+# def srange(message, color):
+#     tf.test.experimental.sync_devices()
+#     return nvtx.start_range(message, color)
 
-def erange(rng):
-    tf.test.experimental.sync_devices()
-    nvtx.end_range(rng)
+# def erange(rng):
+#     tf.test.experimental.sync_devices()
+#     nvtx.end_range(rng)
 
 def initialize(cfg, state):
 
@@ -31,9 +30,6 @@ def initialize(cfg, state):
             raise ValueError(
                 "The 'vert_flow' module is required to use the 3d tracking method in the 'particles' module."
             )
-        
-    if cfg.processes.particles.tracking_method == "simple":
-        assert cfg.processes.particles.computation_library == "tensorflow" 
 
     state.tlast_seeding = cfg.processes.particles.tlast_seeding_init
 
@@ -42,14 +38,16 @@ def initialize(cfg, state):
     state.particle_y = tf.Variable([])
     state.particle_z = tf.Variable([])
     state.particle_r = tf.Variable([])
-    state.particle_w = tf.Variable([])  # this is to give a weight to the particle
-    state.particle_t = tf.Variable([])
-    state.particle_englt = tf.Variable([])  # this computes the englacial time
     state.particle_topg = tf.Variable([])
-    state.particle_thk = tf.Variable([])
+    state.particle_thk = tf.Variable([]) 
+    state.particle_t = tf.Variable([])
 
-    state.pswvelbase = tf.Variable(tf.zeros_like(state.thk), trainable=False)
-    state.pswvelsurf = tf.Variable(tf.zeros_like(state.thk), trainable=False)
+    if "weights" in cfg.processes.particles.fields:
+        state.particle_w = tf.Variable([])  # this is to give a weight to the particle
+    if "englt" in cfg.processes.particles.fields:
+        state.particle_englt = tf.Variable([])
+    if "velmag" in cfg.processes.particles.fields:
+        state.particle_velmag = tf.Variable([])
 
     # build the gridseed, we don't want to seed all pixels!
     state.gridseed = np.zeros_like(state.thk) == 1
@@ -75,13 +73,8 @@ def update(cfg, state):
     if hasattr(state, "logger"):
         state.logger.info("Update particle tracking at time : " + str(state.t.numpy()))
 
-    if cfg.processes.particles.computation_library == "tensorflow":
-        update_tf(cfg, state)
-    elif cfg.processes.particles.computation_library in ["cupy","cuda"]:
-        update_cu(cfg, state)
-    else:
-        raise ValueError("Must be either 'tensorflow', 'cuda', or 'cupy'.")
-    
+    update_particles(cfg, state)
+
     if cfg.processes.particles.write_trajectories:
 #        rng = srange("Writing particles", color="blue")
         if cfg.processes.particles.writing_library == "numpy":

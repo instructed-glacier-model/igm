@@ -45,7 +45,6 @@ def update_write_particle_numpy(cfg, state):
                     state.particle_z,
                     state.particle_r,
                     state.particle_t,
-                    state.particle_englt,
                     state.particle_topg,
                     state.particle_thk,
                 ],
@@ -53,7 +52,7 @@ def update_write_particle_numpy(cfg, state):
             )
         )
         np.savetxt(
-            f, array, delimiter=",", fmt="%.2f", header="Id,x,y,z,rh,t,englt,topg,thk"
+            f, array, delimiter=",", fmt="%.2f", header="Id,x,y,z,rh,t,topg,thk"
         )
 
         ft = os.path.join("trajectories", "time.dat")

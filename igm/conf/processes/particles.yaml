@@ -8,4 +8,7 @@ particles:
   computation_library: tensorflow
   writing_library: numpy
   output_format: csv
-  
+  fields:
+    - weights
+    - englt
+    - velmag

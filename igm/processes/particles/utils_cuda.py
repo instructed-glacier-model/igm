@@ -32,3 +32,24 @@ def interpolate_particles_2d(U, V, W, THK, TOPG, indices):
     topg = tf.squeeze(topg)
 
     return u, v, w, thk, topg
+
+def interpolate_particles_2d_simple(U, V, SMB, THK, TOPG, indices):
+
+    # Make depth = 1 since the interpolate2d function expects a 3D tensor
+    thk_input = tf.expand_dims(THK, axis=0)
+    topg_input = tf.expand_dims(TOPG, axis=0)
+    smb_input = tf.expand_dims(SMB, axis=0)
+    
+    particles_tf = tf.squeeze(indices)
+    u = interpolate_op.interpolate2d(grid=U, particles=particles_tf)
+    v = interpolate_op.interpolate2d(grid=V, particles=particles_tf)
+    smb = interpolate_op.interpolate2d(grid=smb_input, particles=particles_tf)
+    thk = interpolate_op.interpolate2d(grid=thk_input, particles=particles_tf)
+    topg = interpolate_op.interpolate2d(grid=topg_input, particles=particles_tf)
+
+    # Remove the extra dimension added for depth
+    smb = tf.squeeze(smb)
+    thk = tf.squeeze(thk)
+    topg = tf.squeeze(topg)
+
+    return u, v, smb, thk, topg

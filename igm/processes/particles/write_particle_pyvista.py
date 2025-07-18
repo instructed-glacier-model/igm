@@ -40,10 +40,18 @@ def update_write_particle_pyvista(cfg, state):
             "Id": np.arange(x.shape[0], dtype=np.float32),
             "rh": state.particle_r.numpy(),
             "t": state.particle_t.numpy(),
-            "englt": state.particle_englt.numpy(),
             "topg": state.particle_topg.numpy(),
             "thk": state.particle_thk.numpy(),
         }
+
+        if "weights" in cfg.processes.particles.fields:
+            data["weights"] = state.particle_w.numpy()
+            
+        if "englt" in cfg.processes.particles.fields:
+            data["englt"] = state.particle_englt.numpy()
+
+        if "velmag" in cfg.processes.particles.fields:
+            data["velmag"] = state.particle_velmag.numpy()
 
         # Create the PyVista point cloud
         cloud = pv.PolyData(points)
