@@ -13,7 +13,7 @@ def seeding_particles_accumulation(cfg, state):
 
     here we seed only the accum. area (a bit more), where there is
     significant ice, and in some points of a regular grid state.gridseed
-    (density defined by density_seeding)
+    (density defined by seeding.density)
 
     """
     # here we seed where i) thickness is higher than 1 m 
@@ -30,11 +30,11 @@ def seeding_particles_accumulation(cfg, state):
     state.nparticle["r"] = ( state.usurf[I] - state.topg[I]) / state.thk[I]
     state.nparticle["r"] = tf.where(state.thk[I] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
-    if "weight" in cfg.processes.particles.fields:
+    if "weight" in cfg.processes.particles.output.add_fields:
         state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])
-    if "englt" in cfg.processes.particles.fields:
+    if "englt" in cfg.processes.particles.output.add_fields:
         state.nparticle["englt"] = tf.zeros_like(state.nparticle["x"])
-    if "velmag" in cfg.processes.particles.fields:
+    if "velmag" in cfg.processes.particles.output.add_fields:
         state.nparticle["velmag"] = tf.zeros_like(state.nparticle["x"])
 
     id = 0 if state.particle["id"].shape[0] == 0 else state.particle["id"][-1]
@@ -44,6 +44,8 @@ def seeding_particles_all(cfg, state):
     """
     User seeding particles in the glacier
     """
+
+    height = cfg.processes.particles.seeding.height 
     
     if state.it == 0:
             
@@ -54,11 +56,9 @@ def seeding_particles_all(cfg, state):
         np_thk = []
         np_topg = []
 
-        dz = 20 
+        for i in np.arange(0, int(tf.reduce_max(state.thk)/height)):
 
-        for i in np.arange(0, int(tf.reduce_max(state.thk)/dz)):
-
-            ice_thk = i*dz
+            ice_thk = i*height
             I = (ice_thk<state.thk) & state.gridseed
 
             # Skip appending if I is entirely False
@@ -81,11 +81,11 @@ def seeding_particles_all(cfg, state):
         state.nparticle["r"] = (state.nparticle["z"] - np_topg) / np_thk
         state.nparticle["r"] = tf.where(np_thk == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
-        if "weight" in cfg.processes.particles.fields:
+        if "weight" in cfg.processes.particles.output.add_fields:
             state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])
-        if "englt" in cfg.processes.particles.fields:
+        if "englt" in cfg.processes.particles.output.add_fields:
             state.nparticle["englt"] = tf.zeros_like(state.nparticle["x"])
-        if "velmag" in cfg.processes.particles.fields:
+        if "velmag" in cfg.processes.particles.output.add_fields:
             state.nparticle["velmag"] = tf.zeros_like(state.nparticle["x"])
 
         state.part_buffer = tf.zeros_like(state.smb)
@@ -94,7 +94,7 @@ def seeding_particles_all(cfg, state):
 
         state.part_buffer += state.dt * state.smb
 
-        I = (state.part_buffer > 20)
+        I = (state.part_buffer > height)
 
         if tf.size(I) == 0:  # Check if I is empty
             state.nparticle["x"] = tf.zeros([0], dtype=state.X.dtype)
@@ -113,18 +113,17 @@ def seeding_particles_all(cfg, state):
         state.nparticle["r"] = (state.nparticle["z"] - np_topg) / np_thk
         state.nparticle["r"] = tf.where(np_thk == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
-        if "weight" in cfg.processes.particles.fields:
+        if "weight" in cfg.processes.particles.output.add_fields:
             state.nparticle["weight"] = tf.zeros_like(state.nparticle["x"])
-        if "englt" in cfg.processes.particles.fields:
+        if "englt" in cfg.processes.particles.output.add_fields:
             state.nparticle["englt"] = tf.zeros_like(state.nparticle["x"])
-        if "velmag" in cfg.processes.particles.fields:
+        if "velmag" in cfg.processes.particles.output.add_fields:
             state.nparticle["velmag"] = tf.zeros_like(state.nparticle["x"])
 
         if tf.size(I) > 0:  # Only update part_buffer if I is not empty
-            state.part_buffer = tf.where(state.part_buffer > 20, 
-                                         state.part_buffer - 20, 
+            state.part_buffer = tf.where(state.part_buffer > height, 
+                                         state.part_buffer - height, 
                                          state.part_buffer)
             
-
     id = 0 if state.particle["id"].shape[0] == 0 else state.particle["id"][-1]
     state.nparticle["id"] = tf.range(id, id + state.nparticle["x"].shape[0])

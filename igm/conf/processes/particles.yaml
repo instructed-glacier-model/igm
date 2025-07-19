@@ -1,15 +1,36 @@
 particles:
-  tracking_method: 3d
-  frequency_seeding: 50
-  density_seeding: 0.2
-  tlast_seeding_init: -1.0e+5000
-  write_trajectories: True
-  add_topography: True
-  computation_library: tensorflow
-  writing_library: numpy
-  output_format: csv
-  fields:
-    - weight
-    - englt
-    - velmag
-  seeding_method: accumulation
+  seeding:
+    method: accumulation
+    frequency: 50
+    density: 0.2
+    tlast_init: -1.0e+5000
+    height: 20
+  tracking:
+    method: 3d
+    library: cuda
+  removal:
+    method: ""
+  output:
+    library: numpy
+    add_topography: True
+    format: csv
+    add_fields:
+      - weight
+      - englt
+      - velmag
+
+
+  # tracking_method: 3d
+  # frequency_seeding: 50
+  # density_seeding: 0.2
+  # tlast_seeding_init: -1.0e+5000
+  # write_trajectories: True
+  # add_topography: True
+  # computation_library: tensorflow
+  # writing_library: numpy
+  # output_format: csv
+  # fields:
+  #   - weight
+  #   - englt
+  #   - velmag
+  # seeding_method: accumulation

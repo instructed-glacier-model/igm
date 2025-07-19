@@ -42,13 +42,13 @@ def update_write_particle_pyvista(cfg, state):
             "t": state.particle["t"].numpy()
         }
 
-        if "weight" in cfg.processes.particles.fields:
+        if "weight" in cfg.processes.particles.output.add_fields:
             data["weight"] = state.particle["weight"].numpy()
 
-        if "englt" in cfg.processes.particles.fields:
+        if "englt" in cfg.processes.particles.output.add_fields:
             data["englt"] = state.particle["englt"].numpy()
 
-        if "velmag" in cfg.processes.particles.fields:
+        if "velmag" in cfg.processes.particles.output.add_fields:
             data["velmag"] = state.particle["velmag"].numpy()
 
         # Create the PyVista point cloud

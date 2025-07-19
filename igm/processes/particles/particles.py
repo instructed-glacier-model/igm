@@ -25,13 +25,13 @@ from igm.processes.particles.update_particles import update_particles
 
 def initialize(cfg, state):
 
-    if cfg.processes.particles.tracking_method == "3d":
+    if cfg.processes.particles.tracking.method == "3d":
         if "vert_flow" not in cfg.processes:
             raise ValueError(
                 "The 'vert_flow' module is required to use the 3d tracking method in the 'particles' module."
             )
 
-    state.tlast_seeding = cfg.processes.particles.tlast_seeding_init
+    state.tlast_seeding = cfg.processes.particles.seeding.tlast_init
 
     state.particle = {}  # this is a dictionary to store the particles
     state.nparticle = {}  # this is a dictionary to store the new particles
@@ -42,24 +42,21 @@ def initialize(cfg, state):
     for key in ["x", "y", "z", "r", "t"]:
         state.particle[key] = tf.Variable([])
 
-    for key in cfg.processes.particles.fields:
+    for key in cfg.processes.particles.output.add_fields:
         state.particle[key] = tf.Variable([])
 
     # build the gridseed, we don't want to seed all pixels!
     state.gridseed = np.zeros_like(state.thk) == 1
     # uniform seeding on the grid
-    rr = int(1.0 / cfg.processes.particles.density_seeding)
+    rr = int(1.0 / cfg.processes.particles.seeding.density)
     state.gridseed[::rr, ::rr] = True
 
-    if cfg.processes.particles.write_trajectories:
-        if cfg.processes.particles.writing_library == "numpy":
-            initialize_write_particle_numpy(cfg, state)
-        elif cfg.processes.particles.writing_library == "cudf":
-            initialize_write_particle_cudf(cfg, state)
-        elif cfg.processes.particles.writing_library == "pyvista":
-            initialize_write_particle_pyvista(cfg, state)
-        else:
-            raise ValueError("must be either 'numpy' or 'cudf'.")
+    if cfg.processes.particles.output.library == "numpy":
+        initialize_write_particle_numpy(cfg, state)
+    elif cfg.processes.particles.output.library == "cudf":
+        initialize_write_particle_cudf(cfg, state)
+    elif cfg.processes.particles.output.library == "pyvista":
+        initialize_write_particle_pyvista(cfg, state)
 
 def update(cfg, state):
 
@@ -71,16 +68,13 @@ def update(cfg, state):
 
     update_particles(cfg, state)
 
-    if cfg.processes.particles.write_trajectories:
 #        rng = srange("Writing particles", color="blue")
-        if cfg.processes.particles.writing_library == "numpy":
-            update_write_particle_numpy(cfg, state)
-        elif cfg.processes.particles.writing_library == "cudf":
-            update_write_particle_cudf(cfg, state)
-        elif cfg.processes.particles.writing_library == "pyvista":
-            update_write_particle_pyvista(cfg, state)
-        else:
-            raise ValueError("Must be either 'numpy' or 'cudf'.")
+    if cfg.processes.particles.output.library == "numpy":
+        update_write_particle_numpy(cfg, state)
+    elif cfg.processes.particles.output.library == "cudf":
+        update_write_particle_cudf(cfg, state)
+    elif cfg.processes.particles.output.library == "pyvista":
+        update_write_particle_pyvista(cfg, state)
 #        erange(rng)
         
 def finalize(cfg, state):

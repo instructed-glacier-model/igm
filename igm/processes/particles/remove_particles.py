@@ -6,7 +6,7 @@
 import tensorflow as tf
 import numpy as np
 
-def remove_particles(cfg, state):
+def remove_particles_ablation(cfg, state):
  
     COND1 = (state.particle["r"] == 1)  
 

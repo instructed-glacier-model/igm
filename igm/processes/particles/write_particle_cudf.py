@@ -65,11 +65,11 @@ def update_write_particle_cudf(cfg, state):
             "rh",
             "t"
         ]  # for some reason, my header shows '# Id' for the numpy version but 'Id' for GPU... fyi
-        if cfg.processes.particles.output_format == "csv":
+        if cfg.processes.particles.output.format == "csv":
             df.to_csv(f"{filename}.csv", index=False)
-        elif cfg.processes.particles.output_format == "feather":
+        elif cfg.processes.particles.output.format == "feather":
             df.to_feather(f"{filename}")
-        elif cfg.processes.particles.output_format == "parquet":
+        elif cfg.processes.particles.output.format == "parquet":
             df.to_parquet(f"{filename}")
         else:
             raise ValueError(
@@ -101,11 +101,11 @@ def update_write_particle_cudf(cfg, state):
             df_topo = cudf.DataFrame(array)
             df_topo.columns = ["x", "y", "z"]
             
-            if cfg.processes.particles.output_format == "csv":
+            if cfg.processes.particles.output.format == "csv":
                 df_topo.to_csv(f"{filename_topography}.csv", index=False)
-            elif cfg.processes.particles.output_format == "feather":
+            elif cfg.processes.particles.output.format == "feather":
                 df_topo.to_feather(f"{filename_topography}")
-            elif cfg.processes.particles.output_format == "parquet":
+            elif cfg.processes.particles.output.format == "parquet":
                 df_topo.to_parquet(f"{filename_topography}")
             else:
                 raise ValueError(
