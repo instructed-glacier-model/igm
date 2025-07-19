@@ -44,8 +44,8 @@ def update_write_particle_pyvista(cfg, state):
             "thk": state.particle["thk"].numpy(),
         }
 
-        if "weights" in cfg.processes.particles.fields:
-            data["weights"] = state.particle["w"].numpy()
+        if "weight" in cfg.processes.particles.fields:
+            data["weight"] = state.particle["weight"].numpy()
 
         if "englt" in cfg.processes.particles.fields:
             data["englt"] = state.particle["englt"].numpy()

@@ -9,7 +9,7 @@ particles:
   writing_library: numpy
   output_format: csv
   fields:
-    - weights
+    - weight
     - englt
     - velmag
   seeding_method: accumulation

@@ -36,22 +36,14 @@ def initialize(cfg, state):
     state.particle = {}  # this is a dictionary to store the particles
     state.nparticle = {}  # this is a dictionary to store the new particles
 
-    # initialize trajectories
+    # initialize trajectoriesstate.nparticle["weight"]
     state.particle["id"] = tf.Variable([],dtype=tf.int32)
-    state.particle["x"] = tf.Variable([])
-    state.particle["y"] = tf.Variable([])
-    state.particle["z"] = tf.Variable([])
-    state.particle["r"] = tf.Variable([])
-    state.particle["topg"] = tf.Variable([])
-    state.particle["thk"] = tf.Variable([]) 
-    state.particle["t"] = tf.Variable([])
+ 
+    for key in ["x", "y", "z", "r", "topg", "thk", "t"]:
+        state.particle[key] = tf.Variable([])
 
-    if "weights" in cfg.processes.particles.fields:
-        state.particle["w"] = tf.Variable([])  # this is to give a weight to the particle
-    if "englt" in cfg.processes.particles.fields:
-        state.particle["englt"] = tf.Variable([])
-    if "velmag" in cfg.processes.particles.fields:
-        state.particle["velmag"] = tf.Variable([])
+    for key in cfg.processes.particles.fields:
+        state.particle[key] = tf.Variable([])
 
     # build the gridseed, we don't want to seed all pixels!
     state.gridseed = np.zeros_like(state.thk) == 1

@@ -20,7 +20,7 @@ def rhs_to_zeta(vert_spacing, rhs):
  
     return zeta
  
-def get_weights(vert_spacing, Nz, particle_r):
+def get_weights_lagrange(vert_spacing, Nz, particle_r):
     "This function gets the weight to extract the value of any field at a given position along the ice column"
 
     # rng_outer = srange("indices in weights", color="blue")

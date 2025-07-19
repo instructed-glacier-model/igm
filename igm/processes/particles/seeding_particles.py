@@ -32,8 +32,8 @@ def seeding_particles_accumulation(cfg, state):
     state.nparticle["r"] = (state.nparticle["z"] - state.nparticle["topg"]) / state.nparticle["thk"]
     state.nparticle["r"] = tf.where(state.nparticle["thk"] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
-    if "weights" in cfg.processes.particles.fields:
-        state.nparticle["w"] = tf.ones_like(state.nparticle["x"])
+    if "weight" in cfg.processes.particles.fields:
+        state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])
     if "englt" in cfg.processes.particles.fields:
         state.nparticle["englt"] = tf.zeros_like(state.nparticle["x"])
     if "velmag" in cfg.processes.particles.fields:
@@ -78,8 +78,8 @@ def seeding_particles_all(cfg, state):
     state.nparticle["r"] = (state.nparticle["z"] - state.nparticle["topg"]) / state.nparticle["thk"]
     state.nparticle["r"] = tf.where(state.nparticle["thk"] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
-    if "weights" in cfg.processes.particles.fields:
-        state.nparticle["w"] = tf.ones_like(state.nparticle["x"])
+    if "weight" in cfg.processes.particles.fields:
+        state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])
     if "englt" in cfg.processes.particles.fields:
         state.nparticle["englt"] = tf.zeros_like(state.nparticle["x"])
     if "velmag" in cfg.processes.particles.fields:
