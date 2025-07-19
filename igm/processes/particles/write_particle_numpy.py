@@ -41,15 +41,13 @@ def update_write_particle_numpy(cfg, state):
                     (state.particle["y"]+ state.y[0]).numpy().astype(np.float64),
                     state.particle["z"],
                     state.particle["r"],
-                    state.particle["t"],
-                    state.particle["topg"],
-                    state.particle["thk"],
+                    state.particle["t"]
                 ],
                 axis=0,
             )
         )
         np.savetxt(
-            f, array, delimiter=",", fmt="%.2f", header="Id,x,y,z,rh,t,topg,thk"
+            f, array, delimiter=",", fmt="%.2f", header="Id,x,y,z,rh,t"
         )
 
         ft = os.path.join("trajectories", "time.dat")

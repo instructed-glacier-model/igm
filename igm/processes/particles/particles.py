@@ -39,7 +39,7 @@ def initialize(cfg, state):
     # initialize trajectoriesstate.nparticle["weight"]
     state.particle["id"] = tf.Variable([],dtype=tf.int32)
  
-    for key in ["x", "y", "z", "r", "topg", "thk", "t"]:
+    for key in ["x", "y", "z", "r", "t"]:
         state.particle[key] = tf.Variable([])
 
     for key in cfg.processes.particles.fields:

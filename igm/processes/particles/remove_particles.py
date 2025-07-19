@@ -8,11 +8,9 @@ import numpy as np
 
 def remove_particles(cfg, state):
  
-    COND1 = (state.particle["r"] < 1) 
+    COND1 = (state.particle["r"] == 1)  
 
-    COND2 = (state.particle["thk"] == 0) 
-
-    I = tf.squeeze(tf.where(~(COND1 & COND2)))
+    I = tf.squeeze(tf.where(~(COND1)))
 
     if tf.size(I) > 0:
         for key in state.particle:

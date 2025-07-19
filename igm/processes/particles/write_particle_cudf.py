@@ -50,8 +50,6 @@ def update_write_particle_cudf(cfg, state):
                     state.particle["z"],
                     state.particle["r"],
                     state.particle["t"],
-                    state.particle["topg"],
-                    state.particle["thk"],
                 ],
                 axis=0,
             )
@@ -65,9 +63,7 @@ def update_write_particle_cudf(cfg, state):
             "y",
             "z",
             "rh",
-            "t",
-            "topg",
-            "thk",
+            "t"
         ]  # for some reason, my header shows '# Id' for the numpy version but 'Id' for GPU... fyi
         if cfg.processes.particles.output_format == "csv":
             df.to_csv(f"{filename}.csv", index=False)

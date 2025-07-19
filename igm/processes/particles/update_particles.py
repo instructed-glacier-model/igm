@@ -27,7 +27,7 @@ def update_particles(cfg, state):
         id = 0 if state.particle["id"].shape[0] == 0 else state.particle["id"][-1]
         state.nparticle["id"] = tf.range(id, id + state.particle["x"].shape[0])
 
-        for key in ["id","x", "y", "z", "r", "thk", "topg", "t"]:
+        for key in ["id","x", "y", "z", "r", "t"]:
             state.particle[key] = tf.concat([state.particle[key], state.nparticle[key]], axis=-1)
 
         for key in cfg.processes.particles.fields:
@@ -53,7 +53,7 @@ def update_particles(cfg, state):
 
         WW = state.W if hasattr(state, 'W') else state.U * 0.0
 
-        u, v, w, smb, state.particle["thk"], state.particle["topg"] = \
+        u, v, w, smb, thk, topg = \
             interpolate_particles_2d(state.U, state.V, WW, state.smb, state.thk, state.topg, indices)
 
         if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
@@ -73,21 +73,19 @@ def update_particles(cfg, state):
         if cfg.processes.particles.tracking_method == "simple":
 
             # adjust the relative height within the ice column with smb
-            pudt = state.particle["r"] * (state.particle["thk"] - smb * state.dt) / state.particle["thk"]
-            state.particle["r"] = tf.where(state.particle["thk"] > 0.1, tf.clip_by_value(pudt, 0, 1), 1)
-            state.particle["z"] = state.particle["topg"] + state.particle["thk"] * state.particle["r"]
+            pudt = state.particle["r"] * (thk - smb * state.dt) / thk
+            state.particle["r"] = tf.where(thk > 0.1, tf.clip_by_value(pudt, 0, 1), 1)
+            state.particle["z"] = topg + thk * state.particle["r"]
 
         elif cfg.processes.particles.tracking_method == "3d":
 
             state.particle["z"] += state.dt * tf.reduce_sum(weights * w, axis=0)
             # make sure the particle vertically remain within the ice body
-            state.particle["z"] = tf.clip_by_value(state.particle["z"], state.particle["topg"], 
-                                                state.particle["topg"] + state.particle["thk"])
+            state.particle["z"] = tf.clip_by_value(state.particle["z"], topg, topg + thk)
             # relative height of the particle within the glacier
-            state.particle["r"] = (state.particle["z"] - state.particle["topg"]) / state.particle["thk"]
+            state.particle["r"] = (state.particle["z"] - topg) / thk
             # if thk=0, state.rhpos takes value nan, so we set rhpos value to one in this case :
-            state.particle["r"] = tf.where(state.particle["thk"] == 0,
-                                        tf.ones_like(state.particle["r"]), state.particle["r"])
+            state.particle["r"] = tf.where(thk == 0, tf.ones_like(state.particle["r"]), state.particle["r"])
 
         else:
             print("Error : Name of the particles tracking method not recognised")

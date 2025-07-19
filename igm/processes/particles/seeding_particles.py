@@ -25,12 +25,10 @@ def seeding_particles_accumulation(cfg, state):
     state.nparticle["x"] = state.X[I] - state.x[0]  # x position of the particle
     state.nparticle["y"] = state.Y[I] - state.y[0]  # y position of the particle
     state.nparticle["z"] = state.usurf[I]           # z position of the particle
-    state.nparticle["thk"] = state.thk[I]           # ice thickness at position of the particle
-    state.nparticle["topg"] = state.topg[I]         # z position of the bedrock under the particle
 
     state.nparticle["t"] = tf.ones_like(state.nparticle["x"]) * state.t
-    state.nparticle["r"] = (state.nparticle["z"] - state.nparticle["topg"]) / state.nparticle["thk"]
-    state.nparticle["r"] = tf.where(state.nparticle["thk"] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
+    state.nparticle["r"] = ( state.usurf[I] - state.topg[I]) / state.thk[I]
+    state.nparticle["r"] = tf.where(state.thk[I] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
     if "weight" in cfg.processes.particles.fields:
         state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])
@@ -71,12 +69,12 @@ def seeding_particles_all(cfg, state):
     state.nparticle["x"] = tf.concat(np_x, axis=0)
     state.nparticle["y"] = tf.concat(np_y, axis=0)
     state.nparticle["z"] = tf.concat(np_z, axis=0)
-    state.nparticle["thk"] = tf.concat(np_thk, axis=0)
-    state.nparticle["topg"] = tf.concat(np_topg, axis=0)
+    np_thk = tf.concat(np_thk, axis=0)
+    np_topg = tf.concat(np_topg, axis=0)
 
     state.nparticle["t"] = tf.ones_like(state.nparticle["x"]) * state.t
-    state.nparticle["r"] = (state.nparticle["z"] - state.nparticle["topg"]) / state.nparticle["thk"]
-    state.nparticle["r"] = tf.where(state.nparticle["thk"] == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
+    state.nparticle["r"] = (state.nparticle["z"] - np_topg) / np_thk
+    state.nparticle["r"] = tf.where(np_thk == 0, tf.ones_like(state.nparticle["r"]), state.nparticle["r"])
 
     if "weight" in cfg.processes.particles.fields:
         state.nparticle["weight"] = tf.ones_like(state.nparticle["x"])

@@ -39,9 +39,7 @@ def update_write_particle_pyvista(cfg, state):
         data = {
             "Id": np.arange(x.shape[0], dtype=np.float32),
             "rh": state.particle["r"].numpy(),
-            "t": state.particle["t"].numpy(),
-            "topg": state.particle["topg"].numpy(),
-            "thk": state.particle["thk"].numpy(),
+            "t": state.particle["t"].numpy()
         }
 
         if "weight" in cfg.processes.particles.fields:
