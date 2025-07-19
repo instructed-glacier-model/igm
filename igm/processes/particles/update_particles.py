@@ -24,9 +24,6 @@ def update_particles(cfg, state):
         else:
             seeding_particles_user(cfg, state)
 
-        id = 0 if state.particle["id"].shape[0] == 0 else state.particle["id"][-1]
-        state.nparticle["id"] = tf.range(id, id + state.nparticle["x"].shape[0])
-
         for key in ["id","x", "y", "z", "r", "t"]:
             state.particle[key] = tf.concat([state.particle[key], state.nparticle[key]], axis=-1)
 
@@ -108,6 +105,6 @@ def update_particles(cfg, state):
         if "velmag" in cfg.processes.particles.fields:
             state.particle["velmag"] = tf.reduce_sum(weights * tf.sqrt(u**2 + v**2 + w**2), axis=0)
 
-    # remove_particles(cfg, state)
+#    remove_particles(cfg, state)
 
 
