@@ -34,6 +34,9 @@ def initialize_iceflow_emulator(cfg, state):
             clipnorm=cfg.processes.iceflow.emulator.optimizer_clipnorm
         )
 
+    L = (cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'e' + \
+        (not cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'a'
+
     direct_name = (
         "pinnbp"
         + "_"
@@ -54,6 +57,8 @@ def initialize_iceflow_emulator(cfg, state):
         str(cfg.processes.iceflow.physics.dim_arrhenius)
         + "_"
         + str(int(1))
+        + "_"
+        + L
     )
 
     if cfg.processes.iceflow.emulator.pretrained:
