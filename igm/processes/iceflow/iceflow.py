@@ -68,8 +68,8 @@ def initialize(cfg, state):
                                               )
  
     if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
-        levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
-        state.zeta, state.dzeta = compute_zeta_dzeta(levels)
+        state.levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
+        state.zeta, state.dzeta = compute_zeta_dzeta(state.levels)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)

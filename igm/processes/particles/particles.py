@@ -25,6 +25,9 @@ from igm.processes.particles.update_particles import update_particles
 
 def initialize(cfg, state):
 
+    if "iceflow" not in cfg.processes:
+        raise ValueError("The 'iceflow' module is required to use the particles module")
+    
     if cfg.processes.particles.tracking.method == "3d":
         if "vert_flow" not in cfg.processes:
             raise ValueError(
@@ -59,9 +62,6 @@ def initialize(cfg, state):
         initialize_write_particle_pyvista(cfg, state)
 
 def update(cfg, state):
-
-    if "iceflow" not in cfg.processes:
-        raise ValueError("The 'iceflow' module is required to use the particles module")
 
     if hasattr(state, "logger"):
         state.logger.info("Update particle tracking at time : " + str(state.t.numpy()))

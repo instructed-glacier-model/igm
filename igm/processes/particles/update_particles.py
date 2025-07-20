@@ -5,6 +5,7 @@
 
 import tensorflow as tf       
 from igm.processes.particles.utils import get_weights_lagrange, get_weights_legendre
+from igm.processes.particles.utils_interp import scatter_to_3d_grid
 from igm.processes.particles.remove_particles import remove_particles_ablation
  
 def update_particles(cfg, state):
@@ -104,6 +105,8 @@ def update_particles(cfg, state):
 
         if "velmag" in cfg.processes.particles.output.add_fields:
             state.particle["velmag"] = tf.reduce_sum(weights * tf.sqrt(u**2 + v**2 + w**2), axis=0)
+            #state.U2 = scatter_to_3d_grid(state.particle, "velmag", state.dx, state.U.shape, 
+            #                              state.levels, cfg.processes.iceflow.numerics.vert_spacing)
 
     if cfg.processes.particles.removal.method == "ablation":
         remove_particles_ablation(cfg, state)
