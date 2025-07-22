@@ -11,8 +11,6 @@ from igm.processes.particles.write_particle_numpy import initialize_write_partic
 from igm.processes.particles.write_particle_numpy import update_write_particle_numpy
 from igm.processes.particles.write_particle_cudf import initialize_write_particle_cudf
 from igm.processes.particles.write_particle_cudf import update_write_particle_cudf 
-from igm.processes.particles.write_particle_pyvista import initialize_write_particle_pyvista
-from igm.processes.particles.write_particle_pyvista import update_write_particle_pyvista 
 from igm.processes.particles.update_particles import update_particles
 
 # def srange(message, color):
@@ -58,8 +56,6 @@ def initialize(cfg, state):
         initialize_write_particle_numpy(cfg, state)
     elif cfg.processes.particles.output.library == "cudf":
         initialize_write_particle_cudf(cfg, state)
-    elif cfg.processes.particles.output.library == "pyvista":
-        initialize_write_particle_pyvista(cfg, state)
 
 def update(cfg, state):
 
@@ -73,8 +69,6 @@ def update(cfg, state):
         update_write_particle_numpy(cfg, state)
     elif cfg.processes.particles.output.library == "cudf":
         update_write_particle_cudf(cfg, state)
-    elif cfg.processes.particles.output.library == "pyvista":
-        update_write_particle_pyvista(cfg, state)
 #        erange(rng)
         
 def finalize(cfg, state):

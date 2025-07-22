@@ -30,7 +30,7 @@ def update_write_particle_numpy(cfg, state):
 
         f = os.path.join(
             "trajectories",
-            "traj-" + "{:06d}".format(int(state.t.numpy())) + ".csv",
+            "traj-" + "{:08.2f}".format(state.t.numpy()).replace('.', '-') + ".csv",
         )
 
         array = tf.transpose(
@@ -57,7 +57,7 @@ def update_write_particle_numpy(cfg, state):
         if cfg.processes.particles.output.add_topography:
             ftt = os.path.join(
                 "trajectories",
-                "usurf-" + "{:06d}".format(int(state.t.numpy())) + ".csv",
+                "usurf-" + "{:08.2f}".format(state.t.numpy()).replace('.', '-') + ".csv",
             )
             array = tf.transpose(
                 tf.stack(

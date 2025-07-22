@@ -38,7 +38,7 @@ def update_write_particle_cudf(cfg, state):
 
         filename = os.path.join(
             "trajectories",
-            "traj-" + "{:06d}".format(int(state.t.numpy())),
+            "traj-" + "{:08.2f}".format(state.t.numpy()).replace('.', '-'),
         )
 
         array = tf.transpose(

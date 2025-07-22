@@ -38,6 +38,12 @@ def initialize(cfg, state):
     # Save to VTP format
     surface.save(ftt)
 
+    if "particles" in cfg.processes: 
+        directory = "trajectories"
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
+        os.mkdir(directory)
+
 def run(cfg, state):
 
     import pyvista as pv
@@ -84,3 +90,30 @@ def run(cfg, state):
                 # Save to VTP format
                 surface.save(ftt)
 
+        if "particles" in cfg.processes: 
+
+            filename = os.path.join(
+                "trajectories",
+                "traj-" + "{:08.2f}".format(state.t.numpy()).replace('.', '-') + ".vtp",
+            )
+
+            # Compute positions
+            x = state.particle["x"].numpy() + state.x[0].numpy()
+            y = state.particle["y"].numpy() + state.y[0].numpy()
+            z = state.particle["z"].numpy()
+
+            # Create point coordinates array
+            points = np.vstack((x, y, z)).T  # shape (n, 3)
+
+            # Create point data
+            data = {key: val.numpy() for key, val in state.particle.items()}
+
+            # Create the PyVista point cloud
+            cloud = pv.PolyData(points)
+
+            # Add attributes
+            for key, array in data.items():
+                cloud[key] = array
+
+            # Write to VTP file
+            cloud.save(filename)
