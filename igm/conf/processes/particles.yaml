@@ -7,7 +7,7 @@ particles:
     height: 20
   tracking:
     method: 3d
-    library: cuda
+    library: tensorflow
   removal:
     method: ""
   output:
