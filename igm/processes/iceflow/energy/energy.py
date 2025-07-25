@@ -23,7 +23,7 @@ def iceflow_energy(cfg, U, V, fieldin, vert_disc):
 
 def iceflow_energy_XY(cfg, X, Y, vert_disc):
     
-    U, V = Y_to_UV(cfg, Y)
+    U, V = Y_to_UV(cfg.processes.iceflow.numerics.Nz, Y)
 
     fieldin = X_to_fieldin(cfg, X)
 

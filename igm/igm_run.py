@@ -2,9 +2,21 @@
 
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
-
-
 import os
+# os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1' # testing iceflow as cudnn kernels are not fusing
+# # Disable cuDNN's algorithm selection to prevent Winograd usage
+# os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+# os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
+
+# # Or more specifically, disable Winograd algorithms
+
+
+            
+
+# os.environ['ENABLE_NVTX_RANGES'] = '1'
+# os.environ['ENABLE_NVTX_RANGES_DETAILED'] = '1'
+# os.environ['TF_XLA_FLAGS'] = '--tf_xla_print_cluster_outputs'
+
 import tensorflow as tf
 import igm
 from igm import (
@@ -34,9 +46,21 @@ OmegaConf.register_new_resolver("get_cwd", lambda x: os.getcwd())
 from hydra.core.hydra_config import HydraConfig
 
 
+
+
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
+    # os.environ['XLA_FLAGS'] = '--xla_gpu_cudnn_gemm_fusion=1'
+    # TF_XLA_FLAGS=--tf_xla_auto_jit=-1
+    # os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '0'  # Enable fused Winograd algorithms
+    # os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1'
+    # os.environ['TF_DISABLE_CUDNN_TENSOR_OP_MATH'] = '1'
+    # os.environ['TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH'] = '1'
+    # os.environ['TF_DISABLE_CUBLAS_TENSOR_OP_MATH'] = '1'
+    
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
@@ -47,13 +71,13 @@ def main(cfg: DictConfig) -> None:
         check_incompatilities_in_parameters_file(cfg,state.original_cwd)
 
     if cfg.core.hardware.gpu_info:
+        # print([gpus[i] for i in cfg.core.hardware.visible_gpus])
         print_gpu_info()
 
     gpus = tf.config.list_physical_devices("GPU")
     for gpu_instance in gpus:
         tf.config.experimental.set_memory_growth(gpu_instance, True)
     
-    print([gpus[i] for i in cfg.core.hardware.visible_gpus])
     if gpus:
         try:
             selected_visible_gpus = [gpus[i] for i in cfg.core.hardware.visible_gpus]

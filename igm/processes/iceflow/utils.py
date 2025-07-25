@@ -38,6 +38,7 @@ def get_velbase_1(U, vert_basis):
         pm = tf.pow(-1.0, tf.range(U.shape[-3], dtype=tf.float32))
         return tf.tensordot(pm, U, axes=[[0], [-3]]) 
 
+@tf.function(jit_compile=True)
 def get_velbase(U, V, vert_basis):
     return get_velbase_1(U, vert_basis), get_velbase_1(V, vert_basis)
 
@@ -47,7 +48,8 @@ def get_velsurf_1(U, vert_basis):
     elif vert_basis == "Legendre":
         pm = tf.pow(1.0, tf.range(U.shape[-3], dtype=tf.float32))
         return tf.tensordot(pm, U, axes=[[0], [-3]])
-    
+
+@tf.function(jit_compile=True)
 def get_velsurf(U, V, vert_basis):
     return get_velsurf_1(U, vert_basis), get_velsurf_1(V, vert_basis)
 
@@ -59,6 +61,7 @@ def get_velbar_1(U, vert_weight, vert_basis):
     elif vert_basis == "SIA":
         return U[...,0,:,:]+0.8*(U[...,-1,:,:]-U[...,0,:,:])
 
+@tf.function(jit_compile=True)
 def get_velbar(U, V, vert_weight, vert_basis):
     return get_velbar_1(U, vert_weight, vert_basis), \
            get_velbar_1(V, vert_weight, vert_basis)
@@ -130,11 +133,11 @@ def print_info(state, it, cfg, energy_mean_list, velsurf_mag):
         state.pbar_train.set_postfix(dic_postfix)
         state.pbar_train.update(1)
 
-def Y_to_UV(cfg, Y):
-    N = cfg.processes.iceflow.numerics.Nz
+@tf.function(jit_compile=True)
+def Y_to_UV(Nz, Y):
 
-    U = tf.experimental.numpy.moveaxis(Y[..., :N], [-1], [1])
-    V = tf.experimental.numpy.moveaxis(Y[..., N:], [-1], [1])
+    U = tf.experimental.numpy.moveaxis(Y[..., :Nz], [-1], [1])
+    V = tf.experimental.numpy.moveaxis(Y[..., Nz:], [-1], [1])
 
     return U, V
 
@@ -144,18 +147,16 @@ def UV_to_Y(cfg, U, V):
 
     return tf.concat([UU, VV], axis=-1)[None,...]
 
-def fieldin_to_X(cfg, fieldin):
-    X = []
+@tf.function(jit_compile=True)
+def fieldin_to_X_2d(fieldin):
 
-    fieldin_dim = [0, 0, 1 * (cfg.processes.iceflow.physics.dim_arrhenius == 3), 0, 0]
+    
+    return tf.expand_dims(fieldin, axis=0)
 
-    for f, s in zip(fieldin, fieldin_dim):
-        if s == 0:
-            X.append(tf.expand_dims(f, axis=-1))
-        else:
-            X.append(tf.experimental.numpy.moveaxis(f, [0], [-1]))
 
-    return tf.expand_dims(tf.concat(X, axis=-1), axis=0)
+def fieldin_to_X_3d(dim_arrhenius, fieldin):
+    
+    return fieldin
 
 
 def X_to_fieldin(cfg, X):
@@ -179,26 +180,48 @@ def X_to_fieldin(cfg, X):
 
     return fieldin
 
+@tf.function(jit_compile=True)
 def boundvel(velbar_mag, VEL, force_max_velbar):
     return tf.where(velbar_mag >= force_max_velbar, force_max_velbar * (VEL / velbar_mag), VEL)
 
-def force_max_velbar(cfg, state):
-
-    force_max_velbar = cfg.processes.iceflow.force_max_velbar
-    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+@tf.function(jit_compile=True)
+def clip_max_velbar(U, V, force_max_velbar, vert_basis, vert_weight):
 
     if vert_basis in ["Lagrange","SIA"]:
-        velbar_mag = getmag(state.U, state.V)
-        state.U = boundvel(velbar_mag, state.U, force_max_velbar)
-        state.V = boundvel(velbar_mag, state.V, force_max_velbar)
+        velbar_mag = getmag(U, V)
+        U_clipped = boundvel(velbar_mag, U, force_max_velbar)
+        V_clipped = boundvel(velbar_mag, V, force_max_velbar)
 
     elif vert_basis == "Legendre":
-        velbar_mag = getmag(*get_velbar(state.U, state.V, \
-                                        state.vert_weight, vert_basis))
-        uvelbar = boundvel(velbar_mag, state.U[0], force_max_velbar)
-        vvelbar = boundvel(velbar_mag, state.V[0], force_max_velbar)
-        state.U = tf.concat([uvelbar[None,...] , state.U[1:]], axis=0)
-        state.V = tf.concat([vvelbar[None,...] , state.V[1:]], axis=0)
+        velbar_mag = getmag(*get_velbar(U, V, \
+                                        vert_weight, vert_basis))
+        uvelbar = boundvel(velbar_mag, U[0], force_max_velbar)
+        vvelbar = boundvel(velbar_mag, V[0], force_max_velbar)
+        U_clipped = tf.concat([uvelbar[None,...] , U[1:]], axis=0)
+        V_clipped = tf.concat([vvelbar[None,...] , V[1:]], axis=0)
         
     else:
-        raise ValueError("Unknown vertical basis: " + cfg.processes.iceflow.numerics.vert_basis)
+        raise ValueError("Unknown vertical basis: " + vert_basis)
+    
+    return U_clipped, V_clipped
+
+# def force_max_velbar(cfg, state):
+
+#     force_max_velbar = cfg.processes.iceflow.force_max_velbar
+#     vert_basis = cfg.processes.iceflow.numerics.vert_basis
+
+#     if vert_basis in ["Lagrange","SIA"]:
+#         velbar_mag = getmag(state.U, state.V)
+#         state.U = boundvel(velbar_mag, state.U, force_max_velbar)
+#         state.V = boundvel(velbar_mag, state.V, force_max_velbar)
+
+#     elif vert_basis == "Legendre":
+#         velbar_mag = getmag(*get_velbar(state.U, state.V, \
+#                                         state.vert_weight, vert_basis))
+#         uvelbar = boundvel(velbar_mag, state.U[0], force_max_velbar)
+#         vvelbar = boundvel(velbar_mag, state.V[0], force_max_velbar)
+#         state.U = tf.concat([uvelbar[None,...] , state.U[1:]], axis=0)
+#         state.V = tf.concat([vvelbar[None,...] , state.V[1:]], axis=0)
+        
+#     else:
+#         raise ValueError("Unknown vertical basis: " + cfg.processes.iceflow.numerics.vert_basis)

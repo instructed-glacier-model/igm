@@ -4,7 +4,7 @@ from igm.utils.math.getmag import getmag
 from igm.processes.iceflow.energy.energy import iceflow_energy
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
 from igm.processes.iceflow.utils import EarlyStopping, print_info
-from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, force_max_velbar
+from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, clip_max_velbar
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -174,9 +174,10 @@ def update_iceflow_solved(cfg, state):
     else:
         state.U, state.V, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V)
 
-    
+    force_max_velbar = cfg.processes.iceflow.force_max_velbar
+    vert_basis = cfg.processes.iceflow.numerics.vert_basis
     if cfg.processes.iceflow.force_max_velbar > 0:
-        force_max_velbar(cfg, state)
+        state.U, state.V = clip_max_velbar(state.U, state.V, force_max_velbar, vert_basis, state.vert_weight)
         
     if len(cfg.processes.iceflow.solver.save_cost)>0:
         np.savetxt(cfg.processes.iceflow.emulator.output_directory+cfg.processes.iceflow.solver.save_cost+'-'+str(state.it)+'.dat', np.array(Cost_Glen),  fmt="%5.10f")
