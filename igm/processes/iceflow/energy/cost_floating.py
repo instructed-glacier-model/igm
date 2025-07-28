@@ -8,7 +8,7 @@ from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
 
-def cost_floating(cfg, U, V, fieldin, vert_disc, staggered_grid):
+def cost_floating(cfg, U, V, fieldin, vert_disc, staggered_grid): # ! Update to new signature
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc

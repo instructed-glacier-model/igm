@@ -6,24 +6,8 @@
 import numpy as np 
 import tensorflow as tf  
 
-from .weertman import weertman, SlidingLaw
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV  
-
-# def sliding_law(cfg, U, V, fieldin): # -> OLD SETUP
-
-#     thk, usurf, arrhenius, slidingco, dX = fieldin
-
-#     exp_weertman = cfg.processes.iceflow.physics.exp_weertman
-#     regu_weertman = cfg.processes.iceflow.physics.regu_weertman
-#     staggered_grid = cfg.processes.iceflow.numerics.staggered_grid
-#     vert_basis = cfg.processes.iceflow.numerics.vert_basis
- 
-#     if cfg.processes.iceflow.physics.sliding_law == "weertman":
-#         return weertman(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid, vert_basis)
-#     else:
-#         raise ValueError(f"Unknown sliding law: {cfg.processes.iceflow.physics.sliding_law}")
-
-
+from .weertman import SlidingLaw
+from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
     
 @tf.function(jit_compile=True)
 def sliding_law_XY(X, Y, Nz, fieldin_list, dim_arrhenius, sliding_law: SlidingLaw):

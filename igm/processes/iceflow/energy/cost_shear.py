@@ -7,18 +7,25 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_shear(cfg, U, V, fieldin, vert_disc, staggered_grid):
+def cost_shear(U, V, fieldin, vert_disc, staggered_grid, shear_params):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
 
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
-    exp_glen = cfg.processes.iceflow.physics.exp_glen
-    regu_glen = cfg.processes.iceflow.physics.regu_glen
-    thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
-    min_sr = cfg.processes.iceflow.physics.min_sr
-    max_sr = cfg.processes.iceflow.physics.max_sr
-    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    exp_glen = shear_params["exp_glen"]
+    regu_glen = shear_params["regu_glen"]
+    thr_ice_thk = shear_params["thr_ice_thk"]
+    min_sr = shear_params["min_sr"]
+    max_sr = shear_params["max_sr"]
+    vert_basis = shear_params["vert_basis"]
+    
+    # exp_glen = cfg.processes.iceflow.physics.exp_glen
+    # regu_glen = cfg.processes.iceflow.physics.regu_glen
+    # thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
+    # min_sr = cfg.processes.iceflow.physics.min_sr
+    # max_sr = cfg.processes.iceflow.physics.max_sr
+    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
     return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)

@@ -7,16 +7,22 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_gravity(cfg, U, V, fieldin, vert_disc, staggered_grid):
+def cost_gravity(U, V, fieldin, vert_disc, staggered_grid, gravity_params):
 
     thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
-    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
+    zeta, dzeta, Leg_P, _ = vert_disc
 
-    exp_glen = cfg.processes.iceflow.physics.exp_glen
-    ice_density = cfg.processes.iceflow.physics.ice_density
-    gravity_cst = cfg.processes.iceflow.physics.gravity_cst
-    fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
-    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    exp_glen = gravity_params["exp_glen"]
+    ice_density = gravity_params["ice_density"]
+    gravity_cst = gravity_params["gravity_cst"]
+    fnge = gravity_params["force_negative_gravitational_energy"]
+    vert_basis = gravity_params["vert_basis"]
+    
+    # exp_glen = cfg.processes.iceflow.physics.exp_glen
+    # ice_density = cfg.processes.iceflow.physics.ice_density
+    # gravity_cst = cfg.processes.iceflow.physics.gravity_cst
+    # fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
+    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
     return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)

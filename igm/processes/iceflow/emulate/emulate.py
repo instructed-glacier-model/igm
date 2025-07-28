@@ -31,6 +31,8 @@ import igm
 import matplotlib.pyplot as plt
 import matplotlib
 
+from igm.processes.iceflow.energy import cost_floating, cost_shear, cost_gravity, cost_sliding_weertman
+
 
 def initialize_iceflow_emulator(cfg, state):
 
@@ -129,6 +131,101 @@ def initialize_iceflow_emulator(cfg, state):
     # Holds the callable TF concrete function - not the model itself. This allows us to update the weights
     # for the graph but keep the XLA compiled function (check!)
     state.iceflow_model_inference = fast_inference
+    
+    gravity_params_dict = {
+        "exp_glen": cfg.processes.iceflow.physics.exp_glen,
+        "ice_density": cfg.processes.iceflow.physics.ice_density,
+        "gravity_cst": cfg.processes.iceflow.physics.gravity_cst,
+        "force_negative_gravitational_energy": cfg.processes.iceflow.physics.force_negative_gravitational_energy,
+        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
+    }
+        # exp_glen = cfg.processes.iceflow.physics.exp_glen
+    # ice_density = cfg.processes.iceflow.physics.ice_density
+    # gravity_cst = cfg.processes.iceflow.physics.gravity_cst
+    # fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
+    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    
+    shear_params_dict = {
+        "exp_glen": cfg.processes.iceflow.physics.exp_glen,
+        "regu_glen": cfg.processes.iceflow.physics.regu_glen,
+        "thr_ice_thk": cfg.processes.iceflow.physics.thr_ice_thk,
+        "min_sr": cfg.processes.iceflow.physics.min_sr,
+        "max_sr": cfg.processes.iceflow.physics.max_sr,
+        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
+    }
+    
+    sliding_weertman_params_dict = {
+        "exp_weertman": cfg.processes.iceflow.physics.exp_weertman,
+        "regu_weertman": cfg.processes.iceflow.physics.regu_weertman,
+        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
+    }
+
+
+    from abc import ABC, abstractmethod
+    class EnergyComponent(ABC):
+        @abstractmethod
+        def cost():
+            pass
+    
+    class GravityComponent(EnergyComponent):
+        def __init__(self, params):
+            self.params = params
+        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+            return cost_gravity(
+                U, V, fieldin, vert_disc, staggered_grid, self.params
+            )
+    class ShearComponent(EnergyComponent):
+        def __init__(self, params):
+            self.params = params
+        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+            return cost_shear(
+                U, V, fieldin, vert_disc, staggered_grid, self.params
+            )
+    class SlidingWeertmanComponent(EnergyComponent):
+        def __init__(self, params):
+            self.params = params
+        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+            return cost_sliding_weertman(
+                U, V, fieldin, vert_disc, staggered_grid, self.params
+            )
+    
+    EnergyComponents = {
+        "gravity": GravityComponent,
+        "shear": ShearComponent,
+        "sliding_weertman": SlidingWeertmanComponent,
+    }
+    
+        
+    EnergyParams = {
+        "gravity": gravity_params_dict,
+        "shear": shear_params_dict,
+        "sliding_weertman": sliding_weertman_params_dict,
+    }
+    
+    state.iceflow.energy_components = []
+    for component in cfg.processes.iceflow.physics.energy_components:
+        if component not in EnergyComponents:
+            raise ValueError(f"Unknown energy component: {component}")
+
+        component_class = EnergyComponents[component]
+        params = EnergyParams[component]
+        state.iceflow.energy_components.append(
+            component_class(params)
+        )
+    
+        # exp_glen = cfg.processes.iceflow.physics.exp_glen
+    # regu_glen = cfg.processes.iceflow.physics.regu_glen
+    # thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
+    # min_sr = cfg.processes.iceflow.physics.min_sr
+    # max_sr = cfg.processes.iceflow.physics.max_sr
+    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+
+    
+        # exp_weertman = cfg.processes.iceflow.physics.exp_weertman
+    # regu_weertman = cfg.processes.iceflow.physics.regu_weertman
+    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+
+
 
 
 from typing import Dict, List, Any
@@ -332,22 +429,27 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                     ]
                     igm.utils.profiling.erange(rng)
 
+
                     rng = igm.utils.profiling.srange("Computing non-jit functions", "yellow")
                     energy_list = iceflow_energy_XY(
-                        cfg,
-                        X[i, :, iz : Ny - iz, iz : Nx - iz, :],
-                        Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                        vert_disc,
+                        Nz=cfg.processes.iceflow.numerics.Nz,
+                        dim_arrhenius=cfg.processes.iceflow.physics.dim_arrhenius,
+                        staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+                        fieldin_names=cfg.processes.iceflow.emulator.fieldin,
+                        X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                        Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
+                        vert_disc=vert_disc,
+                        energy_components=state.iceflow.energy_components,
                     )
                     
                     if len(cfg.processes.iceflow.physics.sliding_law) > 0:
                         basis_vectors, sliding_shear_stress = sliding_law_XY(
-                            X[i, :, iz : Ny - iz, iz : Nx - iz, :],
-                            Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                            cfg.processes.iceflow.numerics.Nz,
-                            cfg.processes.iceflow.emulator.fieldin,
-                            cfg.processes.iceflow.physics.dim_arrhenius,
-                            state.iceflow.sliding_law,
+                            X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                            Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
+                            Nz=cfg.processes.iceflow.numerics.Nz,
+                            fieldin_list=cfg.processes.iceflow.emulator.fieldin,
+                            dim_arrhenius=cfg.processes.iceflow.physics.dim_arrhenius,
+                            sliding_law=state.iceflow.sliding_law,
                         )
                     
                     igm.utils.profiling.erange(rng)

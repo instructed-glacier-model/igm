@@ -159,7 +159,7 @@ def fieldin_to_X_3d(dim_arrhenius, fieldin):
 
 from typing import List
 
-
+@tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
 
     thk = X[..., 0]
