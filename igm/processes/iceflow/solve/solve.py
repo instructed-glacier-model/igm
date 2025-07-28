@@ -2,7 +2,8 @@ import numpy as np
 import tensorflow as tf 
 from igm.utils.math.getmag import getmag
 from igm.processes.iceflow.energy.energy import iceflow_energy
-from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
+# from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
+from igm.processes.iceflow.energy.sliding_laws import Weertman, WeertmanParams
 from igm.processes.iceflow.utils import EarlyStopping, print_info
 from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, clip_max_velbar
 import matplotlib.pyplot as plt
@@ -42,7 +43,7 @@ def solve_iceflow(cfg, state, U, V):
         state.ax.axis("off")
         state.ax.set_aspect("equal")
 
-    for i in range(cfg.processes.iceflow.solver.nbitmax):
+    for i in tf.range(cfg.processes.iceflow.solver.nbitmax):
         with tf.GradientTape(persistent=True) as t:
             t.watch(U)
             t.watch(V)
@@ -51,8 +52,17 @@ def solve_iceflow(cfg, state, U, V):
                 cfg, U[None,:,:,:], V[None,:,:,:], fieldin, vert_disc
             ) 
 
+            if cfg.processes.iceflow.physics.sliding_law == "weertman":
+                sliding_law_params = WeertmanParams(
+                    exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+                    regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+                    staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+                    vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+                )
+                sliding_law = Weertman(sliding_law_params)
+                        
             if len(cfg.processes.iceflow.physics.sliding_law) > 0:
-                basis_vectors, sliding_shear_stress = sliding_law(cfg, U[None,:,:,:], V[None,:,:,:], fieldin)
+                basis_vectors, sliding_shear_stress = sliding_law(U[None,:,:,:], V[None,:,:,:], fieldin)
 
             energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 

@@ -66,15 +66,15 @@ def get_velbar(U, V, vert_weight, vert_basis):
     return get_velbar_1(U, vert_weight, vert_basis), \
            get_velbar_1(V, vert_weight, vert_basis)
 
-def compute_PAD(cfg,Nx,Ny):
+def compute_PAD(multiple_window_size,Nx,Ny):
 
     # In case of a U-net, must make sure the I/O size is multiple of 2**N
-    if cfg.processes.iceflow.emulator.network.multiple_window_size > 0:
-        NNy = cfg.processes.iceflow.emulator.network.multiple_window_size * math.ceil(
-            Ny / cfg.processes.iceflow.emulator.network.multiple_window_size
+    if multiple_window_size > 0:
+        NNy = multiple_window_size * math.ceil(
+            Ny / multiple_window_size
         )
-        NNx = cfg.processes.iceflow.emulator.network.multiple_window_size * math.ceil(
-            Nx / cfg.processes.iceflow.emulator.network.multiple_window_size
+        NNx = multiple_window_size * math.ceil(
+            Nx / multiple_window_size
         )
         return [[0, 0], [0, NNy - Ny], [0, NNx - Nx], [0, 0]]
     else:
@@ -150,7 +150,6 @@ def UV_to_Y(cfg, U, V):
 @tf.function(jit_compile=True)
 def fieldin_to_X_2d(fieldin):
 
-    
     return tf.expand_dims(fieldin, axis=0)
 
 
@@ -158,25 +157,26 @@ def fieldin_to_X_3d(dim_arrhenius, fieldin):
     
     return fieldin
 
-
-def X_to_fieldin(cfg, X):
+from typing import List
+def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
     i = 0
-
-    fieldin_dim = [0, 0, 1 * (cfg.processes.iceflow.physics.dim_arrhenius == 3), 0, 0]
+    print("in X")
+    
+    fieldin_dim = [0, 0, 1 * (dim_arrhenius == 3), 0, 0]
 
     fieldin = []
 
-    for f, s in zip(cfg.processes.iceflow.emulator.fieldin, fieldin_dim):
+    for f, s in zip(fieldin_names, fieldin_dim):
         if s == 0:
             fieldin.append(X[..., i])
             i += 1
         else:
             fieldin.append(
                 tf.experimental.numpy.moveaxis(
-                    X[..., i : i + cfg.processes.iceflow.numerics.Nz], [-1], [1]
+                    X[..., i : i + Nz], [-1], [1]
                 )
             )
-            i += cfg.processes.iceflow.numerics.Nz
+            i += Nz
 
     return fieldin
 
@@ -204,24 +204,3 @@ def clip_max_velbar(U, V, force_max_velbar, vert_basis, vert_weight):
         raise ValueError("Unknown vertical basis: " + vert_basis)
     
     return U_clipped, V_clipped
-
-# def force_max_velbar(cfg, state):
-
-#     force_max_velbar = cfg.processes.iceflow.force_max_velbar
-#     vert_basis = cfg.processes.iceflow.numerics.vert_basis
-
-#     if vert_basis in ["Lagrange","SIA"]:
-#         velbar_mag = getmag(state.U, state.V)
-#         state.U = boundvel(velbar_mag, state.U, force_max_velbar)
-#         state.V = boundvel(velbar_mag, state.V, force_max_velbar)
-
-#     elif vert_basis == "Legendre":
-#         velbar_mag = getmag(*get_velbar(state.U, state.V, \
-#                                         state.vert_weight, vert_basis))
-#         uvelbar = boundvel(velbar_mag, state.U[0], force_max_velbar)
-#         vvelbar = boundvel(velbar_mag, state.V[0], force_max_velbar)
-#         state.U = tf.concat([uvelbar[None,...] , state.U[1:]], axis=0)
-#         state.V = tf.concat([vvelbar[None,...] , state.V[1:]], axis=0)
-        
-#     else:
-#         raise ValueError("Unknown vertical basis: " + cfg.processes.iceflow.numerics.vert_basis)

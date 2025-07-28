@@ -85,7 +85,8 @@ def initialize(cfg, state):
         raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
     
     # padding is necessary when using U-net emulator
-    state.PAD = compute_PAD(cfg, state.thk.shape[1],state.thk.shape[0])
+    state.PAD = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size,
+                            state.thk.shape[1],state.thk.shape[0])
     
     if not cfg.processes.iceflow.method == "solved":
         update_iceflow_emulator(cfg, state, 0)

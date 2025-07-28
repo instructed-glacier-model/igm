@@ -22,6 +22,7 @@ from igm.processes.iceflow.utils import (
 )
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law_XY
+from igm.processes.iceflow.energy.sliding_laws import sliding_law_XY, Weertman, WeertmanParams
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
 from igm.utils.math.getmag import getmag
@@ -126,7 +127,7 @@ def initialize_iceflow_emulator(cfg, state):
         return state.iceflow_model(x)
 
     # Holds the callable TF concrete function - not the model itself. This allows us to update the weights
-    # for the graph but keep the XLA compiled function
+    # for the graph but keep the XLA compiled function (check!)
     state.iceflow_model_inference = fast_inference
 
 
@@ -166,7 +167,7 @@ class UpdatedIceflowEmulatedParams(tf.experimental.ExtensionType):
 
 
 @tf.function(jit_compile=True)
-def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters):
+def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedIceflowEmulatedParams) -> Dict[str, tf.Tensor]:
 
     # Define the input of the NN, include scaling
 
@@ -226,50 +227,6 @@ def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters):
         "vbar": vbar,
     }
 
-
-# def update_iceflow_emulated(cfg, state):
-
-#     # Define the input of the NN, include scaling
-
-#     Ny, Nx = state.thk.shape
-#     Nz = cfg.processes.iceflow.numerics.Nz
-
-#     fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
-
-#     if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-#         X = fieldin_to_X_3d(cfg.processes.iceflow.physics.dim_arrhenius, fieldin)
-#     elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-#         X = fieldin_to_X_2d(fieldin)
-
-#     if cfg.processes.iceflow.emulator.exclude_borders>0:
-#         iz = cfg.processes.iceflow.emulator.exclude_borders
-#         X = tf.pad(X, [[0, 0], [iz, iz], [iz, iz], [0, 0]], "SYMMETRIC")
-
-#     if cfg.processes.iceflow.emulator.network.multiple_window_size==0:
-#         Y = state.iceflow_model_inference(X)
-#     else:
-#         Y = state.iceflow_model_inference(tf.pad(X, state.PAD, "CONSTANT"))[:, :Ny, :Nx, :]
-
-#     if cfg.processes.iceflow.emulator.exclude_borders>0:
-#         iz = cfg.processes.iceflow.emulator.exclude_borders
-#         Y = Y[:, iz:-iz, iz:-iz, :]
-
-#     U, V = Y_to_UV(Nz, Y)
-#     U = U[0]
-#     V = V[0]
-
-#     state.U = tf.where(state.thk > 0, U, 0)
-#     state.V = tf.where(state.thk > 0, V, 0)
-
-#     # If requested, the speeds are artifically upper-bounded
-#     force_max_velbar = cfg.processes.iceflow.force_max_velbar
-#     vert_basis = cfg.processes.iceflow.numerics.vert_basis
-#     if force_max_velbar > 0:
-#         state.U, state.V = clip_max_velbar(state.U, state.V, force_max_velbar, vert_basis, state.vert_weight)
-
-#     state.uvelbase, state.vvelbase = get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
-#     state.uvelsurf, state.vvelsurf = get_velsurf(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis)
-#     state.ubar, state.vbar = get_velbar(state.U, state.V, state.vert_weight, cfg.processes.iceflow.numerics.vert_basis)
 from typing import List
 
 
@@ -290,6 +247,13 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
 
+tf.config.optimizer.set_jit(True)
+
+@tf.function(jit_compile=True)
+def apply_gradients_xla(optimizer, grads_and_vars):
+    optimizer.apply_gradients(grads_and_vars) # does this work?
+    
+    return 0
 
 def update_iceflow_emulator(cfg, state, it, pertubate=False):
 
@@ -301,25 +265,22 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
 
     if warm_up | run_it:
 
-        rng = igm.utils.profiling.srange("Pre-loop setup", "purple")
-        state.COST_EMULATOR = []
-        state.GRAD_EMULATOR = []
+        # rng = igm.utils.profiling.srange("Pre-loop setup", "purple")
+        # state.COST_EMULATOR = []
+        # state.GRAD_EMULATOR = []
+        # state.emulator_cost = tf.TensorArray(
+        #     tf.float32, size=0, dynamic_size=True, clear_after_read=False
+        # )
+        # state.emulator_grad = tf.TensorArray(
+        #     tf.float32, size=0, dynamic_size=True, clear_after_read=False
+        # )
 
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
 
         vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]]
 
-        # XX = fieldin_to_X(cfg.processes.iceflow.physics.dim_arrhenius, fieldin)
-        # for field in fieldin:
-        # print(field.shape)
-        # fieldin = tf.ragged.constant(fieldin)
-        # print(fieldin.shape)
-        # exit()
-        # print(np.array(fieldin).shape)
-
         if cfg.processes.iceflow.physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
-            # print(fieldin.shape)
             XX = fieldin_to_X_3d(cfg.processes.iceflow.physics.dim_arrhenius, fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
@@ -341,7 +302,7 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
         Ny = X.shape[-3]
         Nx = X.shape[-2]
 
-        PAD = compute_PAD(cfg, Nx, Ny)
+        PAD = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny)
 
         if warm_up:
             nbit = cfg.processes.iceflow.emulator.nbit_init
@@ -354,21 +315,14 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
 
         iz = cfg.processes.iceflow.emulator.exclude_borders
 
-        if cfg.processes.iceflow.emulator.plot_sol:
-            plt.ion()  # enable interactive mode
-            state.fig = plt.figure(dpi=200)
-            state.ax = state.fig.add_subplot(1, 1, 1)
-            state.ax.axis("off")
-            state.ax.set_aspect("equal")
+        # igm.utils.profiling.erange(rng)
 
-        igm.utils.profiling.erange(rng)
+        rng_outer = igm.utils.profiling.srange("Training Loop", "red")
 
-        rng = igm.utils.profiling.srange("Training Loop", "red")
-
-        for epoch in range(nbit):
+        for epoch in tf.range(nbit):
             cost_emulator = tf.Variable(0.0)
 
-            for i in range(X.shape[0]):
+            for i in tf.range(X.shape[0]):
                 with tf.GradientTape(persistent=True) as tape:
 
                     if cfg.processes.iceflow.emulator.lr_decay < 1:
@@ -376,10 +330,13 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                             cfg.processes.iceflow.emulator.lr_decay ** (i / 1000)
                         )
 
+                    rng = igm.utils.profiling.srange("Running Forward Model", "White")
                     Y = state.iceflow_model(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[
                         :, :Ny, :Nx, :
                     ]
+                    igm.utils.profiling.erange(rng)
 
+                    rng = igm.utils.profiling.srange("Computing non-jit functions", "yellow")
                     energy_list = iceflow_energy_XY(
                         cfg,
                         X[i, :, iz : Ny - iz, iz : Nx - iz, :],
@@ -387,53 +344,40 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                         vert_disc,
                     )
 
+                    # print(cfg.processes.iceflow.physics.sliding_law)
+                    # print('hhh')
+                    
+                    if cfg.processes.iceflow.physics.sliding_law == "weertman":
+                        sliding_law_params = WeertmanParams(
+                            exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+                            regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+                            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+                            vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+                        )
+                        sliding_law = Weertman(sliding_law_params)
+                    
                     if len(cfg.processes.iceflow.physics.sliding_law) > 0:
                         basis_vectors, sliding_shear_stress = sliding_law_XY(
                             cfg,
                             X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                             Y[:, iz : Ny - iz, iz : Nx - iz, :],
+                            sliding_law,
                         )
+                    
+                    igm.utils.profiling.erange(rng)
 
-                    energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
+                    energy_mean_list = tf.reduce_mean(energy_list, axis=[1, 2, 3]) # mean over the spatial dimensions
 
                     COST = tf.add_n(energy_mean_list)
 
                     cost_emulator = cost_emulator + COST
 
-                    U, V = Y_to_UV(cfg.processes.iceflow.numerics.Nz, Y)
-                    velsurf_mag = getmag(
-                        *get_velsurf(
-                            U[0], V[0], cfg.processes.iceflow.numerics.vert_basis
-                        )
-                    )
-
-                    if warm_up:
-                        print_info(
-                            state,
-                            epoch,
-                            cfg,
-                            [e.numpy() for e in energy_mean_list],
-                            tf.reduce_max(velsurf_mag).numpy(),
-                        )
-
-                    if (epoch + 1) % 100 == 0:
-
-                        if cfg.processes.iceflow.emulator.plot_sol:
-                            im = state.ax.imshow(
-                                np.where(state.thk > 0, velsurf_mag, np.nan),
-                                origin="lower",
-                                cmap="turbo",
-                                norm=matplotlib.colors.LogNorm(vmin=1, vmax=300),
-                            )
-                            if not hasattr(state, "already_set_cbar"):
-                                state.cbar = plt.colorbar(im, label="velocity")
-                                state.already_set_cbar = True
-                            state.fig.canvas.draw()  # re-drawing the figure
-                            state.fig.canvas.flush_events()  # to flush the GUI events
-                            state.ax.set_title("epoch : " + str(epoch), size=15)
-
+                rng_inner = igm.utils.profiling.srange("Applying Gradients", "Black")
+                
+                rng = igm.utils.profiling.srange("Taking the gradients", "brown")
                 grads = tape.gradient(COST, state.iceflow_model.trainable_variables)
-
+                igm.utils.profiling.erange(rng)
+                
                 if len(cfg.processes.iceflow.physics.sliding_law) > 0:
                     sliding_gradients = tape.gradient(
                         basis_vectors,
@@ -445,31 +389,30 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                         for grad, sgrad in zip(grads, sliding_gradients)
                     ]
 
-                # if (epoch + 1) % 100 == 0:
-                #     values = [tf.norm(g) for g in grads]
-                #     normalized = values / tf.reduce_sum(values)
-                #     percentages = [100 * v.numpy() for v in normalized]
-                #     print("Percentages:", " | ".join(f"{p:.1f}%" for p in percentages[::2]))
-
+                rng = igm.utils.profiling.srange("Applying the gradients", "green")
                 state.opti_retrain.apply_gradients(
                     zip(grads, state.iceflow_model.trainable_variables)
                 )
+                # _ = apply_gradients_xla(state.opti_retrain, zip(grads, state.iceflow_model.trainable_variables))
+                
+                # state.opti_retrain.apply_gradients(
+                #     zip(grads, state.iceflow_model.trainable_variables)
+                # )
+                igm.utils.profiling.erange(rng)
+                
+                igm.utils.profiling.erange(rng_inner)
 
                 grad_emulator = tf.linalg.global_norm(grads)
 
                 del tape
 
-            state.COST_EMULATOR.append(cost_emulator)
-            state.GRAD_EMULATOR.append(grad_emulator)
+            # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
+            # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
+            # state.COST_EMULATOR.append(cost_emulator)
+            # state.GRAD_EMULATOR.append(grad_emulator)
 
-        igm.utils.profiling.erange(rng)
 
-        if len(cfg.processes.iceflow.emulator.save_cost) > 0:
-            np.savetxt(
-                cfg.processes.iceflow.emulator.save_cost + "-" + str(it) + ".dat",
-                np.array(list(zip(state.COST_EMULATOR, state.GRAD_EMULATOR))),
-                fmt="%5.10f",
-            )
+        igm.utils.profiling.erange(rng_outer)
 
 
 def split_into_patches(X, nbmax, split_patch_method):

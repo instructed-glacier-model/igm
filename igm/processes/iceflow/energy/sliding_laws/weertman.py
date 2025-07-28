@@ -7,7 +7,33 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
 from igm.processes.iceflow.utils import get_velbase
-  
+
+from abc import ABC, abstractmethod
+class SlidingLaw(ABC):
+    @abstractmethod
+    def __call__():
+        pass
+
+class WeertmanParams(tf.experimental.ExtensionType):
+    exp_weertman: float
+    regu_weertman: float
+    staggered_grid: int
+    vert_basis: str
+
+class Weertman(SlidingLaw):
+    def __init__(self, params):
+        self.params = params
+
+    def __call__(self, U, V, fieldin):
+        thk, usurf, _, slidingco, dX = fieldin
+        
+        return weertman(U, V, thk, usurf, slidingco, dX,
+                        self.params.exp_weertman,
+                        self.params.regu_weertman,
+                        self.params.staggered_grid,
+                        self.params.vert_basis)
+
+@tf.function(jit_compile=True)
 def weertman(U, V, thk, usurf, slidingco, dX, exp_weertman, regu_weertman, staggered_grid, vert_basis):
   
     C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
