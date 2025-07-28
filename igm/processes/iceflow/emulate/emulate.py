@@ -159,7 +159,6 @@ def extract_state_for_emulated(state) -> Dict[str, Any]:
 class UpdatedIceflowEmulatedParams(tf.experimental.ExtensionType):
     Nz: int
     arrhenius_dimension: int
-    fieldin: tf.Tensor
     exclude_borders: int
     multiple_window_size: int
     force_max_velbar: float
@@ -226,9 +225,6 @@ def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedI
         "ubar": ubar,
         "vbar": vbar,
     }
-
-from typing import List
-
 
 def match_fieldin_dimensions(fieldin):
 
@@ -331,7 +327,7 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                         )
 
                     rng = igm.utils.profiling.srange("Running Forward Model", "White")
-                    Y = state.iceflow_model(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[
+                    Y = state.iceflow_model_inference(tf.pad(X[i, :, :, :, :], PAD, "CONSTANT"))[ # ! CHECK THAT CALLING THE INFERENCE MODEL HERE STILL PASSES THE GRADIENTS BACK CORRECTLY
                         :, :Ny, :Nx, :
                     ]
                     igm.utils.profiling.erange(rng)
@@ -343,25 +339,15 @@ def update_iceflow_emulator(cfg, state, it, pertubate=False):
                         Y[:, iz : Ny - iz, iz : Nx - iz, :],
                         vert_disc,
                     )
-
-                    # print(cfg.processes.iceflow.physics.sliding_law)
-                    # print('hhh')
-                    
-                    if cfg.processes.iceflow.physics.sliding_law == "weertman":
-                        sliding_law_params = WeertmanParams(
-                            exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
-                            regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
-                            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
-                            vert_basis=cfg.processes.iceflow.numerics.vert_basis,
-                        )
-                        sliding_law = Weertman(sliding_law_params)
                     
                     if len(cfg.processes.iceflow.physics.sliding_law) > 0:
                         basis_vectors, sliding_shear_stress = sliding_law_XY(
-                            cfg,
                             X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                             Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                            sliding_law,
+                            cfg.processes.iceflow.numerics.Nz,
+                            cfg.processes.iceflow.emulator.fieldin,
+                            cfg.processes.iceflow.physics.dim_arrhenius,
+                            state.iceflow.sliding_law,
                         )
                     
                     igm.utils.profiling.erange(rng)

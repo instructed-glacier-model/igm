@@ -9,7 +9,8 @@ from igm.utils.gradient.compute_gradient import compute_gradient
 
 def cost_shear(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
-    thk, usurf, arrhenius, slidingco, dX = fieldin
+    thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
+
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen

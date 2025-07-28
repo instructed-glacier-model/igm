@@ -25,14 +25,11 @@ from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV
 
 
     
+@tf.function(jit_compile=True)
+def sliding_law_XY(X, Y, Nz, fieldin_list, dim_arrhenius, sliding_law: SlidingLaw):
 
-def sliding_law_XY(cfg, X, Y, sliding_law: SlidingLaw):
+    U, V = Y_to_UV(Nz, Y)
 
-    U, V = Y_to_UV(cfg.processes.iceflow.numerics.Nz, Y)
-
-    fieldin = X_to_fieldin(X,
-                           cfg.processes.iceflow.emulator.fieldin,
-                           cfg.processes.iceflow.physics.dim_arrhenius,
-                           cfg.processes.iceflow.numerics.Nz)
+    fieldin = X_to_fieldin(X, fieldin_list, dim_arrhenius, Nz)
     
     return sliding_law(U, V, fieldin)

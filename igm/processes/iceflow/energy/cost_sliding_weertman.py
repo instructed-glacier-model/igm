@@ -10,7 +10,7 @@ from igm.processes.iceflow.utils import get_velbase
 
 def cost_sliding_weertman(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
-    thk, usurf, arrhenius, slidingco, dX = fieldin
+    thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_weertman = cfg.processes.iceflow.physics.exp_weertman

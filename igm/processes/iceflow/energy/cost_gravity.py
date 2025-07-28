@@ -9,7 +9,7 @@ from igm.utils.gradient.compute_gradient import compute_gradient
 
 def cost_gravity(cfg, U, V, fieldin, vert_disc, staggered_grid):
 
-    thk, usurf, arrhenius, slidingco, dX = fieldin
+    thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_glen = cfg.processes.iceflow.physics.exp_glen

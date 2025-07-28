@@ -24,8 +24,9 @@ class Weertman(SlidingLaw):
     def __init__(self, params):
         self.params = params
 
+    @tf.function(jit_compile=True)
     def __call__(self, U, V, fieldin):
-        thk, usurf, _, slidingco, dX = fieldin
+        thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
         
         return weertman(U, V, thk, usurf, slidingco, dX,
                         self.params.exp_weertman,

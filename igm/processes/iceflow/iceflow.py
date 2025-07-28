@@ -43,14 +43,31 @@ from igm.processes.iceflow.utils import initialize_iceflow_fields,compute_PAD
 from igm.processes.iceflow.vert_disc import define_vertical_weight, compute_levels, compute_zeta_dzeta
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
 
+from igm.processes.iceflow.energy.sliding_laws import Weertman, WeertmanParams
+
 import igm
-    
+
+class Iceflow: # ? namespace issues
+    pass
 
 def initialize(cfg, state):
 
+    iceflow = Iceflow()
+    state.iceflow = iceflow
     # This makes sure this function is only called once
     if hasattr(state, "was_initialize_iceflow_already_called"):
         return
+    
+    if cfg.processes.iceflow.physics.sliding_law == "weertman":
+        sliding_law_params = WeertmanParams(
+            exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+            regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+            vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+        )
+        sliding_law = Weertman(sliding_law_params) 
+        state.iceflow.sliding_law = sliding_law
+        state.iceflow.sliding_law_params = sliding_law_params
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
@@ -98,10 +115,9 @@ def initialize(cfg, state):
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
         
-        parameters = UpdatedIceflowEmulatedParams(
+        emulated_params = UpdatedIceflowEmulatedParams(
                 Nz = cfg.processes.iceflow.numerics.Nz,
                 arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
-                fieldin = fieldin,
                 exclude_borders = cfg.processes.iceflow.emulator.exclude_borders,
                 multiple_window_size = cfg.processes.iceflow.emulator.network.multiple_window_size,
                 force_max_velbar = cfg.processes.iceflow.force_max_velbar,
@@ -110,17 +126,18 @@ def initialize(cfg, state):
             
         
         data = extract_state_for_emulated(state)
-        updated_variable_dict = update_iceflow_emulated(data, fieldin, parameters)
+        updated_variable_dict = update_iceflow_emulated(data, fieldin, emulated_params)
         
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
-            # if hasattr(state, key):
-            # else:
-                # state.logger.warning(f"Key {key} not found in state. Skipping update.")
          
     # Currently it is not supported to have the two working simulatanoutly
     assert (cfg.processes.iceflow.emulator.exclude_borders==0) | (cfg.processes.iceflow.emulator.network.multiple_window_size==0)
  
+
+    
+    state.iceflow.emulated_params = emulated_params
+    
     # This makes sure this function is only called once
     state.was_initialize_iceflow_already_called = True
 
@@ -145,31 +162,13 @@ def update(cfg, state):
         if cfg.processes.iceflow.physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
-        
-        parameters = UpdatedIceflowEmulatedParams(
-                Nz = cfg.processes.iceflow.numerics.Nz,
-                arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
-                fieldin = fieldin,
-                exclude_borders = cfg.processes.iceflow.emulator.exclude_borders,
-                multiple_window_size = cfg.processes.iceflow.emulator.network.multiple_window_size,
-                force_max_velbar = cfg.processes.iceflow.force_max_velbar,
-                vertical_basis  = cfg.processes.iceflow.numerics.vert_basis,
-        )
-        
+            fieldin = tf.stack(fieldin, axis=-1)        
         
         data = extract_state_for_emulated(state)
-        # update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters)
-        # extract_state_with_fieldin, UpdatedIceflowEmulatedParams
-        updated_variable_dict = update_iceflow_emulated(data, fieldin, parameters)
-        
-        # print("Updated variable dict:", updated_variable_dict)
-        
+        updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
+
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
-            # if hasattr(state, key):
-            # else:
-                # state.logger.warning(f"Key {key} not found in state. Skipping update.")
                 
         igm.utils.profiling.erange(rng)
 

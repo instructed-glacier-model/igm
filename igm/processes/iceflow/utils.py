@@ -158,27 +158,29 @@ def fieldin_to_X_3d(dim_arrhenius, fieldin):
     return fieldin
 
 from typing import List
+
+
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
-    i = 0
-    print("in X")
+
+    thk = X[..., 0]
+    usurf = X[..., 1]
     
-    fieldin_dim = [0, 0, 1 * (dim_arrhenius == 3), 0, 0]
+    if dim_arrhenius == 3:
+        arrhenius = tf.experimental.numpy.moveaxis(X[..., 2 : 2 + Nz], [-1], [1])
+        slidingco = X[..., 2 + Nz]
+        dX = X[..., 3 + Nz]
+    elif dim_arrhenius == 2:
+        arrhenius = X[..., 2]
+        slidingco = X[..., 3]
+        dX = X[..., 4]
 
-    fieldin = []
-
-    for f, s in zip(fieldin_names, fieldin_dim):
-        if s == 0:
-            fieldin.append(X[..., i])
-            i += 1
-        else:
-            fieldin.append(
-                tf.experimental.numpy.moveaxis(
-                    X[..., i : i + Nz], [-1], [1]
-                )
-            )
-            i += Nz
-
-    return fieldin
+    return dict(
+        thk=thk,
+        usurf=usurf,
+        arrhenius=arrhenius,
+        slidingco=slidingco,
+        dX=dX
+    )
 
 @tf.function(jit_compile=True)
 def boundvel(velbar_mag, VEL, force_max_velbar):
