@@ -104,8 +104,47 @@ def initialize(cfg, state):
     state.PAD = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size,
                             state.thk.shape[1],state.thk.shape[0])
     
+    
+    
+    
+        
+    vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
+    vert_disc = (vert_disc[0], vert_disc[1])
+    
+    # warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
+    # if warm_up:
+    nbit = cfg.processes.iceflow.emulator.nbit_init
+    lr = cfg.processes.iceflow.emulator.lr_init
+    # else:
+    #     nbit = cfg.processes.iceflow.emulator.nbit
+    #     lr = cfg.processes.iceflow.emulator.lr
+    state.opti_retrain.lr = lr
+    
+    parameters = TrainingParams(
+        lr_decay=cfg.processes.iceflow.emulator.lr_decay,
+        Nx=state.thk.shape[1],
+        Ny=state.thk.shape[0],
+        Nz=cfg.processes.iceflow.numerics.Nz,
+        iz=cfg.processes.iceflow.emulator.exclude_borders,
+        multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
+        framesizemax=cfg.processes.iceflow.emulator.framesizemax,
+        split_patch_method=cfg.processes.iceflow.emulator.split_patch_method,
+        arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
+        staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+        fieldin_names=tuple(cfg.processes.iceflow.emulator.fieldin),
+    )
+    
+    
+    data = get_emulator_data(state, nbit, lr)
+    
+    
+    
+    
+    
+    
+    
     if not cfg.processes.iceflow.method == "solved":
-        update_iceflow_emulator(cfg, state, 0)
+        # update_iceflow_emulator(cfg, state, 0)
         # update_iceflow_emulated(cfg, state)
         
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
@@ -113,6 +152,9 @@ def initialize(cfg, state):
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
+        
+        update_iceflow_emulator(cfg, data, fieldin, vert_disc, 0, parameters)
+        
         
         emulated_params = UpdatedIceflowEmulatedParams(
                 Nz = cfg.processes.iceflow.numerics.Nz,
@@ -141,6 +183,43 @@ def initialize(cfg, state):
     state.was_initialize_iceflow_already_called = True
 
 import tensorflow as tf
+from typing import Tuple
+
+class TrainingParams(tf.experimental.ExtensionType):
+    lr_decay: float
+    Nx: int
+    Ny: int
+    Nz: int
+    iz: int
+    multiple_window_size: int
+    framesizemax: int
+    split_patch_method: str
+    arrhenius_dimension: int
+    staggered_grid: int
+    fieldin_names: Tuple[str, ...]
+
+def get_emulator_data(state, nbit, lr):
+    
+    return dict({
+        "iceflow_model_inference": state.iceflow_model_inference,
+        "iceflow_model": state.iceflow_model,
+        "sliding_law": state.iceflow.sliding_law,
+        "energy_components": state.iceflow.energy_components,
+        "opti_retrain": state.opti_retrain,
+        "nbit": nbit,
+        "lr": lr,
+})
+
+from omegaconf import DictConfig
+def is_retrain(iteration, cfg: DictConfig) -> bool:
+
+    # run_it = False
+    if cfg.processes.iceflow.emulator.retrain_freq > 0:
+        run_it = iteration % cfg.processes.iceflow.emulator.retrain_freq == 0
+
+    warm_up = int(iteration <= cfg.processes.iceflow.emulator.warm_up_it)
+    
+    return run_it or warm_up
 
 def update(cfg, state):
 
@@ -149,27 +228,71 @@ def update(cfg, state):
 
     if cfg.processes.iceflow.method in ["emulated","diagnostic"]:
         
-        rng = igm.utils.profiling.srange("update_iceflow_emulator", "orange")
-        if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0):
-            update_iceflow_emulator(cfg, state, state.it, 
-                                    pertubate=cfg.processes.iceflow.emulator.pertubate)
-        igm.utils.profiling.erange(rng)
-        
-        rng = igm.utils.profiling.srange("ANN Time step", "green")
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
         
         if cfg.processes.iceflow.physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)        
+            fieldin = tf.stack(fieldin, axis=-1)
+            
+        vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
+        vert_disc = (vert_disc[0], vert_disc[1])
         
+        warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
+        if warm_up:
+            nbit = cfg.processes.iceflow.emulator.nbit_init
+            lr = cfg.processes.iceflow.emulator.lr_init
+        else:
+            nbit = cfg.processes.iceflow.emulator.nbit
+            lr = cfg.processes.iceflow.emulator.lr
+        state.opti_retrain.lr = lr
+        
+        parameters = TrainingParams(
+            lr_decay=cfg.processes.iceflow.emulator.lr_decay,
+            Nx=state.thk.shape[1],
+            Ny=state.thk.shape[0],
+            Nz=cfg.processes.iceflow.numerics.Nz,
+            iz=cfg.processes.iceflow.emulator.exclude_borders,
+            multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
+            framesizemax=cfg.processes.iceflow.emulator.framesizemax,
+            split_patch_method=cfg.processes.iceflow.emulator.split_patch_method,
+            arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
+            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+            fieldin_names=tuple(cfg.processes.iceflow.emulator.fieldin),
+        )
+            # sliding_law=tf.constant(cfg.processes.iceflow.physics.sliding_law)
+        
+        # sliding_law = state.iceflow.sliding_law if hasattr(state.iceflow, 'sliding_law') else None # temp solution since this loop depends on both cases... (bad)
+
+        
+        data = get_emulator_data(state, nbit, lr)
+        
+        
+        
+        
+        
+        
+        
+        if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
+            do_retrain = is_retrain(state.it, cfg)
+            if do_retrain:
+                update_iceflow_emulator(cfg, data, fieldin, vert_disc, cfg.processes.iceflow.emulator.pertubate, parameters)
+        
+        
+        
+               
+        rng = igm.utils.profiling.srange("update_iceflow_emulator", "orange")
+        igm.utils.profiling.erange(rng)
+        
+        
+        rng = igm.utils.profiling.srange("ANN Time step", "green")
         data = extract_state_for_emulated(state)
         updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
+        igm.utils.profiling.erange(rng)
 
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
                 
-        igm.utils.profiling.erange(rng)
 
         if cfg.processes.iceflow.method == "diagnostic":
             update_iceflow_diagnostic(cfg, state)

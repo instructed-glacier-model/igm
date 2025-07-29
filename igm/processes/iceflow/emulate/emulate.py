@@ -348,234 +348,97 @@ def apply_gradients_xla(optimizer, grads_and_vars):
     
     return 0
 
-def update_iceflow_emulator(cfg, state, it, pertubate=False):
+def update_iceflow_emulator(cfg, data, fieldin, vert_disc, pertubate, parameters):
 
-    run_it = False
-    if cfg.processes.iceflow.emulator.retrain_freq > 0:
-        run_it = it % cfg.processes.iceflow.emulator.retrain_freq == 0
+    iz = parameters.iz
+    
+    if parameters.arrhenius_dimension == 3:
+        X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
+    elif parameters.arrhenius_dimension == 2:
+        X = fieldin_to_X_2d(fieldin)
 
-    warm_up = int(it <= cfg.processes.iceflow.emulator.warm_up_it)
+    if pertubate:
+        X = pertubate_X(cfg, X)
 
-    if warm_up | run_it:
+    X = split_into_patches(
+        X,
+        parameters.framesizemax,
+        parameters.split_patch_method,
+    )
 
-        # rng = igm.utils.profiling.srange("Pre-loop setup", "purple")
-        # state.COST_EMULATOR = []
-        # state.GRAD_EMULATOR = []
-        # state.emulator_cost = tf.TensorArray(
-        #     tf.float32, size=0, dynamic_size=True, clear_after_read=False
-        # )
-        # state.emulator_grad = tf.TensorArray(
-        #     tf.float32, size=0, dynamic_size=True, clear_after_read=False
-        # )
+    Ny = X.shape[-3]
+    Nx = X.shape[-2]
 
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+    padding = compute_PAD(parameters.multiple_window_size, Nx, Ny)
 
-        vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]]
-        vert_disc = (vert_disc[0], vert_disc[1])
+    rng_outer = igm.utils.profiling.srange("Training Loop", "red")
+    
+    for _ in tf.range(data["nbit"]):
+        cost_emulator = 0.0
 
-        # print(type(vert_disc))
-        # print(vert_disc[0].shape)
-        # print(vert_disc[1].shape)
-        # print(vert_disc[2])
-        # print(vert_disc[3])
-        # exit()
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-            XX = fieldin_to_X_3d(cfg.processes.iceflow.physics.dim_arrhenius, fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
-            XX = fieldin_to_X_2d(fieldin)
-        else:
-            raise ValueError(
-                f"Unknown physics dimension: {cfg.processes.iceflow.physics.dim_arrhenius}"
+        # print(X.shape[0])
+        for i in tf.range(tf.constant(X.shape[0])):
+            with tf.GradientTape(persistent=True) as tape:
+
+                # if training_loop_params["lr_decay"] < 1:
+                #     training_loop_state_objects["opti_retrain"].lr = lr * (
+                #         training_loop_params["lr_decay"] ** (i / 1000)
+                #     )
+
+                # rng = igm.utils.profiling.srange("Running Forward Model", "White")
+                Y = data["iceflow_model_inference"](tf.pad(X[i, :, :, :, :], padding, "CONSTANT"))[ # ! CHECK THAT CALLING THE INFERENCE MODEL HERE STILL PASSES THE GRADIENTS BACK CORRECTLY
+                    :, :Ny, :Nx, :
+                ]
+
+                energy_list = iceflow_energy_XY(
+                    Nz=parameters.Nz,
+                    dim_arrhenius=parameters.arrhenius_dimension,
+                    staggered_grid=parameters.staggered_grid,
+                    fieldin_names=parameters.fieldin_names,
+                    X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                    Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
+                    vert_disc=vert_disc,
+                    energy_components=data["energy_components"],
+                )
+                
+                basis_vectors, sliding_shear_stress = sliding_law_XY(
+                    X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                    Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
+                    Nz=parameters.Nz,
+                    fieldin_list=parameters.fieldin_names,
+                    dim_arrhenius=parameters.arrhenius_dimension,
+                    sliding_law=data["sliding_law"],
+                )
+                
+                energy_mean_list = tf.reduce_mean(energy_list, axis=[1, 2, 3]) # mean over the spatial dimensions
+                total_energy = tf.reduce_sum(energy_mean_list, axis=0) # axis is right?
+                cost_emulator += total_energy
+            
+            nonsliding_gradients = tape.gradient(total_energy, data["iceflow_model"].trainable_variables)
+            sliding_gradients = tape.gradient(target=basis_vectors,
+                                              sources=data["iceflow_model"].trainable_variables,
+                                              output_gradients=sliding_shear_stress,
+            )
+            
+            total_gradients = [
+                grad + (sgrad / tf.cast(Nx * Ny, tf.float32))
+                for grad, sgrad in zip(nonsliding_gradients, sliding_gradients)
+            ]
+                
+
+            # rng = igm.utils.profiling.srange("Applying the gradients", "green")
+            data["opti_retrain"].apply_gradients(
+                zip(total_gradients, data["iceflow_model"].trainable_variables)
             )
 
-        if pertubate:
-            XX = pertubate_X(cfg, XX)
 
-        X = split_into_patches(
-            XX,
-            cfg.processes.iceflow.emulator.framesizemax,
-            cfg.processes.iceflow.emulator.split_patch_method,
-        )
-
-        Ny = X.shape[-3]
-        Nx = X.shape[-2]
-
-        padding = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny)
-
-        if warm_up:
-            nbit = cfg.processes.iceflow.emulator.nbit_init
-            lr = cfg.processes.iceflow.emulator.lr_init
-        else:
-            nbit = cfg.processes.iceflow.emulator.nbit
-            lr = cfg.processes.iceflow.emulator.lr
-
-        # nbit = tf.constant(nbit, dtype=tf.int32)
-        
-        state.opti_retrain.lr = lr
-
-        iz = cfg.processes.iceflow.emulator.exclude_borders
-
-        # igm.utils.profiling.erange(rng)
-
-        rng_outer = igm.utils.profiling.srange("Training Loop", "red")
-
-        from typing import Tuple
-        class TrainingParams(tf.experimental.ExtensionType):
-            lr_decay: float
-            Nx: int
-            Ny: int
-            Nz: int
-            iz: int
-            nbit: int
-            padding: tf.Tensor
-            dim_arrhenius: int
-            staggered_grid: int
-            fieldin_names: Tuple[str, ...]
-            # sliding_law: tf.Tensor
-        
-        # print('fieldin')
-        # print(cfg.processes.iceflow.emulator.fieldin)
-        # print(type(tf.strings.as_string(cfg.processes.iceflow.emulator.fieldin)))
-        # print(tf.constant(cfg.processes.iceflow.emulator.fieldin)[4])
-        # exit()
-        parameters = TrainingParams(
-            lr_decay=cfg.processes.iceflow.emulator.lr_decay,
-            Nx=Nx,
-            Ny=Ny,
-            Nz=cfg.processes.iceflow.numerics.Nz,
-            iz=iz,
-            nbit=nbit,
-            padding=padding,
-            dim_arrhenius=cfg.processes.iceflow.physics.dim_arrhenius,
-            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
-            fieldin_names=tuple(cfg.processes.iceflow.emulator.fieldin),
-            # sliding_law=tf.constant(cfg.processes.iceflow.physics.sliding_law),
-        )
-        
-        # sliding_law = state.iceflow.sliding_law if hasattr(state.iceflow, 'sliding_law') else None # temp solution since this loop depends on both cases... (bad)
-        training_loop_state_objects = dict({
-            "iceflow_model_inference": state.iceflow_model_inference,
-            "iceflow_model": state.iceflow_model,
-            "sliding_law": state.iceflow.sliding_law,
-            "opti_retrain": state.opti_retrain,
-        })
-        
-g
-        # print("vert_disc:", vert_disc.shape)
-        # exit()
-        # training_params_spec = tf.type_spec_from_value(parameters)
-        # training_loop_state_objects_spec = tf.type_spec_from_value(training_loop_state_objects)
-        # energy_components_spec = tf.type_spec_from_value(state.iceflow.energy_components)
-
-            
-        # def run_training_loop(X, vert_disc, parameters, training_loop_state_objects, energy_components):
-        #     print("retracing")
-        
-        for _ in tf.range(nbit):
-            cost_emulator = 0.0
-
-            # print(X.shape[0])
-            for i in tf.range(tf.constant(X.shape[0])):
-                with tf.GradientTape(persistent=True) as tape:
-
-                    # if training_loop_params["lr_decay"] < 1:
-                    #     training_loop_state_objects["opti_retrain"].lr = lr * (
-                    #         training_loop_params["lr_decay"] ** (i / 1000)
-                    #     )
-
-                    # rng = igm.utils.profiling.srange("Running Forward Model", "White")
-                    Y = training_loop_state_objects["iceflow_model_inference"](tf.pad(X[i, :, :, :, :], parameters.padding, "CONSTANT"))[ # ! CHECK THAT CALLING THE INFERENCE MODEL HERE STILL PASSES THE GRADIENTS BACK CORRECTLY
-                        :, :Ny, :Nx, :
-                    ]
-                    # igm.utils.profiling.erange(rng)
-
-
-                    # rng = igm.utils.profiling.srange("Computing non-jit functions", "yellow")
-                    energy_list = iceflow_energy_XY(
-                        Nz=parameters.Nz,
-                        dim_arrhenius=parameters.dim_arrhenius,
-                        staggered_grid=parameters.staggered_grid,
-                        fieldin_names=parameters.fieldin_names,
-                        X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
-                        Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                        vert_disc=vert_disc,
-                        energy_components=state.iceflow.energy_components,
-                    )
-                    
-                    energy_mean_list = tf.reduce_mean(energy_list, axis=[1, 2, 3]) # mean over the spatial dimensions
-                    COST = tf.reduce_sum(energy_mean_list, axis=0) # axis is right?
-                    cost_emulator += COST
-                    grads = tape.gradient(COST, training_loop_state_objects["iceflow_model"].trainable_variables)
-                    
-                    # if len(parameters.sliding_law) > 0:
-
-                    basis_vectors, sliding_shear_stress = sliding_law_XY(
-                        X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
-                        Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                        Nz=parameters.Nz,
-                        fieldin_list=parameters.fieldin_names,
-                        dim_arrhenius=parameters.dim_arrhenius,
-                        sliding_law=training_loop_state_objects["sliding_law"],
-                    )
-                    
-                    sliding_gradients = tape.gradient(
-                    basis_vectors,
-                    training_loop_state_objects["iceflow_model"].trainable_variables,
-                    output_gradients=sliding_shear_stress,
-                    )
-                    grads = [
-                        grad + (sgrad / tf.cast(Nx * Ny, tf.float32))
-                        for grad, sgrad in zip(grads, sliding_gradients)
-                    ]
-                    
-                    # igm.utils.profiling.erange(rng)
-
-
-
-                # rng_inner = igm.utils.profiling.srange("Applying Gradients", "Black")
-                
-                # rng = igm.utils.profiling.srange("Taking the gradients", "brown")
-                # grads = tape.gradient(COST, training_loop_state_objects["iceflow_model"].trainable_variables)
-                # igm.utils.profiling.erange(rng)
-                
-                # if len(training_loop_params["sliding_law"]) > 0:
-                #     sliding_gradients = tape.gradient(
-                #         basis_vectors,
-                #         training_loop_state_objects["iceflow_model"].trainable_variables,
-                #         output_gradients=sliding_shear_stress,
-                #     )
-                #     grads = [
-                #         grad + (sgrad / tf.cast(Nx * Ny, tf.float32))
-                #         for grad, sgrad in zip(grads, sliding_gradients)
-                #     ]
-
-                # rng = igm.utils.profiling.srange("Applying the gradients", "green")
-                training_loop_state_objects["opti_retrain"].apply_gradients(
-                    zip(grads, training_loop_state_objects["iceflow_model"].trainable_variables)
-                )
-                # _ = apply_gradients_xla(state.opti_retrain, zip(grads, state.iceflow_model.trainable_variables))
-                
-                # state.opti_retrain.apply_gradients(
-                #     zip(grads, state.iceflow_model.trainable_variables)
-                # )
-                # igm.utils.profiling.erange(rng)
-                
-                # igm.utils.profiling.erange(rng_inner)
-
-                # grad_emulator = tf.linalg.global_norm(grads)
-
-                del tape
+            del tape
             
 
             # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
             # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
-            # state.COST_EMULATOR.append(cost_emulator)
-            # state.GRAD_EMULATOR.append(grad_emulator)
-        # _ = run_training_loop(X, vert_disc, parameters, training_loop_state_objects, state.iceflow.energy_components)
 
-        igm.utils.profiling.erange(rng_outer)
+    igm.utils.profiling.erange(rng_outer)
 
 
 def split_into_patches(X, nbmax, split_patch_method):
