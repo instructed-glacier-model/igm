@@ -58,16 +58,15 @@ def initialize(cfg, state):
     if hasattr(state, "was_initialize_iceflow_already_called"):
         return
     
-    if cfg.processes.iceflow.physics.sliding_law == "weertman":
-        sliding_law_params = WeertmanParams(
-            exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
-            regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
-            staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
-            vert_basis=cfg.processes.iceflow.numerics.vert_basis,
-        )
-        sliding_law = Weertman(sliding_law_params) 
-        state.iceflow.sliding_law = sliding_law
-        state.iceflow.sliding_law_params = sliding_law_params
+    sliding_law_params = WeertmanParams(
+        exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+        regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+        staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    )
+    sliding_law = Weertman(sliding_law_params) 
+    state.iceflow.sliding_law = sliding_law
+    state.iceflow.sliding_law_params = sliding_law_params
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)

@@ -173,7 +173,9 @@ def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int)
         arrhenius = X[..., 2]
         slidingco = X[..., 3]
         dX = X[..., 4]
-
+    else:
+        raise ValueError("dim_arrhenius must be 2 or 3") # issue inside of jit?
+    
     return dict(
         thk=thk,
         usurf=usurf,

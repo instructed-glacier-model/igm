@@ -11,7 +11,8 @@ def cost_shear(U, V, fieldin, vert_disc, staggered_grid, shear_params):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
 
-    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
+    zeta, dzeta = vert_disc
+    Leg_P, Leg_dPdz = 0,0
 
     exp_glen = shear_params["exp_glen"]
     regu_glen = shear_params["regu_glen"]
@@ -35,6 +36,8 @@ def compute_horizontal_derivatives(U, V, dx, staggered_grid):
 
     if staggered_grid:
 
+        
+        
         dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dx
         dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dx
         dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dx

@@ -10,7 +10,9 @@ from igm.utils.gradient.compute_gradient import compute_gradient
 def cost_gravity(U, V, fieldin, vert_disc, staggered_grid, gravity_params):
 
     thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
-    zeta, dzeta, Leg_P, _ = vert_disc
+    zeta, dzeta = vert_disc
+
+    Leg_P = 0
 
     exp_glen = gravity_params["exp_glen"]
     ice_density = gravity_params["ice_density"]
