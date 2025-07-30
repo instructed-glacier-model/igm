@@ -62,6 +62,7 @@ def initialize_iceflow_emulator(cfg, state):
     )
 
     if cfg.processes.iceflow.emulator.pretrained:
+        dirpath = ''
         if cfg.processes.iceflow.emulator.name == "":
             if os.path.exists(
                 importlib_resources.files(emulators).joinpath(direct_name)
