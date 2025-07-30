@@ -340,7 +340,7 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
 
-# tf.config.optimizer.set_jit(True)
+tf.config.optimizer.set_jit(True)
 
 @tf.function(jit_compile=True)
 def apply_gradients_xla(optimizer, grads_and_vars):
@@ -348,7 +348,8 @@ def apply_gradients_xla(optimizer, grads_and_vars):
     
     return 0
 
-def update_iceflow_emulator(cfg, data, fieldin, vert_disc, pertubate, parameters):
+@tf.function(jit_compile=False)
+def update_iceflow_emulator(data, fieldin, vert_disc, parameters):
 
     iz = parameters.iz
     
@@ -357,21 +358,23 @@ def update_iceflow_emulator(cfg, data, fieldin, vert_disc, pertubate, parameters
     elif parameters.arrhenius_dimension == 2:
         X = fieldin_to_X_2d(fieldin)
 
-    if pertubate:
-        X = pertubate_X(cfg, X)
+    # if pertubate:
+    #     X = pertubate_X(cfg, X)
 
-    X = split_into_patches(
-        X,
-        parameters.framesizemax,
-        parameters.split_patch_method,
-    )
+    # X = split_into_patches(
+    #     X,
+    #     parameters.framesizemax,
+    #     parameters.split_patch_method,
+    # )
+    X = tf.expand_dims(X, axis=0)  # Add batch dimension
+    # print(X.shape)
 
     Ny = X.shape[-3]
     Nx = X.shape[-2]
 
     padding = compute_PAD(parameters.multiple_window_size, Nx, Ny)
 
-    rng_outer = igm.utils.profiling.srange("Training Loop", "red")
+    # rng_outer = igm.utils.profiling.srange("Training Loop", "red")
     
     for _ in tf.range(data["nbit"]):
         cost_emulator = 0.0
@@ -438,7 +441,7 @@ def update_iceflow_emulator(cfg, data, fieldin, vert_disc, pertubate, parameters
             # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
             # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
 
-    igm.utils.profiling.erange(rng_outer)
+    # igm.utils.profiling.erange(rng_outer)
 
 
 def split_into_patches(X, nbmax, split_patch_method):

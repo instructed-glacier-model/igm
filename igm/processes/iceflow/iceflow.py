@@ -153,7 +153,7 @@ def initialize(cfg, state):
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
         
-        update_iceflow_emulator(cfg, data, fieldin, vert_disc, 0, parameters)
+        update_iceflow_emulator(data, fieldin, vert_disc, parameters)
         
         
         emulated_params = UpdatedIceflowEmulatedParams(
@@ -221,6 +221,23 @@ def is_retrain(iteration, cfg: DictConfig) -> bool:
     
     return run_it or warm_up
 
+# def prepare_data(cfg, state, nbit, lr):
+#     if parameters.arrhenius_dimension == 3:
+#         X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
+#     elif parameters.arrhenius_dimension == 2:
+#         X = fieldin_to_X_2d(fieldin)
+
+#     if pertubate:
+#         X = pertubate_X(cfg, X)
+
+#     X = split_into_patches(
+#         X,
+#         parameters.framesizemax,
+#         parameters.split_patch_method,
+#     )
+    
+#     return X
+
 def update(cfg, state):
 
     if hasattr(state, "logger"):
@@ -276,7 +293,7 @@ def update(cfg, state):
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
             do_retrain = is_retrain(state.it, cfg)
             if do_retrain:
-                update_iceflow_emulator(cfg, data, fieldin, vert_disc, cfg.processes.iceflow.emulator.pertubate, parameters)
+                update_iceflow_emulator(data, fieldin, vert_disc, parameters)
         
         
         
