@@ -3,7 +3,6 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
 import tensorflow as tf
 import os
 
@@ -11,8 +10,6 @@ from igm.processes.iceflow.utils import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
     Y_to_UV,
-    compute_PAD,
-    print_info,
 )
 from igm.processes.iceflow.utils import (
     get_velbase,
@@ -25,14 +22,33 @@ from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law_XY
 from igm.processes.iceflow.energy.sliding_laws import sliding_law_XY, Weertman, WeertmanParams
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
-from igm.utils.math.getmag import getmag
 import importlib_resources
 import igm
-import matplotlib.pyplot as plt
-import matplotlib
+from igm.processes.iceflow.utils import TrainingParams
+import warnings
+from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, SlidingWeertmanParams, FloatingParams
+from omegaconf import DictConfig
 
-from igm.processes.iceflow.energy import cost_floating, cost_shear, cost_gravity, cost_sliding_weertman
-
+def get_emulator_path(cfg: DictConfig):
+    direct_name = (
+        "pinnbp"
+        + "_"
+        + str(cfg.processes.iceflow.numerics.Nz)
+        + "_"
+        + str(int(cfg.processes.iceflow.numerics.vert_spacing))
+        + "_"
+    )
+    direct_name += (
+        cfg.processes.iceflow.emulator.network.architecture
+        + "_"
+        + str(cfg.processes.iceflow.emulator.network.nb_layers)
+        + "_"
+        + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
+        + "_"
+    )
+    direct_name += str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1))
+    
+    return direct_name
 
 def initialize_iceflow_emulator(cfg, state):
 
@@ -55,26 +71,7 @@ def initialize_iceflow_emulator(cfg, state):
             clipnorm=cfg.processes.iceflow.emulator.optimizer_clipnorm,
         )
 
-    L = (cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'e' + \
-        (not cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'a'
-
-    direct_name = (
-        "pinnbp"
-        + "_"
-        + str(cfg.processes.iceflow.numerics.Nz)
-        + "_"
-        + str(int(cfg.processes.iceflow.numerics.vert_spacing))
-        + "_"
-    )
-    direct_name += (
-        cfg.processes.iceflow.emulator.network.architecture
-        + "_"
-        + str(cfg.processes.iceflow.emulator.network.nb_layers)
-        + "_"
-        + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
-        + "_"
-    )
-    direct_name += str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1))
+    direct_name = get_emulator_path(cfg)
 
     if cfg.processes.iceflow.emulator.pretrained:
         dirpath = ''
@@ -85,20 +82,18 @@ def initialize_iceflow_emulator(cfg, state):
                 dirpath = importlib_resources.files(emulators).joinpath(direct_name)
                 print("Found pretrained emulator in the igm package: " + direct_name)
             else:
-                print("No pretrained emulator found in the igm package")
+                warnings.warn("No pretrained emulator found in the igm package")
         else:
             dirpath = os.path.join(
                 state.original_cwd, cfg.processes.iceflow.emulator.name
             )
             if os.path.exists(dirpath):
-                print(
-                    "----------------------------------> Found pretrained emulator: "
-                    + cfg.processes.iceflow.emulator.name
-                )
+                print(f"'-'*40 Found pretrained emulator: {cfg.processes.iceflow.emulator.name} ")
+                #     "----------------------------------> Found pretrained emulator: "
+                #     + 
+                # )
             else:
-                print(
-                    "----------------------------------> No pretrained emulator found "
-                )
+                warnings.warn("No pretrained emulator found")
 
         fieldin = []
         fid = open(os.path.join(dirpath, "fieldin.dat"), "r")
@@ -112,9 +107,8 @@ def initialize_iceflow_emulator(cfg, state):
         )
         state.iceflow_model.compile(jit_compile=True)
     else:
-        print(
-            "----------------------------------> No pretrained emulator, start from scratch."
-        )
+        warnings.warn("No pretrained emulator found. Starting from scratch.")
+
         nb_inputs = len(cfg.processes.iceflow.emulator.fieldin) + (
             cfg.processes.iceflow.physics.dim_arrhenius == 3
         ) * (cfg.processes.iceflow.numerics.Nz - 1)
@@ -131,75 +125,45 @@ def initialize_iceflow_emulator(cfg, state):
     # Holds the callable TF concrete function - not the model itself. This allows us to update the weights
     # for the graph but keep the XLA compiled function (check!)
     state.iceflow_model_inference = fast_inference
+
+    # ! Have a separate function that takes care of this
+    # Todo: Lets try to find a convention so we can reliably use dictionary unpacking to keep this tidy
+    gravity_params = GravityParams(
+        exp_glen=cfg.processes.iceflow.physics.exp_glen,
+        ice_density=cfg.processes.iceflow.physics.ice_density,
+        gravity_cst=cfg.processes.iceflow.physics.gravity_cst,
+        force_negative_gravitational_energy=cfg.processes.iceflow.physics.force_negative_gravitational_energy,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    )
     
-    gravity_params_dict = {
-        "exp_glen": cfg.processes.iceflow.physics.exp_glen,
-        "ice_density": cfg.processes.iceflow.physics.ice_density,
-        "gravity_cst": cfg.processes.iceflow.physics.gravity_cst,
-        "force_negative_gravitational_energy": cfg.processes.iceflow.physics.force_negative_gravitational_energy,
-        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
-    }
-        # exp_glen = cfg.processes.iceflow.physics.exp_glen
-    # ice_density = cfg.processes.iceflow.physics.ice_density
-    # gravity_cst = cfg.processes.iceflow.physics.gravity_cst
-    # fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    viscosity_params = ViscosityParams(
+        exp_glen=cfg.processes.iceflow.physics.exp_glen,
+        regu_glen=cfg.processes.iceflow.physics.regu_glen,
+        thr_ice_thk=cfg.processes.iceflow.physics.thr_ice_thk,
+        min_sr=cfg.processes.iceflow.physics.min_sr,
+        max_sr=cfg.processes.iceflow.physics.max_sr,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    )
     
-    shear_params_dict = {
-        "exp_glen": cfg.processes.iceflow.physics.exp_glen,
-        "regu_glen": cfg.processes.iceflow.physics.regu_glen,
-        "thr_ice_thk": cfg.processes.iceflow.physics.thr_ice_thk,
-        "min_sr": cfg.processes.iceflow.physics.min_sr,
-        "max_sr": cfg.processes.iceflow.physics.max_sr,
-        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
-    }
-    
-    sliding_weertman_params_dict = {
-        "exp_weertman": cfg.processes.iceflow.physics.exp_weertman,
-        "regu_weertman": cfg.processes.iceflow.physics.regu_weertman,
-        "vert_basis": cfg.processes.iceflow.numerics.vert_basis,
-    }
+    sliding_weertman_params = SlidingWeertmanParams(
+        exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+        regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    )
 
 
-    from abc import ABC, abstractmethod
-    class EnergyComponent(ABC):
-        @abstractmethod
-        def cost():
-            pass
-    
-    class GravityComponent(EnergyComponent):
-        def __init__(self, params):
-            self.params = params
-        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-            return cost_gravity(
-                U, V, fieldin, vert_disc, staggered_grid, self.params
-            )
-    class ShearComponent(EnergyComponent):
-        def __init__(self, params):
-            self.params = params
-        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-            return cost_shear(
-                U, V, fieldin, vert_disc, staggered_grid, self.params
-            )
-    class SlidingWeertmanComponent(EnergyComponent):
-        def __init__(self, params):
-            self.params = params
-        def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-            return cost_sliding_weertman(
-                U, V, fieldin, vert_disc, staggered_grid, self.params
-            )
-    
-    EnergyComponents = {
-        "gravity": GravityComponent,
-        "shear": ShearComponent,
-        # "sliding_weertman": SlidingWeertmanComponent,
-    }
-    
-        
+    floating_params = FloatingParams(
+        Nz = cfg.processes.iceflow.numerics.Nz,
+        vert_spacing = cfg.processes.iceflow.numerics.vert_spacing,
+        cf_eswn = cfg.processes.iceflow.physics.cf_eswn,
+        vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    )
+
     EnergyParams = {
-        "gravity": gravity_params_dict,
-        "shear": shear_params_dict,
-        # "sliding_weertman": sliding_weertman_params_dict,
+        "gravity": gravity_params,
+        "viscosity": viscosity_params,
+        "sliding_weertman": sliding_weertman_params,
+        "floating": floating_params
     }
     
     state.iceflow.energy_components = []
@@ -212,21 +176,32 @@ def initialize_iceflow_emulator(cfg, state):
         state.iceflow.energy_components.append(
             component_class(params)
         )
+
+    emulator_params = TrainingParams(
+        lr_decay=cfg.processes.iceflow.emulator.lr_decay,
+        Nx=state.thk.shape[1],
+        Ny=state.thk.shape[0],
+        Nz=cfg.processes.iceflow.numerics.Nz,
+        iz=cfg.processes.iceflow.emulator.exclude_borders,
+        multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
+        framesizemax=cfg.processes.iceflow.emulator.framesizemax,
+        split_patch_method=cfg.processes.iceflow.emulator.split_patch_method,
+        arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
+        staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
+        fieldin_names=tuple(cfg.processes.iceflow.emulator.fieldin),
+    )
     
-        # exp_glen = cfg.processes.iceflow.physics.exp_glen
-    # regu_glen = cfg.processes.iceflow.physics.regu_glen
-    # thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
-    # min_sr = cfg.processes.iceflow.physics.min_sr
-    # max_sr = cfg.processes.iceflow.physics.max_sr
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    emulated_params = UpdatedIceflowEmulatedParams(
+            Nz = cfg.processes.iceflow.numerics.Nz,
+            arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
+            exclude_borders = cfg.processes.iceflow.emulator.exclude_borders,
+            multiple_window_size = cfg.processes.iceflow.emulator.network.multiple_window_size,
+            force_max_velbar = cfg.processes.iceflow.force_max_velbar,
+            vertical_basis  = cfg.processes.iceflow.numerics.vert_basis,
+    )
 
-    
-        # exp_weertman = cfg.processes.iceflow.physics.exp_weertman
-    # regu_weertman = cfg.processes.iceflow.physics.regu_weertman
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
-
-
-
+    state.iceflow.emulated_params = emulated_params
+    state.iceflow.emulator_params = emulator_params
 
 from typing import Dict, List, Any
 
@@ -349,37 +324,11 @@ def apply_gradients_xla(optimizer, grads_and_vars):
     return 0
 
 @tf.function(jit_compile=False)
-def update_iceflow_emulator(data, fieldin, vert_disc, parameters):
-
-    iz = parameters.iz
-    
-    if parameters.arrhenius_dimension == 3:
-        X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
-    elif parameters.arrhenius_dimension == 2:
-        X = fieldin_to_X_2d(fieldin)
-
-    # if pertubate:
-    #     X = pertubate_X(cfg, X)
-
-    # X = split_into_patches(
-    #     X,
-    #     parameters.framesizemax,
-    #     parameters.split_patch_method,
-    # )
-    X = tf.expand_dims(X, axis=0)  # Add batch dimension
-    # print(X.shape)
-
-    Ny = X.shape[-3]
-    Nx = X.shape[-2]
-
-    padding = compute_PAD(parameters.multiple_window_size, Nx, Ny)
-
-    # rng_outer = igm.utils.profiling.srange("Training Loop", "red")
+def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
     
     for _ in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
-        # print(X.shape[0])
         for i in tf.range(tf.constant(X.shape[0])):
             with tf.GradientTape(persistent=True) as tape:
 
@@ -388,7 +337,6 @@ def update_iceflow_emulator(data, fieldin, vert_disc, parameters):
                 #         training_loop_params["lr_decay"] ** (i / 1000)
                 #     )
 
-                # rng = igm.utils.profiling.srange("Running Forward Model", "White")
                 Y = data["iceflow_model_inference"](tf.pad(X[i, :, :, :, :], padding, "CONSTANT"))[ # ! CHECK THAT CALLING THE INFERENCE MODEL HERE STILL PASSES THE GRADIENTS BACK CORRECTLY
                     :, :Ny, :Nx, :
                 ]
@@ -437,60 +385,8 @@ def update_iceflow_emulator(data, fieldin, vert_disc, parameters):
 
             del tape
             
-
             # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
             # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
-
-    # igm.utils.profiling.erange(rng_outer)
-
-
-def split_into_patches(X, nbmax, split_patch_method):
-    """
-    This function splits the input tensor into patches of size nbmax x nbmax.
-    The patches are then stacked together to form a new tensor.
-    If stack along axis 0, the adata will be streammed in a sequential way
-    If stack along axis 1, the adata will be streammed in a parallel way by baches
-    """
-    XX = []
-    ny = X.shape[1]
-    nx = X.shape[2]
-    sy = ny // nbmax + 1
-    sx = nx // nbmax + 1
-    ly = int(ny / sy)
-    lx = int(nx / sx)
-
-    for i in range(sx):
-        for j in range(sy):
-            #            if tf.reduce_max(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :]) > 0:
-            XX.append(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :])
-
-    if split_patch_method == "sequential":
-        XXX = tf.stack(XX, axis=0)
-    elif split_patch_method == "parallel":
-        XXX = tf.expand_dims(tf.concat(XX, axis=0), axis=0)
-
-    return XXX
-
-
-def pertubate_X(cfg, X):
-
-    XX = [X]
-
-    for i, f in enumerate(cfg.processes.iceflow.emulator.fieldin):
-
-        vec = [tf.ones_like(X[:, :, :, i]) * (i == j) for j in range(X.shape[3])]
-        vec = tf.stack(vec, axis=-1)
-
-        if hasattr(cfg.processes, "data_assimilation"):
-            if f in cfg.processes.data_assimilation.control_list:
-                XX.append(X + X * vec * 0.2)
-                XX.append(X - X * vec * 0.2)
-        else:
-            if f in ["thk", "usurf"]:
-                XX.append(X + X * vec * 0.2)
-                XX.append(X - X * vec * 0.2)
-
-    return tf.concat(XX, axis=0)
 
 
 def save_iceflow_model(cfg, state):

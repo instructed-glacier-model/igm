@@ -6,31 +6,49 @@
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
+from abc import ABC, abstractmethod
+from typing import Tuple, Dict
 
-def cost_gravity(U, V, fieldin, vert_disc, staggered_grid, gravity_params):
+class EnergyComponent(ABC):
+	@abstractmethod
+	def cost():
+		pass
+
+class GravityComponent(EnergyComponent):
+    def __init__(self, params):
+        self.params = params
+    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+        return cost_gravity(
+            U, V, fieldin, vert_disc, staggered_grid, self.params
+        )
+
+class GravityParams(tf.experimental.ExtensionType):
+    """Gravity parameters for the cost function."""
+    exp_glen: float
+    ice_density: float
+    gravity_cst: float
+    force_negative_gravitational_energy: bool
+    vert_basis: str
+
+
+def cost_gravity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, gravity_params: GravityParams) -> tf.Tensor:
 
     thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
     zeta, dzeta = vert_disc
 
     Leg_P = 0
 
-    exp_glen = gravity_params["exp_glen"]
-    ice_density = gravity_params["ice_density"]
-    gravity_cst = gravity_params["gravity_cst"]
-    fnge = gravity_params["force_negative_gravitational_energy"]
-    vert_basis = gravity_params["vert_basis"]
-    
-    # exp_glen = cfg.processes.iceflow.physics.exp_glen
-    # ice_density = cfg.processes.iceflow.physics.ice_density
-    # gravity_cst = cfg.processes.iceflow.physics.gravity_cst
-    # fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    exp_glen = gravity_params.exp_glen
+    ice_density = gravity_params.ice_density
+    gravity_cst = gravity_params.gravity_cst
+    fnge = gravity_params.force_negative_gravitational_energy
+    vert_basis = gravity_params.vert_basis
 
-    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
+    return _cost(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
+def _cost(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
                   ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis):
      
     slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  

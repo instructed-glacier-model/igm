@@ -7,22 +7,43 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.vert_disc import compute_levels
 
+from abc import ABC, abstractmethod
+from typing import Tuple
+class EnergyComponent(ABC):
+	@abstractmethod
+	def cost():
+		pass
 
-def cost_floating(cfg, U, V, fieldin, vert_disc, staggered_grid): # ! Update to new signature
+class FloatingComponent(EnergyComponent):
+    def __init__(self, params):
+        self.params = params
+    # ! Get rid of this dependency on vert_disc if floating does not use it...
+    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+        return cost_floating(
+            U, V, fieldin, vert_disc, staggered_grid, self.params
+        )
 
-    thk, usurf, arrhenius, slidingco, dX = fieldin
-    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
+class FloatingParams(tf.experimental.ExtensionType):
+    """Floating parameters for the cost function."""
+    Nz: int
+    vert_spacing: float
+    cf_eswn: Tuple[str, ...]
+    vert_basis: str
+
+def cost_floating(U, V, fieldin, vert_disc, staggered_grid, floating_params): # ! Update to new signature
+
+    thk, usurf, _, _, dX = fieldin
     
-    Nz = cfg.processes.iceflow.numerics.Nz
-    vert_spacing = cfg.processes.iceflow.numerics.vert_spacing
-    cf_eswn = cfg.processes.iceflow.physics.cf_eswn
-    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    Nz = floating_params.Nz
+    vert_spacing = floating_params.vert_spacing
+    cf_eswn = floating_params.cf_eswn
+    vert_basis = floating_params.vert_basis
 
-    return _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis)
+    return _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis)
 
 
 @tf.function()
-def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis):
+def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis):
 
     if not staggered_grid:
         raise ValueError("Floating cost function requires staggered grid, non-staggered grid is not implmented yet.")      
@@ -72,40 +93,5 @@ def _cost_floating(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_gr
     else:
         # SSA
         C_float = ( P * U * CF_W - P * U * CF_E  + P * V * CF_S - P * V * CF_N )  
-
-        ###########################################################
-
-        # ddz = tf.stack([thk * z for z in temd], axis=1) 
-
-        # zzz = tf.expand_dims(lsurf, axis=1) + tf.math.cumsum(ddz, axis=1)
-
-        # f = 10 ** (-6) * ( 910 * 9.81 * (tf.expand_dims(usurf, axis=1) - zzz) + 1000 * 9.81 * tf.minimum(0.0, zzz) )  # Mpa m^(-1) 
-
-        # C_float = (
-        #       tf.reduce_sum(ddz * f * stag2(U), axis=1) * CF_W
-        #     - tf.reduce_sum(ddz * f * stag2(U), axis=1) * CF_E 
-        #     + tf.reduce_sum(ddz * f * stag2(V), axis=1) * CF_S 
-        #     - tf.reduce_sum(ddz * f * stag2(V), axis=1) * CF_N 
-        # )   # Mpa m / y
-        
-        ##########################################################
-
-        # f = 10 ** (-6) * ( 910 * 9.81 * thk + 1000 * 9.81 * tf.minimum(0.0, lsurf) ) # Mpa 
-
- 
-        # sloptopgx, sloptopgy = compute_gradient_tf(lsurf[0], dX[0, 0, 0], dX[0, 0, 0])
-        # slopn = (sloptopgx**2 + sloptopgy**2 + 1.e-10 )**0.5
-        # nx = tf.expand_dims(sloptopgx/slopn,0)
-        # ny = tf.expand_dims(sloptopgy/slopn,0)
-            
-        # C_float_2 = - tf.where( (thk>0)&(slidingco==0), - f * (U[:,0] * nx + V[:,0] * ny), 0.0 ) # Mpa m/y
-
-        # #C_float is unit  Mpa m * (m/y) / m + Mpa m / y = Mpa m / y    
-        # C_float = C_float + C_float_2 
-         
-
-    # print(C_shear[0].numpy(),C_slid[0].numpy(),C_grav[0].numpy(),C_float[0].numpy())
-
-    # C_pen = 10000 * tf.where(thk>0,0.0, tf.reduce_sum( tf.abs(U), axis=1)**2 )
 
     return C_float

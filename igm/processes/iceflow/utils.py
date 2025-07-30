@@ -208,3 +208,114 @@ def clip_max_velbar(U, V, force_max_velbar, vert_basis, vert_weight):
         raise ValueError("Unknown vertical basis: " + vert_basis)
     
     return U_clipped, V_clipped
+
+def split_into_patches(X, nbmax, split_patch_method):
+    """
+    This function splits the input tensor into patches of size nbmax x nbmax.
+    The patches are then stacked together to form a new tensor.
+    If stack along axis 0, the adata will be streammed in a sequential way
+    If stack along axis 1, the adata will be streammed in a parallel way by baches
+    """
+    XX = []
+    ny = X.shape[1]
+    nx = X.shape[2]
+    sy = ny // nbmax + 1
+    sx = nx // nbmax + 1
+    ly = int(ny / sy)
+    lx = int(nx / sx)
+
+    for i in range(sx):
+        for j in range(sy):
+            #            if tf.reduce_max(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :]) > 0:
+            XX.append(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :])
+
+    if split_patch_method == "sequential":
+        XXX = tf.stack(XX, axis=0)
+    elif split_patch_method == "parallel":
+        XXX = tf.expand_dims(tf.concat(XX, axis=0), axis=0)
+
+    return XXX
+
+
+def pertubate_X(cfg, X):
+
+    XX = [X]
+
+    for i, f in enumerate(cfg.processes.iceflow.emulator.fieldin):
+
+        vec = [tf.ones_like(X[:, :, :, i]) * (i == j) for j in range(X.shape[3])]
+        vec = tf.stack(vec, axis=-1)
+
+        if hasattr(cfg.processes, "data_assimilation"):
+            if f in cfg.processes.data_assimilation.control_list:
+                XX.append(X + X * vec * 0.2)
+                XX.append(X - X * vec * 0.2)
+        else:
+            if f in ["thk", "usurf"]:
+                XX.append(X + X * vec * 0.2)
+                XX.append(X - X * vec * 0.2)
+
+    return tf.concat(XX, axis=0)
+
+from typing import Tuple, Dict
+from omegaconf import DictConfig
+class TrainingParams(tf.experimental.ExtensionType):
+    lr_decay: float
+    Nx: int
+    Ny: int
+    Nz: int
+    iz: int
+    multiple_window_size: int
+    framesizemax: int
+    split_patch_method: str
+    arrhenius_dimension: int
+    staggered_grid: int
+    fieldin_names: Tuple[str, ...]
+
+def get_emulator_data(state, nbit, lr) -> Dict:
+    
+    return dict({
+        "iceflow_model_inference": state.iceflow_model_inference,
+        "iceflow_model": state.iceflow_model,
+        "sliding_law": state.iceflow.sliding_law,
+        "energy_components": state.iceflow.energy_components,
+        "opti_retrain": state.opti_retrain,
+        "nbit": nbit,
+        "lr": lr,
+})
+
+
+def is_retrain(iteration, cfg: DictConfig) -> bool:
+
+    # run_it = False
+    if cfg.processes.iceflow.emulator.retrain_freq > 0:
+        run_it = iteration % cfg.processes.iceflow.emulator.retrain_freq == 0
+
+    warm_up = int(iteration <= cfg.processes.iceflow.emulator.warm_up_it)
+    
+    return run_it or warm_up
+
+def prepare_data(cfg, fieldin, pertubate=False) -> Tuple[tf.Tensor, List[List[int]], int, int, int]:
+    arrhenius_dimesnion = cfg.processes.iceflow.physics.dim_arrhenius
+    iz = cfg.processes.iceflow.emulator.exclude_borders
+    
+    if arrhenius_dimesnion == 3:
+        X = fieldin_to_X_3d(arrhenius_dimesnion, fieldin)
+    elif arrhenius_dimesnion == 2:
+        X = fieldin_to_X_2d(fieldin)
+
+    if pertubate:
+        X = pertubate_X(cfg, X)
+
+    X = split_into_patches(
+        X,
+        cfg.processes.iceflow.emulator.framesizemax,
+        cfg.processes.iceflow.emulator.split_patch_method,
+    )
+    
+    Ny = X.shape[-3]
+    Nx = X.shape[-2]
+
+    padding = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny)
+    
+    return X, padding, Ny, Nx, iz

@@ -7,7 +7,7 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
 import tensorflow as tf
-from igm.processes.iceflow.energy.cost_shear import compute_horizontal_derivatives
+from igm.processes.iceflow.energy.components.viscosity import compute_horizontal_derivatives
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
 from igm.processes.iceflow.utils import get_velbase

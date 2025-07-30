@@ -7,28 +7,46 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_shear(U, V, fieldin, vert_disc, staggered_grid, shear_params):
+from abc import ABC, abstractmethod
+from typing import Tuple, Dict
+class EnergyComponent(ABC):
+	@abstractmethod
+	def cost():
+		pass
+
+
+class ViscosityComponent(EnergyComponent):
+    def __init__(self, params):
+        self.params = params
+    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+        return cost_viscosity(
+            U, V, fieldin, vert_disc, staggered_grid, self.params
+        )
+
+class ViscosityParams(tf.experimental.ExtensionType):
+    """Viscosity parameters for the cost function."""
+    exp_glen: float
+    regu_glen: float
+    thr_ice_thk: float
+    min_sr: float
+    max_sr: float
+    vert_basis: str
+    
+def cost_viscosity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, viscosity_params: ViscosityParams) -> tf.Tensor:
 
     thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
 
     zeta, dzeta = vert_disc
     Leg_P, Leg_dPdz = 0,0
 
-    exp_glen = shear_params["exp_glen"]
-    regu_glen = shear_params["regu_glen"]
-    thr_ice_thk = shear_params["thr_ice_thk"]
-    min_sr = shear_params["min_sr"]
-    max_sr = shear_params["max_sr"]
-    vert_basis = shear_params["vert_basis"]
-    
-    # exp_glen = cfg.processes.iceflow.physics.exp_glen
-    # regu_glen = cfg.processes.iceflow.physics.regu_glen
-    # thr_ice_thk = cfg.processes.iceflow.physics.thr_ice_thk
-    # min_sr = cfg.processes.iceflow.physics.min_sr
-    # max_sr = cfg.processes.iceflow.physics.max_sr
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    exp_glen = viscosity_params.exp_glen
+    regu_glen = viscosity_params.regu_glen
+    thr_ice_thk = viscosity_params.thr_ice_thk
+    min_sr = viscosity_params.min_sr
+    max_sr = viscosity_params.max_sr
+    vert_basis = viscosity_params.vert_basis
 
-    return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
+    return _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)
 
 @tf.function()
@@ -112,7 +130,7 @@ def correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptop
     return dUdx, dVdx, dUdy, dVdy
  
 @tf.function()
-def _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
+def _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                 exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr, staggered_grid, vert_basis):
     
     # B has Unit Mpa y^(1/n)

@@ -7,28 +7,41 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
 from igm.processes.iceflow.utils import get_velbase
+from abc import ABC, abstractmethod
+class EnergyComponent(ABC):
+	@abstractmethod
+	def cost():
+		pass
 
+class SlidingWeertmanComponent(EnergyComponent):
+    def __init__(self, params):
+        self.params = params
+    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
+        return cost_sliding_weertman(
+            U, V, fieldin, vert_disc, staggered_grid, self.params
+        )
+
+class SlidingWeertmanParams(tf.experimental.ExtensionType):
+    """Sliding Weertman parameters for the cost function."""
+    exp_weertman: float
+    regu_weertman: float
+    vert_basis: str
 
 # ! I dont think this is needed if we have a sliding_law argument - its a bit confusing...
-
 def cost_sliding_weertman(U, V, fieldin, vert_disc, staggered_grid, sliding_weertman_params):
 
     thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
     zeta, dzeta, _, _ = vert_disc
 
-    exp_weertman = sliding_weertman_params["exp_weertman"]
-    regu_weertman = sliding_weertman_params["regu_weertman"]
-    vert_basis = sliding_weertman_params["vert_basis"]
-    
-    # exp_weertman = cfg.processes.iceflow.physics.exp_weertman
-    # regu_weertman = cfg.processes.iceflow.physics.regu_weertman
-    # vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    exp_weertman = sliding_weertman_params.exp_weertman
+    regu_weertman = sliding_weertman_params.regu_weertman
+    vert_basis = sliding_weertman_params.vert_basis
 
-    return _cost_sliding(U, V, thk, usurf, slidingco, dX, zeta, dzeta,
+    return _cost(U, V, thk, usurf, slidingco, dX, zeta, dzeta,
                          exp_weertman, regu_weertman, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_sliding(U, V, thk, usurf, slidingco, dX, zeta, dzeta, \
+def _cost(U, V, thk, usurf, slidingco, dX, zeta, dzeta, \
                   exp_weertman, regu_weertman, staggered_grid, vert_basis):
  
     C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m) 
