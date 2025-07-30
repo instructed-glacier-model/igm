@@ -28,8 +28,12 @@ from igm.processes.iceflow.utils import TrainingParams
 import warnings
 from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, SlidingWeertmanParams, FloatingParams
 from omegaconf import DictConfig
+import logging
 
 def get_emulator_path(cfg: DictConfig):
+    L = (cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'e' + \
+        (not cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'a'
+
     direct_name = (
         "pinnbp"
         + "_"
@@ -46,7 +50,13 @@ def get_emulator_path(cfg: DictConfig):
         + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
         + "_"
     )
-    direct_name += str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1))
+    direct_name += (
+        str(cfg.processes.iceflow.physics.dim_arrhenius)
+        + "_"
+        + str(int(1))
+        + "_"
+        + L
+    )
     
     return direct_name
 
@@ -76,24 +86,22 @@ def initialize_iceflow_emulator(cfg, state):
     if cfg.processes.iceflow.emulator.pretrained:
         dirpath = ''
         if cfg.processes.iceflow.emulator.name == "":
+
             if os.path.exists(
                 importlib_resources.files(emulators).joinpath(direct_name)
             ):
                 dirpath = importlib_resources.files(emulators).joinpath(direct_name)
-                print("Found pretrained emulator in the igm package: " + direct_name)
+                logging.info("Found pretrained emulator in the igm package: " + direct_name)
             else:
-                warnings.warn("No pretrained emulator found in the igm package")
+                raise ImportError("No pretrained emulator found in the igm package")
         else:
             dirpath = os.path.join(
                 state.original_cwd, cfg.processes.iceflow.emulator.name
             )
             if os.path.exists(dirpath):
-                print(f"'-'*40 Found pretrained emulator: {cfg.processes.iceflow.emulator.name} ")
-                #     "----------------------------------> Found pretrained emulator: "
-                #     + 
-                # )
+                logging.info(f"'-'*40 Found pretrained emulator: {cfg.processes.iceflow.emulator.name} ")
             else:
-                warnings.warn("No pretrained emulator found")
+                raise ImportError("No pretrained emulator found")
 
         fieldin = []
         fid = open(os.path.join(dirpath, "fieldin.dat"), "r")
