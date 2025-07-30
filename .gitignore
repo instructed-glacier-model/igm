@@ -12,7 +12,7 @@ logdir/
 # hide output files and data
 .vscode/
 data
-*.dat
+# *.dat
 .history/
 output/
 multirun/
