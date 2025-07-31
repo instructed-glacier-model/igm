@@ -6,7 +6,8 @@ core:
 
   # Logging
   logging: False
-  logging_level: 30
+  tf_logging_level: WARNING
+  igm_logging_level: WARNING
 
   # Hardware
   hardware:

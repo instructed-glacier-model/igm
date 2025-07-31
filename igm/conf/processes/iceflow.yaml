@@ -2,17 +2,31 @@ iceflow:
   method: emulated
   force_max_velbar: 0.0
   physics:
-    energy_components: ['shear', 'sliding_weertman', 'gravity']
-    sliding_law: ''
+    energy_components: ['viscosity', 'gravity']
+    sliding:
+      method: 'weertman'
+      weertman:
+        coefficient: 0.0464 #1e-16 should we convert to a new unit that is used more in literature?
+        regu_weertman: 1.0e-10
+        exponent: 3.0
+      coulomb:
+        coefficient: 0.25
+        exponent: 3.0
+        gamma_0: 2e-17
+        epsilon: 1e-3
+        min_effective_pressure: 0.25 # Mpa this should be in hydrology eventually when we have the model...
+      budd:
+        coefficient: 5e-9
+        exponent: 3.0
     gravity_cst: 9.81
     ice_density: 910.0
-    init_slidingco: 0.0464
+    init_slidingco: 0.0464 # do we need this anymore?
     init_arrhenius: 78.0
     enhancement_factor: 1.0
     exp_glen: 3.0
-    exp_weertman: 3.0
+    # exp_weertman: 3.0
     regu_glen: 1.0e-05
-    regu_weertman: 1.0e-10
+    # regu_weertman: 1.0e-10
     dim_arrhenius: 2 
     thr_ice_thk: 0.1
     min_sr: 1.0e-20

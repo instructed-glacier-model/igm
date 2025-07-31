@@ -18,17 +18,26 @@ from igm.processes.iceflow.utils import (
     clip_max_velbar,
 )
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
-from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law_XY
-from igm.processes.iceflow.energy.sliding_laws import sliding_law_XY, Weertman, WeertmanParams
+# from igm.processes.iceflow.energy.sliding.sliding_law import sliding_law_XY
+from igm.processes.iceflow.sliding import sliding_law_XY, Weertman, WeertmanParams
 from igm.processes.iceflow.emulate.neural_network import *
 from igm.processes.iceflow.emulate import emulators
 import importlib_resources
 import igm
 from igm.processes.iceflow.utils import TrainingParams
 import warnings
-from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, SlidingWeertmanParams, FloatingParams
+from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, FloatingParams
 from omegaconf import DictConfig
 import logging
+
+def get_effective_pressure_precentage(thk, percentage=0.8) -> tf.Tensor:
+    p_i = 910  # kg/m^3, density of ice, # use IGM version not hardcoded
+    g = 9.81  # m/s^2, gravitational acceleration # use IGM version not hardcoded
+    
+    ice_overburden_pressure = p_i * g * thk
+    water_pressure = ice_overburden_pressure * percentage
+    
+    return ice_overburden_pressure - water_pressure
 
 def get_emulator_path(cfg: DictConfig):
     L = (cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'e' + \
@@ -86,7 +95,7 @@ def initialize_iceflow_emulator(cfg, state):
     if cfg.processes.iceflow.emulator.pretrained:
         dirpath = ''
         if cfg.processes.iceflow.emulator.name == "":
-
+            print(importlib_resources.files(emulators).joinpath(direct_name))
             if os.path.exists(
                 importlib_resources.files(emulators).joinpath(direct_name)
             ):
@@ -153,11 +162,11 @@ def initialize_iceflow_emulator(cfg, state):
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
     
-    sliding_weertman_params = SlidingWeertmanParams(
-        exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
-        regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
-        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
-    )
+    # sliding_weertman_params = SlidingWeertmanParams(
+    #     exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
+    #     regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+    #     vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    # )
 
 
     floating_params = FloatingParams(
@@ -170,7 +179,7 @@ def initialize_iceflow_emulator(cfg, state):
     EnergyParams = {
         "gravity": gravity_params,
         "viscosity": viscosity_params,
-        "sliding_weertman": sliding_weertman_params,
+        # "sliding_weertman": sliding_weertman_params,
         "floating": floating_params
     }
     
@@ -210,6 +219,13 @@ def initialize_iceflow_emulator(cfg, state):
 
     state.iceflow.emulated_params = emulated_params
     state.iceflow.emulator_params = emulator_params
+    
+    if (not hasattr(state, "effective_pressure")) and (state.iceflow.sliding_law.name != "weertman"): # temporarly putting this here but should put in budd / coulomb
+        warnings.warn(f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 20% of ice overburden pressure as default.")
+        
+        state.effective_pressure = get_effective_pressure_precentage(state.thk)
+        state.effective_pressure = tf.where(state.effective_pressure < 1e-3, 1e-3, state.effective_pressure)
+        
 
 from typing import Dict, List, Any
 
@@ -333,7 +349,7 @@ def apply_gradients_xla(optimizer, grads_and_vars):
 
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
-    
+    tf.print("Number of iterations: ", data["nbit"])
     for _ in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
@@ -361,11 +377,12 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 )
                 
                 basis_vectors, sliding_shear_stress = sliding_law_XY(
-                    X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                    # X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                    Nz=parameters.Nz,
-                    fieldin_list=parameters.fieldin_names,
-                    dim_arrhenius=parameters.arrhenius_dimension,
+                    effective_pressure=data["effective_pressure"],
+                    # Nz=parameters.Nz,
+                    # fieldin_list=parameters.fieldin_names,
+                    # dim_arrhenius=parameters.arrhenius_dimension,
                     sliding_law=data["sliding_law"],
                 )
                 

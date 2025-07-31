@@ -15,8 +15,6 @@ def stag2(B):
 @tf.function()
 def stag2v(B):
 
-    print("in stag")
-    print(B.shape)
     if B.shape[-3] > 1:
         B = (B[..., :-1, :, :] + B[..., 1:, :, :]) / 2
     return B

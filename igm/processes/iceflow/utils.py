@@ -281,6 +281,7 @@ def get_emulator_data(state, nbit, lr) -> Dict:
         "energy_components": state.iceflow.energy_components,
         "opti_retrain": state.opti_retrain,
         "nbit": nbit,
+        "effective_pressure": state.effective_pressure,
         "lr": lr,
 })
 

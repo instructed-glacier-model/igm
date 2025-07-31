@@ -48,9 +48,9 @@ def add_logger(cfg, state) -> None:
         # filename=pathf,
         encoding="utf-8",
         filemode="w",
-        level=cfg.core.logging_level,
+        level=cfg.core.igm_logging_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logging.root.setLevel(cfg.core.logging_level)
+    logging.root.setLevel(cfg.core.igm_logging_level)
 
     state.logger = logging.getLogger("igm")

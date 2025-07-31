@@ -47,12 +47,8 @@ from hydra.core.hydra_config import HydraConfig
 
 
 
-
-
-
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-
     # os.environ['XLA_FLAGS'] = '--xla_gpu_cudnn_gemm_fusion=1'
     # TF_XLA_FLAGS=--tf_xla_auto_jit=-1
     # os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '0'  # Enable fused Winograd algorithms
@@ -101,7 +97,7 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.core.logging:
         add_logger(cfg=cfg, state=state)
-        tf.get_logger().setLevel(cfg.core.logging_level)
+        tf.get_logger().setLevel(cfg.core.tf_logging_level)
 
     if cfg.core.print_params:
         print(OmegaConf.to_yaml(cfg))

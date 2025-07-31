@@ -43,7 +43,7 @@ from igm.processes.iceflow.utils import initialize_iceflow_fields,compute_PAD
 from igm.processes.iceflow.vert_disc import define_vertical_weight, compute_levels, compute_zeta_dzeta
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
 
-from igm.processes.iceflow.energy.sliding_laws import Weertman, WeertmanParams
+from igm.processes.iceflow.sliding import SlidingLaws, SlidingParams
 from igm.processes.iceflow.utils import is_retrain, prepare_data, get_emulator_data
 
 import igm
@@ -60,16 +60,21 @@ def initialize(cfg, state):
     # This makes sure this function is only called once
     if hasattr(state, "was_initialize_iceflow_already_called"):
         return
+
+    method = cfg.processes.iceflow.physics.sliding.method
     
-    sliding_law_params = WeertmanParams(
-        exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
-        regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
+    sliding_law_class = SlidingLaws[method]
+    sliding_law_params_class = SlidingParams[method]
+    sliding_law_params = sliding_law_params_class(
         staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+        Nz=cfg.processes.iceflow.numerics.Nz,
+        **cfg.processes.iceflow.physics.sliding[method]
     )
-    sliding_law = Weertman(sliding_law_params) 
+
+    sliding_law = sliding_law_class(sliding_law_params)
+    
     state.iceflow.sliding_law = sliding_law
-    state.iceflow.sliding_law_params = sliding_law_params
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)

@@ -107,6 +107,7 @@ def run(cfg, state):
                    )  # TODO: fix this, that's not what we want
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
+                print("var to save: ", var)
                 if hasattr(state, var):
                     if vars(state)[var].numpy().ndim == 2:
                         E = nc.createVariable(
