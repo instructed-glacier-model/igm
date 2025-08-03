@@ -7,7 +7,7 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, legendre_basis
 from igm.utils.gradient.compute_gradient import compute_gradient
 
-def cost_gravity(cfg, U, V, fieldin, vert_disc, staggered_grid):
+def cost_gravity(cfg, U, V, W, P, fieldin, vert_disc, staggered_grid):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
@@ -18,44 +18,39 @@ def cost_gravity(cfg, U, V, fieldin, vert_disc, staggered_grid):
     fnge = cfg.processes.iceflow.physics.force_negative_gravitational_energy
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    return _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
+    return _cost_gravity(U, V, W, usurf, dX, zeta, dzeta, thk, Leg_P,
                          ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis)
 
 @tf.function()
-def _cost_gravity(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
+def _cost_gravity(U, V, W, usurf, dX, zeta, dzeta, thk, Leg_P,
                   ice_density, gravity_cst, fnge, exp_glen, staggered_grid, vert_basis):
      
-    slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  
+#    slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)  
  
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
+        W = stag4h(W)
         thk = stag4h(thk)
 
     if vert_basis == "Lagrange":
-
         U = stag2v(U)
         V = stag2v(V)
+        W = stag2v(W)
 
     elif vert_basis == "Legendre":
- 
-        U = tf.einsum('ij,bjkl->bikl', Leg_P, U)
-        V = tf.einsum('ij,bjkl->bikl', Leg_P, V)
+         raise ValueError(f"Unknown vertical basis: {vert_basis}")
     
     elif vert_basis == "SIA":
- 
-        U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) \
-                            * psia(zeta[None, :, None, None], exp_glen)
-        V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
-                            * psia(zeta[None, :, None, None], exp_glen)
- 
+        raise ValueError(f"Unknown vertical basis: {vert_basis}") 
+    
     else:
         raise ValueError(f"Unknown vertical basis: {vert_basis}")
     
-    uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :] 
+    uds = W
   
-    if fnge:
-        uds = tf.minimum(uds, 0.0) # force non-postiveness
+    # if fnge:
+    #     uds = tf.minimum(uds, 0.0) # force non-postiveness
 
 #    uds = tf.where(thk[:, None, :, :]>0, uds, 0.0)
 

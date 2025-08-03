@@ -8,7 +8,7 @@ from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
 from igm.processes.iceflow.utils import get_velbase
 
-def cost_sliding_weertman(cfg, U, V, fieldin, vert_disc, staggered_grid):
+def cost_sliding_weertman(cfg, U, V, W, P, fieldin, vert_disc, staggered_grid):
 
     thk, usurf, arrhenius, slidingco, dX = fieldin
     zeta, dzeta, Leg_P, Leg_dPdz = vert_disc

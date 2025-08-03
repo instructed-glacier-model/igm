@@ -19,13 +19,15 @@ def initialize_iceflow_solver(cfg,state):
             learning_rate=cfg.processes.iceflow.solver.step_size
         )
 
-def solve_iceflow(cfg, state, U, V):
+def solve_iceflow(cfg, state, U, V, W, P):
     """
     solve_iceflow
     """
 
     U = tf.Variable(U)
     V = tf.Variable(V)
+    W = tf.Variable(W)
+    P = tf.Variable(P)
 
     Cost_Glen = []
 
@@ -46,13 +48,15 @@ def solve_iceflow(cfg, state, U, V):
         with tf.GradientTape(persistent=True) as t:
             t.watch(U)
             t.watch(V)
+            t.watch(W)
+            t.watch(P)
 
             energy_list = iceflow_energy(
-                cfg, U[None,:,:,:], V[None,:,:,:], fieldin, vert_disc
-            ) 
+                cfg, U[None,:,:,:], V[None,:,:,:], W[None,:,:,:], P[None,:,:,:], fieldin, vert_disc
+            )
 
             if len(cfg.processes.iceflow.physics.sliding_law) > 0:
-                basis_vectors, sliding_shear_stress = sliding_law(cfg, U[None,:,:,:], V[None,:,:,:], fieldin)
+                basis_vectors, sliding_shear_stress = sliding_law(cfg, U[None,:,:,:], V[None,:,:,:], W[None,:,:,:], P[None,:,:,:], fieldin)
 
             energy_mean_list = [tf.reduce_mean(en) for en in energy_list]
 
@@ -74,15 +78,15 @@ def solve_iceflow(cfg, state, U, V):
             #         if Cost_Glen[-1] >= Cost_Glen[-2]:
             #             break
 
-        grads = t.gradient(COST, [U, V])
+        grads = t.gradient(COST, [U, V, W, P])
 
         if len(cfg.processes.iceflow.physics.sliding_law) > 0:
-            sliding_gradients = t.gradient(basis_vectors, [U, V], output_gradients=sliding_shear_stress )
+            sliding_gradients = t.gradient(basis_vectors, [U, V, W, P], output_gradients=sliding_shear_stress )
             grads = [ grad + (sgrad / tf.cast(U.shape[-2] * U.shape[-1], tf.float32)) \
                         for grad, sgrad in zip(grads, sliding_gradients) ]
- 
-        state.optimizer.apply_gradients(zip(grads, [U, V]))
-        
+
+        state.optimizer.apply_gradients(zip(grads, [U, V, W, P]))
+
         velsurf_mag = getmag(*get_velsurf(U,V, cfg.processes.iceflow.numerics.vert_basis))
 
         if state.it <= 1:    
@@ -115,8 +119,10 @@ def solve_iceflow(cfg, state, U, V):
 
     U = tf.where(state.thk > 0, U, 0)
     V = tf.where(state.thk > 0, V, 0)
+    W = tf.where(state.thk > 0, W, 0)
+    P = tf.where(state.thk > 0, P, 0)
 
-    return U, V, Cost_Glen
+    return U, V, W, P, Cost_Glen
 
 def solve_iceflow_lbfgs(cfg, state, U, V):
 
@@ -170,9 +176,9 @@ def update_iceflow_solved(cfg, state):
 
     if cfg.processes.iceflow.solver.lbfgs:
         raise ValueError("solve_iceflow_lbfgs formely implemented, not working yet, will be updated.")
-        state.U, state.V, Cost_Glen = solve_iceflow_lbfgs(cfg, state, state.U, state.V)
+        state.U, state.V, state.W, state.P, Cost_Glen = solve_iceflow_lbfgs(cfg, state, state.U, state.V, state.W, state.P)
     else:
-        state.U, state.V, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V)
+        state.U, state.V, state.W, state.P, Cost_Glen = solve_iceflow(cfg, state, state.U, state.V, state.W, state.P)
 
     
     if cfg.processes.iceflow.force_max_velbar > 0:

@@ -30,6 +30,8 @@ def initialize_iceflow_fields(cfg, state):
     if not hasattr(state, "U"):
         state.U = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
+        state.W = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1]))
+        state.P = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1]))
     
 def get_velbase_1(U, vert_basis):
     if vert_basis in ["Lagrange","SIA"]:
