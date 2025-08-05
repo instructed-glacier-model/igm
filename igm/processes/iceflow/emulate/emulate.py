@@ -220,10 +220,10 @@ def initialize_iceflow_emulator(cfg, state):
     state.iceflow.emulated_params = emulated_params
     state.iceflow.emulator_params = emulator_params
     
-    if (not hasattr(state, "effective_pressure")) and (state.iceflow.sliding_law.name != "weertman"): # temporarly putting this here but should put in budd / coulomb
-        warnings.warn(f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 20% of ice overburden pressure as default.")
+    if (not hasattr(state, "effective_pressure")): # temporarly putting this here but should put in budd / coulomb
+        warnings.warn(f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 0% of ice overburden pressure as default.")
         
-        state.effective_pressure = get_effective_pressure_precentage(state.thk)
+        state.effective_pressure = get_effective_pressure_precentage(state.thk, percentage=0.0)
         state.effective_pressure = tf.where(state.effective_pressure < 1e-3, 1e-3, state.effective_pressure)
         
 
@@ -305,10 +305,15 @@ def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedI
             data["vert_weight"],
         )
 
-    uvelbase, vvelbase = get_velbase(data["U"], data["V"], parameters.vertical_basis)
-    uvelsurf, vvelsurf = get_velsurf(data["U"], data["V"], parameters.vertical_basis)
+    # uvelbase, vvelbase = get_velbase(data["U"], data["V"], parameters.vertical_basis)
+    # uvelsurf, vvelsurf = get_velsurf(data["U"], data["V"], parameters.vertical_basis)
+    # ubar, vbar = get_velbar(
+    #     data["U"], data["V"], data["vert_weight"], parameters.vertical_basis
+    # )
+    uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
+    uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
     ubar, vbar = get_velbar(
-        data["U"], data["V"], data["vert_weight"], parameters.vertical_basis
+        U, V, data["vert_weight"], parameters.vertical_basis
     )
 
     return {
@@ -349,7 +354,7 @@ def apply_gradients_xla(optimizer, grads_and_vars):
 
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
-    tf.print("Number of iterations: ", data["nbit"])
+
     for _ in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
