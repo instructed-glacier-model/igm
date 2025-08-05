@@ -26,7 +26,7 @@ import importlib_resources
 import igm
 from igm.processes.iceflow.utils import TrainingParams
 import warnings
-from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, FloatingParams
+from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, FloatingParams, SlidingWeertmanParams
 from omegaconf import DictConfig
 import logging
 
@@ -162,12 +162,11 @@ def initialize_iceflow_emulator(cfg, state):
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
     
-    # sliding_weertman_params = SlidingWeertmanParams(
-    #     exp_weertman=cfg.processes.iceflow.physics.exp_weertman,
-    #     regu_weertman=cfg.processes.iceflow.physics.regu_weertman,
-    #     vert_basis=cfg.processes.iceflow.numerics.vert_basis,
-    # )
-
+    sliding_weertman_params = SlidingWeertmanParams(
+        exp_weertman=cfg.processes.iceflow.physics.sliding.weertman.exponent,
+        regu_weertman=cfg.processes.iceflow.physics.sliding.weertman.regu_weertman,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
+    )
 
     floating_params = FloatingParams(
         Nz = cfg.processes.iceflow.numerics.Nz,
@@ -179,7 +178,7 @@ def initialize_iceflow_emulator(cfg, state):
     EnergyParams = {
         "gravity": gravity_params,
         "viscosity": viscosity_params,
-        # "sliding_weertman": sliding_weertman_params,
+        "sliding_weertman": sliding_weertman_params,
         "floating": floating_params
     }
     

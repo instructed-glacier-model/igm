@@ -7,7 +7,9 @@ import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.utils.gradient.compute_gradient import compute_gradient
 from igm.processes.iceflow.utils import get_velbase
+
 from abc import ABC, abstractmethod
+from typing import Tuple, Dict
 class EnergyComponent(ABC):
 	@abstractmethod
 	def cost():
@@ -28,7 +30,7 @@ class SlidingWeertmanParams(tf.experimental.ExtensionType):
     vert_basis: str
 
 # ! I dont think this is needed if we have a sliding_law argument - its a bit confusing...
-def cost_sliding_weertman(U, V, fieldin, vert_disc, staggered_grid, sliding_weertman_params):
+def cost_sliding_weertman(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, sliding_weertman_params: SlidingWeertmanParams):
 
     thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
     zeta, dzeta = vert_disc
