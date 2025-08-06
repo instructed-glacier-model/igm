@@ -18,6 +18,7 @@ from igm.processes.iceflow.utils import (
     clip_max_velbar,
 )
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
+
 # from igm.processes.iceflow.energy.sliding.sliding_law import sliding_law_XY
 from igm.processes.iceflow.sliding import sliding_law_XY, Weertman, WeertmanParams
 from igm.processes.iceflow.emulate.neural_network import *
@@ -26,22 +27,31 @@ import importlib_resources
 import igm
 from igm.processes.iceflow.utils import TrainingParams
 import warnings
-from igm.processes.iceflow.energy import EnergyComponents, GravityParams, ViscosityParams, FloatingParams, SlidingWeertmanParams
+from igm.processes.iceflow.energy import (
+    EnergyComponents,
+    GravityParams,
+    ViscosityParams,
+    FloatingParams,
+    SlidingWeertmanParams,
+)
 from omegaconf import DictConfig
 import logging
+
 
 def get_effective_pressure_precentage(thk, percentage=0.8) -> tf.Tensor:
     p_i = 910  # kg/m^3, density of ice, # use IGM version not hardcoded
     g = 9.81  # m/s^2, gravitational acceleration # use IGM version not hardcoded
-    
+
     ice_overburden_pressure = p_i * g * thk
     water_pressure = ice_overburden_pressure * percentage
-    
+
     return ice_overburden_pressure - water_pressure
 
+
 def get_emulator_path(cfg: DictConfig):
-    L = (cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'e' + \
-        (not cfg.processes.iceflow.numerics.vert_basis=="Legendre")*'a'
+    L = (cfg.processes.iceflow.numerics.vert_basis == "Legendre") * "e" + (
+        not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
+    ) * "a"
 
     direct_name = (
         "pinnbp"
@@ -60,14 +70,11 @@ def get_emulator_path(cfg: DictConfig):
         + "_"
     )
     direct_name += (
-        str(cfg.processes.iceflow.physics.dim_arrhenius)
-        + "_"
-        + str(int(1))
-        + "_"
-        + L
+        str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1)) + "_" + L
     )
-    
+
     return direct_name
+
 
 def initialize_iceflow_emulator(cfg, state):
 
@@ -93,14 +100,16 @@ def initialize_iceflow_emulator(cfg, state):
     direct_name = get_emulator_path(cfg)
 
     if cfg.processes.iceflow.emulator.pretrained:
-        dirpath = ''
+        dirpath = ""
         if cfg.processes.iceflow.emulator.name == "":
             print(importlib_resources.files(emulators).joinpath(direct_name))
             if os.path.exists(
                 importlib_resources.files(emulators).joinpath(direct_name)
             ):
                 dirpath = importlib_resources.files(emulators).joinpath(direct_name)
-                logging.info("Found pretrained emulator in the igm package: " + direct_name)
+                logging.info(
+                    "Found pretrained emulator in the igm package: " + direct_name
+                )
             else:
                 raise ImportError("No pretrained emulator found in the igm package")
         else:
@@ -108,7 +117,9 @@ def initialize_iceflow_emulator(cfg, state):
                 state.original_cwd, cfg.processes.iceflow.emulator.name
             )
             if os.path.exists(dirpath):
-                logging.info(f"'-'*40 Found pretrained emulator: {cfg.processes.iceflow.emulator.name} ")
+                logging.info(
+                    f"'-'*40 Found pretrained emulator: {cfg.processes.iceflow.emulator.name} "
+                )
             else:
                 raise ImportError("No pretrained emulator found")
 
@@ -152,7 +163,7 @@ def initialize_iceflow_emulator(cfg, state):
         force_negative_gravitational_energy=cfg.processes.iceflow.physics.force_negative_gravitational_energy,
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
-    
+
     viscosity_params = ViscosityParams(
         exp_glen=cfg.processes.iceflow.physics.exp_glen,
         regu_glen=cfg.processes.iceflow.physics.regu_glen,
@@ -161,7 +172,7 @@ def initialize_iceflow_emulator(cfg, state):
         max_sr=cfg.processes.iceflow.physics.max_sr,
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
-    
+
     sliding_weertman_params = SlidingWeertmanParams(
         exp_weertman=cfg.processes.iceflow.physics.sliding.weertman.exponent,
         regu_weertman=cfg.processes.iceflow.physics.sliding.weertman.regu_weertman,
@@ -169,19 +180,19 @@ def initialize_iceflow_emulator(cfg, state):
     )
 
     floating_params = FloatingParams(
-        Nz = cfg.processes.iceflow.numerics.Nz,
-        vert_spacing = cfg.processes.iceflow.numerics.vert_spacing,
-        cf_eswn = cfg.processes.iceflow.physics.cf_eswn,
-        vert_basis = cfg.processes.iceflow.numerics.vert_basis
+        Nz=cfg.processes.iceflow.numerics.Nz,
+        vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
+        cf_eswn=cfg.processes.iceflow.physics.cf_eswn,
+        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
 
     EnergyParams = {
         "gravity": gravity_params,
         "viscosity": viscosity_params,
         "sliding_weertman": sliding_weertman_params,
-        "floating": floating_params
+        "floating": floating_params,
     }
-    
+
     state.iceflow.energy_components = []
     for component in cfg.processes.iceflow.physics.energy_components:
         if component not in EnergyComponents:
@@ -189,9 +200,7 @@ def initialize_iceflow_emulator(cfg, state):
 
         component_class = EnergyComponents[component]
         params = EnergyParams[component]
-        state.iceflow.energy_components.append(
-            component_class(params)
-        )
+        state.iceflow.energy_components.append(component_class(params))
 
     emulator_params = TrainingParams(
         lr_decay=cfg.processes.iceflow.emulator.lr_decay,
@@ -202,29 +211,38 @@ def initialize_iceflow_emulator(cfg, state):
         multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
         framesizemax=cfg.processes.iceflow.emulator.framesizemax,
         split_patch_method=cfg.processes.iceflow.emulator.split_patch_method,
-        arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
+        arrhenius_dimension=cfg.processes.iceflow.physics.dim_arrhenius,
         staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
         fieldin_names=tuple(cfg.processes.iceflow.emulator.fieldin),
+        print_cost=cfg.processes.iceflow.emulator.print_cost,
     )
-    
+
     emulated_params = UpdatedIceflowEmulatedParams(
-            Nz = cfg.processes.iceflow.numerics.Nz,
-            arrhenius_dimension = cfg.processes.iceflow.physics.dim_arrhenius,
-            exclude_borders = cfg.processes.iceflow.emulator.exclude_borders,
-            multiple_window_size = cfg.processes.iceflow.emulator.network.multiple_window_size,
-            force_max_velbar = cfg.processes.iceflow.force_max_velbar,
-            vertical_basis  = cfg.processes.iceflow.numerics.vert_basis,
+        Nz=cfg.processes.iceflow.numerics.Nz,
+        arrhenius_dimension=cfg.processes.iceflow.physics.dim_arrhenius,
+        exclude_borders=cfg.processes.iceflow.emulator.exclude_borders,
+        multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
+        force_max_velbar=cfg.processes.iceflow.force_max_velbar,
+        vertical_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
 
     state.iceflow.emulated_params = emulated_params
     state.iceflow.emulator_params = emulator_params
-    
-    if (not hasattr(state, "effective_pressure")): # temporarly putting this here but should put in budd / coulomb
-        warnings.warn(f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 0% of ice overburden pressure as default.")
-        
-        state.effective_pressure = get_effective_pressure_precentage(state.thk, percentage=0.0)
-        state.effective_pressure = tf.where(state.effective_pressure < 1e-3, 1e-3, state.effective_pressure)
-        
+
+    if not hasattr(
+        state, "effective_pressure"
+    ):  # temporarly putting this here but should put in budd / coulomb
+        warnings.warn(
+            f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 0% of ice overburden pressure as default."
+        )
+
+        state.effective_pressure = get_effective_pressure_precentage(
+            state.thk, percentage=0.0
+        )
+        state.effective_pressure = tf.where(
+            state.effective_pressure < 1e-3, 1e-3, state.effective_pressure
+        )
+
 
 from typing import Dict, List, Any
 
@@ -261,7 +279,9 @@ class UpdatedIceflowEmulatedParams(tf.experimental.ExtensionType):
 
 
 @tf.function(jit_compile=True)
-def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedIceflowEmulatedParams) -> Dict[str, tf.Tensor]:
+def update_iceflow_emulated(
+    data: Dict, fieldin: tf.Tensor, parameters: UpdatedIceflowEmulatedParams
+) -> Dict[str, tf.Tensor]:
 
     # Define the input of the NN, include scaling
 
@@ -304,16 +324,9 @@ def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedI
             data["vert_weight"],
         )
 
-    # uvelbase, vvelbase = get_velbase(data["U"], data["V"], parameters.vertical_basis)
-    # uvelsurf, vvelsurf = get_velsurf(data["U"], data["V"], parameters.vertical_basis)
-    # ubar, vbar = get_velbar(
-    #     data["U"], data["V"], data["vert_weight"], parameters.vertical_basis
-    # )
     uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
     uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(
-        U, V, data["vert_weight"], parameters.vertical_basis
-    )
+    ubar, vbar = get_velbar(U, V, data["vert_weight"], parameters.vertical_basis)
 
     return {
         "U": U,
@@ -325,6 +338,7 @@ def update_iceflow_emulated(data: Dict, fieldin: tf.Tensor, parameters: UpdatedI
         "ubar": ubar,
         "vbar": vbar,
     }
+
 
 def match_fieldin_dimensions(fieldin):
 
@@ -343,18 +357,21 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
 
+
 tf.config.optimizer.set_jit(True)
+
 
 @tf.function(jit_compile=True)
 def apply_gradients_xla(optimizer, grads_and_vars):
-    optimizer.apply_gradients(grads_and_vars) # does this work?
-    
+    optimizer.apply_gradients(grads_and_vars)  # does this work?
+
     return 0
+
 
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
 
-    for _ in tf.range(data["nbit"]):
+    for iteration in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
         for i in tf.range(tf.constant(X.shape[0])):
@@ -365,9 +382,9 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 #         training_loop_params["lr_decay"] ** (i / 1000)
                 #     )
 
-                Y = data["iceflow_model_inference"](tf.pad(X[i, :, :, :, :], padding, "CONSTANT"))[ # ! CHECK THAT CALLING THE INFERENCE MODEL HERE STILL PASSES THE GRADIENTS BACK CORRECTLY
-                    :, :Ny, :Nx, :
-                ]
+                Y = data["iceflow_model_inference"](
+                    tf.pad(X[i, :, :, :, :], padding, "CONSTANT")
+                )[:, :Ny, :Nx, :]
 
                 nonstaggered_energy, staggered_energy = iceflow_energy_XY(
                     Nz=parameters.Nz,
@@ -379,39 +396,47 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                     vert_disc=vert_disc,
                     energy_components=data["energy_components"],
                 )
-                
+
                 basis_vectors, sliding_shear_stress = sliding_law_XY(
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
                     effective_pressure=data["effective_pressure"],
                     sliding_law=data["sliding_law"],
                 )
-                
-                
-                energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3]) # mean over the spatial dimensions
-                energy_mean_nonstaggered = tf.reduce_mean(nonstaggered_energy, axis=[1, 2, 3]) # mean over the spatial dimensions
-                total_energy = tf.reduce_sum(energy_mean_nonstaggered, axis=0) + tf.reduce_sum(energy_mean_staggered, axis=0)
+
+                energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
+                energy_mean_nonstaggered = tf.reduce_mean(
+                    nonstaggered_energy, axis=[1, 2, 3]
+                )
+                total_energy = tf.reduce_sum(
+                    energy_mean_nonstaggered, axis=0
+                ) + tf.reduce_sum(energy_mean_staggered, axis=0)
                 cost_emulator += total_energy
-            
-            nonsliding_gradients = tape.gradient(total_energy, data["iceflow_model"].trainable_variables)
-            sliding_gradients = tape.gradient(target=basis_vectors,
-                                              sources=data["iceflow_model"].trainable_variables,
-                                              output_gradients=sliding_shear_stress,
+
+            nonsliding_gradients = tape.gradient(
+                total_energy, data["iceflow_model"].trainable_variables
             )
-            
+            sliding_gradients = tape.gradient(
+                target=basis_vectors,
+                sources=data["iceflow_model"].trainable_variables,
+                output_gradients=sliding_shear_stress,
+            )
+
             total_gradients = [
                 grad + (sgrad / tf.cast(Nx * Ny, tf.float32))
                 for grad, sgrad in zip(nonsliding_gradients, sliding_gradients)
             ]
-                
 
             # rng = igm.utils.profiling.srange("Applying the gradients", "green")
             data["opti_retrain"].apply_gradients(
                 zip(total_gradients, data["iceflow_model"].trainable_variables)
             )
 
+            if parameters.print_cost:
+                tf.print("Iteration", iteration + 1, "/", data["nbit"], end=" ")
+                tf.print(": Cost =", cost_emulator)
 
             del tape
-            
+
             # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
             # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
 

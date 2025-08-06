@@ -24,9 +24,7 @@ iceflow:
     init_arrhenius: 78.0
     enhancement_factor: 1.0
     exp_glen: 3.0
-    # exp_weertman: 3.0
     regu_glen: 1.0e-05
-    # regu_weertman: 1.0e-10
     dim_arrhenius: 2 
     thr_ice_thk: 0.1
     min_sr: 1.0e-20
@@ -54,6 +52,7 @@ iceflow:
     - slidingco
     - dX
     retrain_freq: 10
+    print_cost: false
     lr: 2.0e-05
     lr_init: 0.0001
     lr_decay: 0.95

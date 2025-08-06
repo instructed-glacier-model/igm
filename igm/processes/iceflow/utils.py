@@ -271,6 +271,7 @@ class TrainingParams(tf.experimental.ExtensionType):
     arrhenius_dimension: int
     staggered_grid: int
     fieldin_names: Tuple[str, ...]
+    print_cost: bool
 
 def get_emulator_data(state, nbit, lr) -> Dict:
     
