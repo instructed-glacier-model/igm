@@ -3,11 +3,9 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np 
 import tensorflow as tf  
 
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
-import igm.processes.iceflow.energy as energy
+from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin, Y_to_UV 
 
 def iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid):
 

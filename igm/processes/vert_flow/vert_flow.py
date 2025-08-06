@@ -5,14 +5,11 @@
 Published under the GNU GPL (Version 3), check at the LICENSE file
 """
 
-import numpy as np
-import tensorflow as tf
-
 from igm.processes.vert_flow.vert_flow_v1 import compute_vertical_velocity_kinematic_v1, compute_vertical_velocity_incompressibility_v1
 from igm.processes.vert_flow.vert_flow_v2 import compute_vertical_velocity_kinematic_v2, compute_vertical_velocity_incompressibility_v2
 from igm.processes.vert_flow.vert_flow_v2 import compute_vertical_velocity_twolayers
 from igm.processes.vert_flow.vert_flow_legendre import compute_vertical_velocity_legendre   
-from igm.processes.iceflow.utils import get_velbase_1, get_velsurf_1
+from igm.processes.iceflow.utils.velocities import get_velbase_1, get_velsurf_1
 
  
 def initialize(cfg, state):

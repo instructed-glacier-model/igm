@@ -3,13 +3,10 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
-import os, sys, shutil
-import time
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
-from igm.processes.iceflow.utils import get_velbase
+from igm.processes.iceflow.utils.velocities import get_velbase
 
 def initialize(cfg, state):
     

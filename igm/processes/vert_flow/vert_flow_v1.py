@@ -11,7 +11,7 @@ import tensorflow as tf
 from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
 from igm.utils.gradient.compute_divflux import compute_divflux
 
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dz
+from igm.processes.iceflow.utils.vertical_discretization import compute_levels, compute_dz
  
 
 def compute_vertical_velocity_kinematic_v1(cfg, state):

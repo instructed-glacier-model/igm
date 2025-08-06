@@ -4,8 +4,8 @@ from igm.utils.math.getmag import getmag
 from igm.processes.iceflow.energy.energy import iceflow_energy
 # from igm.processes.iceflow.energy.sliding_laws.sliding_law import sliding_law
 from igm.processes.iceflow.sliding import Weertman, WeertmanParams
-from igm.processes.iceflow.utils import EarlyStopping, print_info
-from igm.processes.iceflow.utils import get_velbase, get_velsurf, get_velbar, clip_max_velbar
+from igm.processes.iceflow.utils.misc import EarlyStopping, print_info
+from igm.processes.iceflow.utils.velocities import get_velbase, get_velsurf, get_velbar, clip_max_velbar
 import matplotlib.pyplot as plt
 import matplotlib
 

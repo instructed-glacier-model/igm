@@ -15,7 +15,7 @@ def cnn(cfg, nb_inputs, nb_outputs):
 
     conv = inputs
 
-    if cfg.processes.iceflow.emulator.network.activation == "LeakyReLU":
+    if cfg.processes.iceflow.emulator.network.activation.lower() == "leakyrelu":
         activation = tf.keras.layers.LeakyReLU(alpha=0.01)
     else:
         activation = tf.keras.layers.Activation(cfg.processes.iceflow.emulator.network.activation)

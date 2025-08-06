@@ -16,9 +16,9 @@ from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *
 from ..iceflow.energy.energy import *
 
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV, UV_to_Y
+from igm.processes.iceflow.utils.misc import X_to_fieldin, Y_to_UV, UV_to_Y
 
-from igm.processes.iceflow.vert_disc import define_vertical_weight, compute_levels, compute_zeta_dzeta
+from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight, compute_levels, compute_zeta_dzeta
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
  
  

@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
  
 import tensorflow as tf 
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dz, compute_depth
+from igm.processes.iceflow.utils.vertical_discretization import compute_levels, compute_dz, compute_depth
  
 def initialize(cfg, state):
  

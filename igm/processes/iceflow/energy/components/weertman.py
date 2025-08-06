@@ -3,13 +3,16 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
-from igm.processes.iceflow.energy.utils import stag4h
-from igm.utils.gradient.compute_gradient import compute_gradient
-from igm.processes.iceflow.utils import get_velbase
-
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict
+import tensorflow as tf
+
+from igm.processes.iceflow.energy.utils import stag4h
+from igm.utils.gradient.compute_gradient import compute_gradient
+# from igm.processes.iceflow.utils.misc import get_velbase
+
+from igm.processes.iceflow.utils.velocities import get_velbase
+
 class EnergyComponent(ABC):
 	@abstractmethod
 	def cost():

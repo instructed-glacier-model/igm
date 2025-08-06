@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from igm.processes.iceflow.energy.utils import stag2
-from igm.processes.iceflow.vert_disc import compute_levels
+from igm.processes.iceflow.utils.vertical_discretization import compute_levels
 
 from abc import ABC, abstractmethod
 from typing import Tuple

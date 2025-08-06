@@ -3,7 +3,8 @@ from typing import Dict, Tuple, Optional
 from abc import ABC, abstractmethod
 
 from igm.processes.iceflow.energy.utils import stag4h
-from igm.processes.iceflow.utils import get_velbase, Y_to_UV
+from igm.processes.iceflow.utils.velocities import get_velbase
+from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
 class SlidingLaw(ABC):

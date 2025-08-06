@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf 
 
 from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
-from igm.processes.iceflow.vert_disc import compute_levels, compute_dz, compute_depth
+from igm.processes.iceflow.utils.vertical_discretization import compute_levels, compute_dz, compute_depth
 
 def initialize(cfg, state):
     
