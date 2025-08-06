@@ -32,9 +32,9 @@ def initialize_iceflow_fields(cfg, state):
         state.V = tf.zeros((cfg.processes.iceflow.numerics.Nz, state.thk.shape[0], state.thk.shape[1])) 
     
 def get_velbase_1(U, vert_basis):
-    if vert_basis in ["Lagrange","SIA"]:
+    if vert_basis.lower() in ["lagrange","sia"]:
         return U[...,0,:,:]
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
         pm = tf.pow(-1.0, tf.range(U.shape[-3], dtype=tf.float32))
         return tf.tensordot(pm, U, axes=[[0], [-3]]) 
 
@@ -43,9 +43,9 @@ def get_velbase(U, V, vert_basis):
     return get_velbase_1(U, vert_basis), get_velbase_1(V, vert_basis)
 
 def get_velsurf_1(U, vert_basis):
-    if vert_basis in ["Lagrange","SIA"]:
+    if vert_basis.lower() in ["lagrange","sia"]:
         return U[...,-1,:,:]
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
         pm = tf.pow(1.0, tf.range(U.shape[-3], dtype=tf.float32))
         return tf.tensordot(pm, U, axes=[[0], [-3]])
 
@@ -54,11 +54,11 @@ def get_velsurf(U, V, vert_basis):
     return get_velsurf_1(U, vert_basis), get_velsurf_1(V, vert_basis)
 
 def get_velbar_1(U, vert_weight, vert_basis):
-    if vert_basis == "Lagrange":
+    if vert_basis.lower() == "lagrange":
         return tf.reduce_sum(U * vert_weight, axis=-3)
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
         return U[...,0,:,:]
-    elif vert_basis == "SIA":
+    elif vert_basis.lower() == "sia":
         return U[...,0,:,:]+0.8*(U[...,-1,:,:]-U[...,0,:,:])
 
 @tf.function(jit_compile=True)
@@ -191,12 +191,12 @@ def boundvel(velbar_mag, VEL, force_max_velbar):
 @tf.function(jit_compile=True)
 def clip_max_velbar(U, V, force_max_velbar, vert_basis, vert_weight):
 
-    if vert_basis in ["Lagrange","SIA"]:
+    if vert_basis.lower() in ["lagrange","sia"]:
         velbar_mag = getmag(U, V)
         U_clipped = boundvel(velbar_mag, U, force_max_velbar)
         V_clipped = boundvel(velbar_mag, V, force_max_velbar)
 
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
         velbar_mag = getmag(*get_velbar(U, V, \
                                         vert_weight, vert_basis))
         uvelbar = boundvel(velbar_mag, U[0], force_max_velbar)
@@ -229,9 +229,9 @@ def split_into_patches(X, nbmax, split_patch_method):
             #            if tf.reduce_max(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :]) > 0:
             XX.append(X[:, j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :])
 
-    if split_patch_method == "sequential":
+    if split_patch_method.lower() == "sequential":
         XXX = tf.stack(XX, axis=0)
-    elif split_patch_method == "parallel":
+    elif split_patch_method.lower() == "parallel":
         XXX = tf.expand_dims(tf.concat(XX, axis=0), axis=0)
 
     return XXX

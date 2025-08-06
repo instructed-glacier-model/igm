@@ -34,9 +34,7 @@ class GravityParams(tf.experimental.ExtensionType):
 def cost_gravity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, gravity_params: GravityParams) -> tf.Tensor:
 
     thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
-    zeta, dzeta = vert_disc
-
-    Leg_P = 0
+    zeta, dzeta, Leg_P, _ = vert_disc
 
     exp_glen = gravity_params.exp_glen
     ice_density = gravity_params.ice_density
@@ -58,25 +56,22 @@ def _cost(U, V, usurf, dX, zeta, dzeta, thk, Leg_P,
         V = stag4h(V)
         thk = stag4h(thk)
 
-    if vert_basis == "Lagrange":
+    if vert_basis.lower() == "lagrange":
 
         U = stag2v(U)
         V = stag2v(V)
 
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
  
         U = tf.einsum('ij,bjkl->bikl', Leg_P, U)
         V = tf.einsum('ij,bjkl->bikl', Leg_P, V)
     
-    elif vert_basis == "SIA":
+    elif vert_basis.lower() == "sia":
  
         U = U[:, 0:1, :, :] + (U[:, -1:, :, :] - U[:, 0:1, :, :]) \
                             * psia(zeta[None, :, None, None], exp_glen)
         V = V[:, 0:1, :, :] + (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
                             * psia(zeta[None, :, None, None], exp_glen)
- 
-    else:
-        raise ValueError(f"Unknown vertical basis: {vert_basis}")
     
     uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :] 
   

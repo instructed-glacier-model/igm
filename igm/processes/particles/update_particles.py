@@ -54,13 +54,13 @@ def update_particles(cfg, state):
         u, v, w, smb, thk, topg = \
             interpolate_particles_2d(state.U, state.V, WW, state.smb, state.thk, state.topg, indices)
 
-        if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
+        if cfg.processes.iceflow.numerics.vert_basis.lower() in ["lagrange","sia"]:
             weights = get_weights_lagrange(
                 vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
                 Nz=cfg.processes.iceflow.numerics.Nz,
                 particle_r=state.particle["r"]
             )
-        elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+        elif cfg.processes.iceflow.numerics.vert_basis.lower() == "legendre":
             weights = get_weights_legendre(state.particle["r"],cfg.processes.iceflow.numerics.Nz)
 
         state.particle["x"] += state.dt * tf.reduce_sum(weights * u, axis=0)

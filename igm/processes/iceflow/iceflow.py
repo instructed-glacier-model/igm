@@ -91,16 +91,18 @@ def initialize(cfg, state):
 
     # create the vertica discretization
     state.vert_weight = define_vertical_weight(cfg.processes.iceflow.numerics.Nz,cfg.processes.iceflow.numerics.vert_spacing)
- 
-    if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
+    vertical_basis = cfg.processes.iceflow.numerics.vert_basis.lower()
+
+    if vertical_basis == "lagrange":
         state.levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
         state.zeta, state.dzeta = compute_zeta_dzeta(state.levels)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
-    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
+    elif vertical_basis == "legendre":
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = legendre_basis(state.zeta,order=state.zeta.shape[0]) 
-    elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
-        assert cfg.processes.iceflow.numerics.Nz == 2 
+    elif vertical_basis == "sia":
+        if cfg.processes.iceflow.numerics.Nz != 2:
+            raise ValueError("SIA vertical basis only supports Nz=2.")
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     else:
@@ -111,7 +113,7 @@ def initialize(cfg, state):
                             state.thk.shape[1],state.thk.shape[0])
         
     vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
-    vert_disc = (vert_disc[0], vert_disc[1])
+    vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
     
     if not cfg.processes.iceflow.method == "solved":
                 
@@ -136,8 +138,9 @@ def initialize(cfg, state):
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
          
-    # Currently it is not supported to have the two working simulatanoutly
     assert (cfg.processes.iceflow.emulator.exclude_borders==0) | (cfg.processes.iceflow.emulator.network.multiple_window_size==0)
+    # if (cfg.processes.iceflow.emulator.exclude_borders==0) and (cfg.processes.iceflow.emulator.network.multiple_window_size==0):
+        # raise ValueError("The emulator must exclude borders or use multiple windows, otherwise it will not work properly.")
 
     # This makes sure this function is only called once
     state.was_initialize_iceflow_already_called = True
@@ -157,7 +160,7 @@ def update(cfg, state):
             fieldin = tf.stack(fieldin, axis=-1)
             
         vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
-        vert_disc = (vert_disc[0], vert_disc[1])
+        vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
         
         warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
         if warm_up:
@@ -174,16 +177,9 @@ def update(cfg, state):
                 X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
                 data = get_emulator_data(state, nbit, lr)
                 state.cost_emulator = update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
-               
-        rng = igm.utils.profiling.srange("update_iceflow_emulator", "orange")
-        igm.utils.profiling.erange(rng)
         
-        
-        rng = igm.utils.profiling.srange("ANN Time step", "green")
         data = extract_state_for_emulated(state)
         updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
-        igm.utils.profiling.erange(rng)
-
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 

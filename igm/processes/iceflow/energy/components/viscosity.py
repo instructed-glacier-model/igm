@@ -36,8 +36,7 @@ def cost_viscosity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, 
 
     thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
 
-    zeta, dzeta = vert_disc
-    Leg_P, Leg_dPdz = 0,0
+    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
 
     exp_glen = viscosity_params.exp_glen
     regu_glen = viscosity_params.regu_glen
@@ -152,7 +151,7 @@ def _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dP
         thk = stag4h(thk)
         B = stag4h(B)
 
-    if vert_basis == "Lagrange":
+    if vert_basis.lower() == "lagrange":
 
         dUdx = stag2v(dUdx) 
         dVdx = stag2v(dVdx) 
@@ -167,7 +166,7 @@ def _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dP
         dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(dUdx, dVdx, dUdy, dVdy, dUdz, dVdz,
                                                                   sloptopgx, sloptopgy)  
 
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
  
         dUdx = tf.einsum('ij,bjkl->bikl', Leg_P, dUdx) 
         dVdx = tf.einsum('ij,bjkl->bikl', Leg_P, dVdx)
@@ -177,7 +176,7 @@ def _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dP
         dUdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, U) / tf.maximum(thk[:, None, :, :], thr_ice_thk) 
         dVdz = tf.einsum('ij,bjkl->bikl', Leg_dPdz, V) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
  
-    elif vert_basis == "SIA":
+    elif vert_basis.lower() == "sia":
 
         dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) \
                                   * psia(zeta[None, :, None, None], exp_glen)
@@ -192,9 +191,6 @@ def _cost(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dP
              * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
         dVdz = (V[:, -1:, :, :] - V[:, 0:1, :, :]) \
              * psiap(zeta[None, :, None, None], exp_glen) / tf.maximum(thk[:, None, :, :], thr_ice_thk)
-
-    else:
-        raise ValueError(f"Unknown vertical basis: {vert_basis}")
 
     sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)  
 

@@ -23,7 +23,7 @@ def update(cfg, state):
 
     vert_basis = cfg.processes.iceflow.numerics.vert_basis
 
-    if vert_basis == "Lagrange":
+    if vert_basis.lower() == "lagrange":
 
         # original version by GJ
         if cfg.processes.vert_flow.version == 1:
@@ -41,11 +41,11 @@ def update(cfg, state):
             elif cfg.processes.vert_flow.method == "incompressibility":
                 state.W = compute_vertical_velocity_incompressibility_v2(cfg, state)
 
-    elif vert_basis == "Legendre":
+    elif vert_basis.lower() == "legendre":
         
         state.W = compute_vertical_velocity_legendre(cfg, state)
 
-    elif vert_basis == "SIA":
+    elif vert_basis.lower() == "sia":
         
         state.W = compute_vertical_velocity_twolayers(cfg, state)
 

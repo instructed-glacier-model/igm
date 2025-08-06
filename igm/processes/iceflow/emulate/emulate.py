@@ -358,8 +358,6 @@ def match_fieldin_dimensions(fieldin):
     return fieldin_matched
 
 
-
-
 tf.config.optimizer.set_jit(True)
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
@@ -437,10 +435,10 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
 
             del tape
 
-            emulator_cost_tensor = emulator_cost_tensor.write(iteration, cost_emulator)
+        emulator_cost_tensor = emulator_cost_tensor.write(iteration, cost_emulator)
             # emulator_grad_tensor = emulator_grad_tensor.write(iteration, total_gradients)
             
-            return emulator_cost_tensor.stack()
+    return emulator_cost_tensor.stack()
 
 
 def save_iceflow_model(cfg, state):
