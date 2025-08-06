@@ -358,16 +358,9 @@ def match_fieldin_dimensions(fieldin):
     return fieldin_matched
 
 
+
+
 tf.config.optimizer.set_jit(True)
-
-
-@tf.function(jit_compile=True)
-def apply_gradients_xla(optimizer, grads_and_vars):
-    optimizer.apply_gradients(grads_and_vars)  # does this work?
-
-    return 0
-
-
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
 
@@ -377,10 +370,11 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
         for i in tf.range(tf.constant(X.shape[0])):
             with tf.GradientTape(persistent=True) as tape:
 
-                # if training_loop_params["lr_decay"] < 1:
-                #     training_loop_state_objects["opti_retrain"].lr = lr * (
-                #         training_loop_params["lr_decay"] ** (i / 1000)
-                #     )
+                if parameters.lr_decay < 1:
+                    new_lr = data["lr"] * (
+                        parameters.lr_decay ** (i / 1000)
+                    )
+                    data["opti_retrain"].learning_rate.assign(tf.cast(new_lr, tf.float32))
 
                 Y = data["iceflow_model_inference"](
                     tf.pad(X[i, :, :, :, :], padding, "CONSTANT")
