@@ -369,7 +369,7 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                     :, :Ny, :Nx, :
                 ]
 
-                energy_list = iceflow_energy_XY(
+                nonstaggered_energy, staggered_energy = iceflow_energy_XY(
                     Nz=parameters.Nz,
                     dim_arrhenius=parameters.arrhenius_dimension,
                     staggered_grid=parameters.staggered_grid,
@@ -381,17 +381,15 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 )
                 
                 basis_vectors, sliding_shear_stress = sliding_law_XY(
-                    # X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
                     effective_pressure=data["effective_pressure"],
-                    # Nz=parameters.Nz,
-                    # fieldin_list=parameters.fieldin_names,
-                    # dim_arrhenius=parameters.arrhenius_dimension,
                     sliding_law=data["sliding_law"],
                 )
                 
-                energy_mean_list = tf.reduce_mean(energy_list, axis=[1, 2, 3]) # mean over the spatial dimensions
-                total_energy = tf.reduce_sum(energy_mean_list, axis=0) # axis is right?
+                
+                energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3]) # mean over the spatial dimensions
+                energy_mean_nonstaggered = tf.reduce_mean(nonstaggered_energy, axis=[1, 2, 3]) # mean over the spatial dimensions
+                total_energy = tf.reduce_sum(energy_mean_nonstaggered, axis=0) + tf.reduce_sum(energy_mean_staggered, axis=0)
                 cost_emulator += total_energy
             
             nonsliding_gradients = tape.gradient(total_energy, data["iceflow_model"].trainable_variables)
