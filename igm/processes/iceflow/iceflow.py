@@ -128,7 +128,7 @@ def initialize(cfg, state):
         
         X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, False) # python literal bad?
         data = get_emulator_data(state, nbit, lr)
-        update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
+        state.cost_emulator = update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
         
         data = extract_state_for_emulated(state)
         updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
@@ -173,7 +173,7 @@ def update(cfg, state):
             if do_retrain:
                 X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
                 data = get_emulator_data(state, nbit, lr)
-                update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
+                state.cost_emulator = update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
                
         rng = igm.utils.profiling.srange("update_iceflow_emulator", "orange")
         igm.utils.profiling.erange(rng)

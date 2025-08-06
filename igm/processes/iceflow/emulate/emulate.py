@@ -364,6 +364,13 @@ tf.config.optimizer.set_jit(True)
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
 
+    emulator_cost_tensor = tf.TensorArray(
+        dtype=tf.float32, size=data["nbit"]
+    )
+    # emulator_grad_tensor = tf.TensorArray(
+    #     dtype=tf.float32, size=parameters.nbit
+    # )
+    
     for iteration in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
@@ -420,7 +427,6 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 for grad, sgrad in zip(nonsliding_gradients, sliding_gradients)
             ]
 
-            # rng = igm.utils.profiling.srange("Applying the gradients", "green")
             data["opti_retrain"].apply_gradients(
                 zip(total_gradients, data["iceflow_model"].trainable_variables)
             )
@@ -431,8 +437,10 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
 
             del tape
 
-            # state.emulator_cost = state.emulator_cost.write(epoch, cost_emulator)
-            # state.emulator_grad = state.emulator_grad.write(epoch, grad_emulator)
+            emulator_cost_tensor = emulator_cost_tensor.write(iteration, cost_emulator)
+            # emulator_grad_tensor = emulator_grad_tensor.write(iteration, total_gradients)
+            
+            return emulator_cost_tensor.stack()
 
 
 def save_iceflow_model(cfg, state):
