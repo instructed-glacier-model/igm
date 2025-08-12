@@ -53,8 +53,9 @@ def main(cfg: DictConfig) -> None:
     for gpu_instance in gpus:
         tf.config.experimental.set_memory_growth(gpu_instance, True)
     
-    print([gpus[i] for i in cfg.core.hardware.visible_gpus])
     if gpus:
+        print([gpus[i] for i in cfg.core.hardware.visible_gpus])
+
         try:
             selected_visible_gpus = [gpus[i] for i in cfg.core.hardware.visible_gpus]
             tf.config.set_visible_devices(selected_visible_gpus, "GPU")

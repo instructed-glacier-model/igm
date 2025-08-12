@@ -19,10 +19,10 @@ def open_gridded_data(cfg, path_RGI, state, flip_y=True):
         return
 
     ds = xr.open_dataset(ncpath)
-
+    attr = ds.attrs
     # Convert all data to float32
     ds = ds.map(lambda x: x.astype("float32") if hasattr(x, 'dtype') and np.issubdtype(x.dtype, np.floating) else x)
-
+    ds.attrs = attr
     # Ensure coordinates are set
     ds = ds.assign_coords({
         "x": ds["x"].squeeze().astype("float32"),
