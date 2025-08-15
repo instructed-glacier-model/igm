@@ -8,7 +8,7 @@ from .patching import OverlapPatching
 
 # Define PreparationParams as a tf.experimental.ExtensionType
 class PreparationParams(tf.experimental.ExtensionType):
-    stride: int  # stride is the number of pixels to move the patch extraction window at each step
+    overlap: float  # overlap is the fraction of the patch size that overlaps between adjacent patches (0.0 to 1.0)
     batch_size: int  # batch size for training
     patch_size: int  # size of the patches to extract from the images (e.g. 64 results in 64x64 patches)
     rotation_probability: float  # probability of rotating each training image
@@ -24,7 +24,9 @@ def create_training_set(
     # Detect the dtype from the input tensor
     dtype = input.dtype
 
-    Patching = OverlapPatching(patch_size=preparation_params.patch_size)
+    Patching = OverlapPatching(
+        patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
+    )
     patches = Patching.patch_tensor(input)
     patches = tf.cast(patches, dtype)
     patch_shape = tf.shape(patches)
