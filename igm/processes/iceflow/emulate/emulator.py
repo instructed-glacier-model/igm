@@ -9,7 +9,10 @@ import importlib_resources
 
 import igm.processes.iceflow.emulate.emulators as emulators
 from igm.processes.iceflow.emulate import EmulatedParams
-from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage, get_emulator_path
+from igm.processes.iceflow.emulate.utils.misc import (
+    get_effective_pressure_precentage,
+    get_emulator_path,
+)
 from igm.processes.iceflow.energy import EnergyComponents
 
 from igm.processes.iceflow.energy import (
@@ -21,6 +24,7 @@ from igm.processes.iceflow.energy import (
 
 from igm.processes.iceflow.sliding import sliding_law_XY
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
+
 
 class EmulatorParams(tf.experimental.ExtensionType):
     lr_decay: float
@@ -36,30 +40,34 @@ class EmulatorParams(tf.experimental.ExtensionType):
     fieldin_names: Tuple[str, ...]
     print_cost: bool
 
+
 def get_emulator_inputs(state, nbit, lr) -> Dict:
-    
-    return dict({
-        "iceflow_model_inference": state.iceflow_model_inference,
-        "iceflow_model": state.iceflow_model,
-        "sliding_law": state.iceflow.sliding_law,
-        "energy_components": state.iceflow.energy_components,
-        "opti_retrain": state.opti_retrain,
-        "nbit": nbit,
-        "effective_pressure": state.effective_pressure,
-        "lr": lr,
-})
-    
+
+    return dict(
+        {
+            "iceflow_model_inference": state.iceflow_model_inference,
+            "iceflow_model": state.iceflow_model,
+            "sliding_law": state.iceflow.sliding_law,
+            "energy_components": state.iceflow.energy_components,
+            "opti_retrain": state.opti_retrain,
+            "nbit": nbit,
+            "effective_pressure": state.effective_pressure,
+            "lr": lr,
+        }
+    )
+
+
 tf.config.optimizer.set_jit(True)
+
+
 @tf.function(jit_compile=False)
 def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
 
-    emulator_cost_tensor = tf.TensorArray(
-        dtype=tf.float32, size=data["nbit"]
-    )
+    emulator_cost_tensor = tf.TensorArray(dtype=tf.float32, size=data["nbit"])
     # emulator_grad_tensor = tf.TensorArray(
     #     dtype=tf.float32, size=parameters.nbit
     # )
-    
+
     for iteration in tf.range(data["nbit"]):
         cost_emulator = 0.0
 
@@ -67,10 +75,10 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
             with tf.GradientTape(persistent=True) as tape:
 
                 if parameters.lr_decay < 1:
-                    new_lr = data["lr"] * (
-                        parameters.lr_decay ** (i / 1000)
+                    new_lr = data["lr"] * (parameters.lr_decay ** (i / 1000))
+                    data["opti_retrain"].learning_rate.assign(
+                        tf.cast(new_lr, tf.float32)
                     )
-                    data["opti_retrain"].learning_rate.assign(tf.cast(new_lr, tf.float32))
 
                 Y = data["iceflow_model_inference"](
                     tf.pad(X[i, :, :, :, :], padding, "CONSTANT")
@@ -127,9 +135,10 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
             del tape
 
         emulator_cost_tensor = emulator_cost_tensor.write(iteration, cost_emulator)
-            # emulator_grad_tensor = emulator_grad_tensor.write(iteration, total_gradients)
-            
+        # emulator_grad_tensor = emulator_grad_tensor.write(iteration, total_gradients)
+
     return emulator_cost_tensor.stack()
+
 
 def initialize_iceflow_emulator(cfg, state):
 
@@ -165,7 +174,9 @@ def initialize_iceflow_emulator(cfg, state):
                     "Found pretrained emulator in the igm package: " + direct_name
                 )
             else:
-                raise ImportError(f"No pretrained emulator found in the igm package with name {direct_name}")
+                raise ImportError(
+                    f"No pretrained emulator found in the igm package with name {direct_name}"
+                )
         else:
             dirpath = os.path.join(
                 state.original_cwd, cfg.processes.iceflow.emulator.name
