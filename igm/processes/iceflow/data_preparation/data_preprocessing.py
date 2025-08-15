@@ -16,7 +16,6 @@ class PreparationParams(tf.experimental.ExtensionType):
     noise_type: str  # type of noise to add (e.g. "gaussian", "perlin" or "none")
     noise_scale: float  # maximum fractional noise scale e.g. noise_scale = 0.2 means max +/- 20% noise added
     target_samples: int  # target total number of training images to generate
-    randomize_patching: bool  # whether to randomize patch extraction
 
 
 def create_training_set(
@@ -25,12 +24,6 @@ def create_training_set(
     # Detect the dtype from the input tensor
     dtype = input.dtype
 
-    # patches = extract_random_patches(
-    #     input,
-    #     preparation_params.patch_size,
-    #     preparation_params.stride,
-    #     preparation_params.randomize_patching,
-    # )
     Patching = OverlapPatching(patch_size=preparation_params.patch_size)
     patches = Patching.patch_tensor(input)
     patches = tf.cast(patches, dtype)
@@ -176,48 +169,3 @@ def _apply_all_augmentations(
     for aug in augmentations:
         x = aug.apply(x)
     return tf.cast(x, dtype)
-
-
-@tf.function
-def extract_random_patches(image, patch_size=64, stride=32, randomize_patching=False):
-    """
-    Extract patches using ceil(image_size/stride) patches per dimension.
-    If patch_size is greater than image size in both dimensions, return original image.
-    """
-
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
-
-    # If patch size is larger than both dimensions, return the original image
-    if patch_size >= image_height and patch_size >= image_width:
-        return tf.expand_dims(image, axis=0)
-
-    if randomize_patching:
-        # Random offset for augmentation
-        max_offset_x = stride
-        max_offset_y = stride
-        offset_x = tf.random.uniform([], 0, max_offset_x, dtype=tf.int32)
-        offset_y = tf.random.uniform([], 0, max_offset_y, dtype=tf.int32)
-        image = image[offset_x:, offset_y:, :]
-
-    # Use the original stride for patch extraction
-    # tf.image.extract_patches requires static strides in @tf.function context
-    patches = tf.image.extract_patches(
-        images=tf.expand_dims(image, 0),  # Add batch dimension
-        sizes=[1, patch_size, patch_size, 1],
-        strides=[1, stride, stride, 1],
-        rates=[1, 1, 1, 1],
-        padding="VALID",
-    )
-
-    # Get actual number of patches (should match our calculation)
-    actual_patches_h = tf.shape(patches)[1]
-    actual_patches_w = tf.shape(patches)[2]
-    patch_depth = tf.shape(image)[-1]
-
-    patches = tf.reshape(
-        patches,
-        [actual_patches_h * actual_patches_w, patch_size, patch_size, patch_depth],
-    )
-
-    return patches
