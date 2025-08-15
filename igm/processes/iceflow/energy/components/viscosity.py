@@ -133,7 +133,7 @@ def compute_srz2(dUdz, dVdz):
     return 0.5 * (Exz**2 + Eyz**2 + Exz**2 + Eyz**2)
 
 
-# @tf.function()
+@tf.function()
 def compute_vertical_derivatives(U, V, thk, dzeta, thr):
 
     if U.shape[-3] > 1:
@@ -172,7 +172,7 @@ def correct_for_change_of_coordinate(
     return dUdx, dVdx, dUdy, dVdy
 
 
-# @tf.function()
+@tf.function()
 def _cost(
     U,
     V,
