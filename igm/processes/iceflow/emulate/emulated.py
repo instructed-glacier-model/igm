@@ -14,6 +14,7 @@ from igm.processes.iceflow.utils.velocities import (
     clip_max_velbar,
 )
 
+
 class EmulatedParams(tf.experimental.ExtensionType):
     Nz: int
     arrhenius_dimension: int
@@ -23,28 +24,40 @@ class EmulatedParams(tf.experimental.ExtensionType):
     vertical_basis: str
 
 
+def get_emulated_params_args(cfg) -> Dict[str, Any]:
+
+    cfg_emulator = cfg.processes.iceflow.emulator
+    cfg_numerics = cfg.processes.iceflow.numerics
+    cfg_physics = cfg.processes.iceflow.physics
+
+    return {
+        "Nz": cfg_numerics.Nz,
+        "arrhenius_dimension": cfg_physics.dim_arrhenius,
+        "exclude_borders": cfg_emulator.exclude_borders,
+        "multiple_window_size": cfg_emulator.network.multiple_window_size,
+        "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
+        "vertical_basis": cfg_numerics.vert_basis,
+    }
+
+
 def get_emulated_inputs(state) -> Dict[str, Any]:
 
-    return dict(
-        {
-            "thk": state.thk,
-            "PAD": state.PAD,
-            "vert_weight": state.vert_weight,
-            "U": state.U,
-            "V": state.V,
-            "iceflow_model_inference": state.iceflow_model_inference,
-        }
-    )
+    return {
+        "thk": state.thk,
+        "PAD": state.PAD,
+        "vert_weight": state.vert_weight,
+        "U": state.U,
+        "V": state.V,
+        "iceflow_model_inference": state.iceflow_model_inference,
+    }
+
 
 @tf.function(jit_compile=True)
 def update_iceflow_emulated(
     data: Dict, fieldin: tf.Tensor, parameters: EmulatedParams
 ) -> Dict[str, tf.Tensor]:
 
-    # Define the input of the NN, include scaling
-
-    Ny, Nx = data["thk"].shape
-
+    # Define input of neural network: X
     if parameters.arrhenius_dimension == 3:
         X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
     elif parameters.arrhenius_dimension == 2:
@@ -54,26 +67,30 @@ def update_iceflow_emulated(
         iz = parameters.exclude_borders
         X = tf.pad(X, [[0, 0], [iz, iz], [iz, iz], [0, 0]], "SYMMETRIC")
 
+    # Compute output of neural network: Y
     if parameters.multiple_window_size == 0:
         Y = data["iceflow_model_inference"](X)
     else:
+        Ny, Nx = data["thk"].shape
         Y = data["iceflow_model_inference"](tf.pad(X, data["PAD"], "CONSTANT"))[
             :, :Ny, :Nx, :
         ]
 
+    # Post-processing of output of neural network
     if parameters.exclude_borders > 0:
         iz = parameters.exclude_borders
         Y = Y[:, iz:-iz, iz:-iz, :]
 
+    # Compute velocity fields: U, V
     U, V = Y_to_UV(parameters.Nz, Y)
     U = U[0]
     V = V[0]
 
-    U = tf.where(data["thk"] > 0, U, 0)
-    V = tf.where(data["thk"] > 0, V, 0)
+    # Post-processing of velocity fields
+    U = tf.where(data["thk"] > 0.0, U, 0.0)
+    V = tf.where(data["thk"] > 0.0, V, 0.0)
 
-    # If requested, the speeds are artifically upper-bounded
-    if parameters.force_max_velbar > 0:
+    if parameters.force_max_velbar > 0.0:
         U, V = clip_max_velbar(
             U,
             V,
@@ -82,6 +99,7 @@ def update_iceflow_emulated(
             data["vert_weight"],
         )
 
+    # Retrieve derived quantities from velocity fields
     uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
     uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
     ubar, vbar = get_velbar(U, V, data["vert_weight"], parameters.vertical_basis)

@@ -4,20 +4,15 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+from typing import Any, Dict, Tuple
+
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
-
-from abc import ABC, abstractmethod
-from typing import Tuple, Dict
-
-
-class EnergyComponent(ABC):
-    @abstractmethod
-    def cost():
-        pass
+from .energy import EnergyComponent
 
 
 class ViscosityComponent(EnergyComponent):
+
     def __init__(self, params):
         self.params = params
 
@@ -34,6 +29,21 @@ class ViscosityParams(tf.experimental.ExtensionType):
     min_sr: float
     max_sr: float
     vert_basis: str
+
+
+def get_viscosity_params_args(cfg) -> Dict[str, Any]:
+
+    cfg_numerics = cfg.processes.iceflow.numerics
+    cfg_physics = cfg.processes.iceflow.physics
+
+    return {
+        "exp_glen": cfg_physics.exp_glen,
+        "regu_glen": cfg_physics.regu_glen,
+        "thr_ice_thk": cfg_physics.thr_ice_thk,
+        "min_sr": cfg_physics.min_sr,
+        "max_sr": cfg_physics.max_sr,
+        "vert_basis": cfg_numerics.vert_basis,
+    }
 
 
 def cost_viscosity(

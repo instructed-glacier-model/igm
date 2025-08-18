@@ -45,6 +45,8 @@ setup(
         "importlib_resources",
         "tqdm",
         "hydra-core",
-        "omegaconf"
+        "omegaconf",
+        "nvtx",
+        "typeguard",
     ],
 )

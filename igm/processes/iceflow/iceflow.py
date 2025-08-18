@@ -52,7 +52,6 @@ from igm.processes.iceflow.emulate.utils import save_iceflow_model
 from igm.processes.iceflow.utils.misc import is_retrain
 from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
 from igm.processes.iceflow.utils.data_preprocessing import (
-    compute_PAD,
     match_fieldin_dimensions,
     prepare_data,
 )
@@ -80,22 +79,30 @@ class Iceflow:
 
 def initialize(cfg, state):
 
+    # Make sure this function is only called once
+    if hasattr(state, "was_initialize_iceflow_already_called"):
+        return
+    else:
+        state.was_initialize_iceflow_already_called = True
+
+    # Create ice flow object
     iceflow = Iceflow()
     state.iceflow = iceflow
 
-    # This makes sure this function is only called once
-    if hasattr(state, "was_initialize_iceflow_already_called"):
-        return
+    # Parameters aliases
+    cfg_numerics = cfg.processes.iceflow.numerics
+    cfg_physics = cfg.processes.iceflow.physics
 
-    method = cfg.processes.iceflow.physics.sliding.method
+    # Set sliding law
+    method = cfg_physics.sliding.method
 
     sliding_law_class = SlidingLaws[method]
     sliding_law_params_class = SlidingParams[method]
     sliding_law_params = sliding_law_params_class(
-        staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
-        vert_basis=cfg.processes.iceflow.numerics.vert_basis,
-        Nz=cfg.processes.iceflow.numerics.Nz,
-        **cfg.processes.iceflow.physics.sliding[method],
+        staggered_grid=cfg_numerics.staggered_grid,
+        vert_basis=cfg_numerics.vert_basis,
+        Nz=cfg_numerics.Nz,
+        **cfg_physics.sliding[method],
     )
 
     sliding_law = sliding_law_class(sliding_law_params)
@@ -103,6 +110,8 @@ def initialize(cfg, state):
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
+
+    # Set ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
 
     if iceflow_method == "emulated":
@@ -114,55 +123,46 @@ def initialize(cfg, state):
     elif iceflow_method == "diagnostic":
         # define the second velocity field
         initialize_iceflow_diagnostic(cfg, state)
+    else:
+        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
-    # create the vertica discretization
+    # Set vertical discretization
     state.vert_weight = define_vertical_weight(
-        cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing
+        cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
-    vertical_basis = cfg.processes.iceflow.numerics.vert_basis.lower()
+    vertical_basis = cfg_numerics.vert_basis.lower()
 
     if vertical_basis == "lagrange":
         state.levels = compute_levels(
-            cfg.processes.iceflow.numerics.Nz,
-            cfg.processes.iceflow.numerics.vert_spacing,
+            cfg_numerics.Nz,
+            cfg_numerics.vert_spacing,
         )
         state.zeta, state.dzeta = compute_zeta_dzeta(state.levels)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     elif vertical_basis == "legendre":
-        state.zeta, state.dzeta = gauss_points_and_weights(
-            ord_gauss=cfg.processes.iceflow.numerics.Nz
-        )
+        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg_numerics.Nz)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = legendre_basis(
             state.zeta, order=state.zeta.shape[0]
         )
     elif vertical_basis == "sia":
-        if cfg.processes.iceflow.numerics.Nz != 2:
+        if cfg_numerics.Nz != 2:
             raise ValueError("SIA vertical basis only supports Nz=2.")
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     else:
-        raise ValueError(
-            f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}"
-        )
-
-    # padding is necessary when using U-net emulator
-    state.PAD = compute_PAD(
-        cfg.processes.iceflow.emulator.network.multiple_window_size,
-        state.thk.shape[1],
-        state.thk.shape[0],
-    )
+        raise ValueError(f"Unknown vertical basis: {cfg_numerics.vert_basis}")
 
     vert_disc = [
         vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]
     ]  # Lets please not hard code this as it affects every function inside...
     vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
 
-    if not cfg.processes.iceflow.method.lower() == "solved":
+    if not iceflow_method == "solved":
 
         fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
+        if cfg_physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
+        elif cfg_physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
 
         # Initial warm up for the emulator
@@ -191,18 +191,19 @@ def initialize(cfg, state):
     # if (cfg.processes.iceflow.emulator.exclude_borders==0) and (cfg.processes.iceflow.emulator.network.multiple_window_size==0):
     # raise ValueError("The emulator must exclude borders or use multiple windows, otherwise it will not work properly.")
 
-    # This makes sure this function is only called once
-    state.was_initialize_iceflow_already_called = True
-
 
 def update(cfg, state):
 
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
 
-    if cfg.processes.iceflow.method.lower() in ["emulated", "diagnostic"]:
+    iceflow_method = cfg.processes.iceflow.method.lower()
 
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+    if iceflow_method in ["emulated", "diagnostic"]:
+
+        cfg_emulator = cfg.processes.iceflow.emulator
+
+        fieldin = [vars(state)[f] for f in cfg_emulator.fieldin]
 
         if cfg.processes.iceflow.physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
@@ -214,22 +215,22 @@ def update(cfg, state):
         ]  # Lets please not hard code this as it affects every function inside...
         vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
 
-        warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
+        warm_up = int(state.it <= cfg_emulator.warm_up_it)
         if warm_up:
-            nbit = cfg.processes.iceflow.emulator.nbit_init
-            lr = cfg.processes.iceflow.emulator.lr_init
+            nbit = cfg_emulator.nbit_init
+            lr = cfg_emulator.lr_init
         else:
-            nbit = cfg.processes.iceflow.emulator.nbit
-            lr = cfg.processes.iceflow.emulator.lr
+            nbit = cfg_emulator.nbit
+            lr = cfg_emulator.lr
         state.opti_retrain.lr = lr
 
-        if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (
+        if (cfg_emulator.retrain_freq > 0) & (
             state.it > 0
         ):  # lets try to combine logic into one function...
             do_retrain = is_retrain(state.it, cfg)
             if do_retrain:
                 X, padding, Ny, Nx, iz = prepare_data(
-                    cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate
+                    cfg, fieldin, pertubate=cfg_emulator.pertubate
                 )
                 data = get_emulator_inputs(state, nbit, lr)
                 state.cost_emulator = update_iceflow_emulator(
@@ -250,10 +251,10 @@ def update(cfg, state):
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 
-        if cfg.processes.iceflow.method.lower() == "diagnostic":
+        if iceflow_method == "diagnostic":
             update_iceflow_diagnostic(cfg, state)
 
-    elif cfg.processes.iceflow.method.lower() == "solved":
+    elif iceflow_method == "solved":
         update_iceflow_solved(cfg, state)
 
 

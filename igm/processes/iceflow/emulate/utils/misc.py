@@ -2,6 +2,10 @@ import os
 from typing import Union
 import tensorflow as tf
 from omegaconf import DictConfig
+import importlib_resources
+import igm.processes.iceflow.emulate.emulators as emulators
+import logging
+
 
 def get_effective_pressure_precentage(thk, percentage=0.8) -> tf.Tensor:
     p_i = 910  # kg/m^3, density of ice, # use IGM version not hardcoded
@@ -18,7 +22,7 @@ def get_emulator_path(cfg: DictConfig):
         not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
     ) * "a"
 
-    direct_name = (
+    dir_name = (
         "pinnbp"
         + "_"
         + str(cfg.processes.iceflow.numerics.Nz)
@@ -26,7 +30,7 @@ def get_emulator_path(cfg: DictConfig):
         + str(int(cfg.processes.iceflow.numerics.vert_spacing))
         + "_"
     )
-    direct_name += (
+    dir_name += (
         cfg.processes.iceflow.emulator.network.architecture
         + "_"
         + str(cfg.processes.iceflow.emulator.network.nb_layers)
@@ -34,11 +38,39 @@ def get_emulator_path(cfg: DictConfig):
         + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
         + "_"
     )
-    direct_name += (
+    dir_name += (
         str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1)) + "_" + L
     )
 
-    return direct_name
+    return dir_name
+
+
+def get_pretrained_emulator_path(cfg: DictConfig, state) -> str:
+
+    cfg_emulator = cfg.processes.iceflow.emulator
+    dir_name = get_emulator_path(cfg)
+
+    dir_path = ""
+    if cfg_emulator.name == "":
+        print(importlib_resources.files(emulators).joinpath(dir_name))
+        if os.path.exists(importlib_resources.files(emulators).joinpath(dir_name)):
+            dir_path = importlib_resources.files(emulators).joinpath(dir_name)
+            logging.info("Found pretrained emulator in the igm package: " + dir_name)
+        else:
+            raise ImportError(
+                f"❌ No pretrained emulator found in the igm package with name <{dir_name}>."
+            )
+    else:
+        dir_path = os.path.join(state.original_cwd, cfg_emulator.name)
+        if os.path.exists(dir_path):
+            logging.info(f"'-'*40 Found pretrained emulator: {cfg_emulator.name} ")
+        else:
+            raise ImportError(
+                f"❌ No pretrained emulator found with path <{dir_path}>."
+            )
+
+    return dir_path
+
 
 def save_iceflow_model(cfg, state):
     directory = "iceflow-model"
