@@ -207,7 +207,7 @@ def initialize_iceflow_emulator(cfg, state):
         ) * (cfg.processes.iceflow.numerics.Nz - 1)
         nb_outputs = 2 * cfg.processes.iceflow.numerics.Nz
         state.iceflow_model = getattr(
-            igm.processes.iceflow.emulate.emulate,
+            igm.processes.iceflow.emulate.utils.networks,
             cfg.processes.iceflow.emulator.network.architecture,
         )(cfg, nb_inputs, nb_outputs)
 
