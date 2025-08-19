@@ -2,11 +2,10 @@ iceflow:
   method: emulated
   force_max_velbar: 0.0
   physics:
-    energy_components: ['viscosity', 'gravity']
+    energy_components: ['viscosity', 'gravity', 'sliding']
     sliding:
-      method: 'weertman'
+      law: 'weertman'
       weertman:
-        coefficient: 0.0464 #1e-16 should we convert to a new unit that is used more in literature?
         regu_weertman: 1.0e-10
         exponent: 3.0
       coulomb:

@@ -2,12 +2,7 @@ from .energy import EnergyComponent
 from .floating import FloatingComponent, FloatingParams, get_floating_params_args
 from .gravity import GravityComponent, GravityParams, get_gravity_params_args
 from .viscosity import ViscosityComponent, ViscosityParams, get_viscosity_params_args
-from .weertman import (
-    SlidingWeertmanComponent,
-    SlidingWeertmanParams,
-    get_sliding_weertman_params_args,
-)
-from .sliding import SlidingComponent
+from .sliding import SlidingComponents, SlidingParams, get_sliding_params_args
 
 __all__ = [
     "EnergyComponent",
@@ -20,8 +15,7 @@ __all__ = [
     "ViscosityComponent",
     "ViscosityParams",
     "get_viscosity_params_args",
-    "SlidingWeertmanComponent",
-    "SlidingWeertmanParams",
-    "get_sliding_weertman_params_args",
-    "SlidingComponent",
+    "SlidingComponents",
+    "SlidingParams",
+    "get_sliding_params_args",
 ]

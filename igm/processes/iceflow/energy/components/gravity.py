@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia
 from igm.utils.gradient.compute_gradient import compute_gradient

@@ -5,31 +5,31 @@ from .components import (
     ViscosityComponent,
     ViscosityParams,
     get_viscosity_params_args,
-    SlidingWeertmanComponent,
-    SlidingWeertmanParams,
-    get_sliding_weertman_params_args,
     FloatingComponent,
     FloatingParams,
     get_floating_params_args,
+    SlidingComponents,
+    SlidingParams,
+    get_sliding_params_args,
 )
 
 EnergyComponents = {
     "gravity": GravityComponent,
     "viscosity": ViscosityComponent,
-    "sliding_weertman": SlidingWeertmanComponent,
     "floating": FloatingComponent,
+    "sliding": SlidingComponents,
 }
 
 EnergyParams = {
     "gravity": GravityParams,
     "viscosity": ViscosityParams,
-    "sliding_weertman": SlidingWeertmanParams,
     "floating": FloatingParams,
+    "sliding": SlidingParams,
 }
 
 get_energy_params_args = {
     "gravity": get_gravity_params_args,
     "viscosity": get_viscosity_params_args,
-    "sliding_weertman": get_sliding_weertman_params_args,
     "floating": get_floating_params_args,
+    "sliding": get_sliding_params_args,
 }

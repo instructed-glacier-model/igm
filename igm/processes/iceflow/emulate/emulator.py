@@ -18,7 +18,6 @@ from igm.processes.iceflow.energy import (
     get_energy_params_args,
 )
 
-from igm.processes.iceflow.sliding import sliding_law_XY
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 
 
@@ -64,7 +63,6 @@ def get_emulator_inputs(state, nbit, lr) -> Dict:
     return {
         "iceflow_model_inference": state.iceflow_model_inference,
         "iceflow_model": state.iceflow_model,
-        "sliding_law": state.iceflow.sliding_law,
         "energy_components": state.iceflow.energy_components,
         "opti_retrain": state.opti_retrain,
         "nbit": nbit,
@@ -111,37 +109,22 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                     energy_components=data["energy_components"],
                 )
 
-                basis_vectors, sliding_shear_stress = sliding_law_XY(
-                    Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                    effective_pressure=data["effective_pressure"],
-                    sliding_law=data["sliding_law"],
-                )
-
                 energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
                 energy_mean_nonstaggered = tf.reduce_mean(
                     nonstaggered_energy, axis=[1, 2, 3]
                 )
+
                 total_energy = tf.reduce_sum(
                     energy_mean_nonstaggered, axis=0
                 ) + tf.reduce_sum(energy_mean_staggered, axis=0)
                 cost_emulator += total_energy
 
-            nonsliding_gradients = tape.gradient(
+            gradients = tape.gradient(
                 total_energy, data["iceflow_model"].trainable_variables
             )
-            sliding_gradients = tape.gradient(
-                target=basis_vectors,
-                sources=data["iceflow_model"].trainable_variables,
-                output_gradients=sliding_shear_stress,
-            )
-
-            total_gradients = [
-                grad + (sgrad / tf.cast(Nx * Ny, tf.float32))
-                for grad, sgrad in zip(nonsliding_gradients, sliding_gradients)
-            ]
 
             data["opti_retrain"].apply_gradients(
-                zip(total_gradients, data["iceflow_model"].trainable_variables)
+                zip(gradients, data["iceflow_model"].trainable_variables)
             )
 
             if parameters.print_cost:
@@ -159,9 +142,9 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
 def initialize_iceflow_emulator(cfg, state):
 
     if not hasattr(cfg, "processes"):
-        raise AttributeError("❌ <cfg.processes> does not exist")
+        raise AttributeError("❌ <cfg.processes> does not exist.")
     if not hasattr(cfg.processes, "iceflow"):
-        raise AttributeError("❌ <cfg.processes.iceflow> does not exist")
+        raise AttributeError("❌ <cfg.processes.iceflow> does not exist.")
     if not hasattr(state, "thk"):
         raise AttributeError("❌ <state.thk> does not exist.")
 
@@ -237,18 +220,25 @@ def initialize_iceflow_emulator(cfg, state):
         if component not in EnergyComponents:
             raise ValueError(f"❌ Unknown energy component: <{component}>.")
 
-        # Get component class, params class, and argument extractor
-        component_class = EnergyComponents[component]
-        params_class = EnergyParams[component]
+        # Get component and params class
+        if component == "sliding":
+            law = cfg_physics.sliding.law
+            component_class = EnergyComponents[component][law]
+            params_class = EnergyParams[component][law]
+        else:
+            component_class = EnergyComponents[component]
+            params_class = EnergyParams[component]
+
+        # Get args extractor
         get_params_args = get_energy_params_args[component]
 
-        # Instantiate component and params classes
+        # Instantiate params and component classes
         params_args = get_params_args(cfg)
         params = params_class(**params_args)
-        component = component_class(params)
+        component_obj = component_class(params)
 
         # Add component to the list of components
-        state.iceflow.energy_components.append(component)
+        state.iceflow.energy_components.append(component_obj)
 
     # Instantiate emulator params
     emulator_params_args = get_emulator_params_args(cfg, Nx, Ny)
@@ -265,7 +255,7 @@ def initialize_iceflow_emulator(cfg, state):
     # Temporary fix for the effective pressure
     if not hasattr(state, "effective_pressure"):
         warnings.warn(
-            f"Effective pressure not provided for sliding law {state.iceflow.sliding_law.name}. Using 0% of ice overburden pressure as default."
+            f"Effective pressure not provided for sliding law {cfg_physics.sliding.law}. Using 0% of ice overburden pressure as default."
         )
 
         state.effective_pressure = get_effective_pressure_precentage(

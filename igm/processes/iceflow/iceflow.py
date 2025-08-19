@@ -42,7 +42,6 @@ from igm.processes.iceflow.emulate.emulated import (
     get_emulated_inputs,
 )
 from igm.processes.iceflow.emulate.emulator import (
-    get_emulator_inputs,
     update_iceflow_emulator,
     initialize_iceflow_emulator,
     get_emulator_inputs,
@@ -92,21 +91,6 @@ def initialize(cfg, state):
     # Parameters aliases
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
-
-    # Set sliding law
-    method = cfg_physics.sliding.method
-
-    sliding_law_class = SlidingLaws[method]
-    sliding_law_params_class = SlidingParams[method]
-    sliding_law_params = sliding_law_params_class(
-        staggered_grid=cfg_numerics.staggered_grid,
-        vert_basis=cfg_numerics.vert_basis,
-        Nz=cfg_numerics.Nz,
-        **cfg_physics.sliding[method],
-    )
-
-    sliding_law = sliding_law_class(sliding_law_params)
-    state.iceflow.sliding_law = sliding_law
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
