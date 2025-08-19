@@ -47,3 +47,4 @@ def open_gridded_data(cfg, path_RGI, state, flip_y=True):
                 ds[name] = da[::-1, :]
 
     return ds
+
