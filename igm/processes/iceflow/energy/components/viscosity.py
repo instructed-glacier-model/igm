@@ -234,6 +234,7 @@ def _cost(
 
         dUdz, dVdz = compute_vertical_derivatives(U, V, thk, dzeta, thr=thr_ice_thk)
 
+        # TO DO: check it this term is necessary
         dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
 
         dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(

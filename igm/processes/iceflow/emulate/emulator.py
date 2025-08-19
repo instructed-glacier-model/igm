@@ -19,6 +19,7 @@ from igm.processes.iceflow.energy import (
 )
 
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
+from igm.processes.iceflow.vertical import VerticalDiscrs
 
 
 class EmulatorParams(tf.experimental.ExtensionType):
@@ -213,6 +214,11 @@ def initialize_iceflow_emulator(cfg, state):
     # Holds the callable TF concrete function - not the model itself. This allows us to update the weights
     # for the graph but keep the XLA compiled function (check!)
     state.iceflow_model_inference = fast_inference
+
+    # Initialize vertical discretization
+    vertical_basis = cfg_numerics.vert_basis.lower()
+    vertical_discr = VerticalDiscrs[vertical_basis](cfg)
+    state.iceflow.vertical_discr = vertical_discr
 
     # Initialize energy components
     state.iceflow.energy_components = []

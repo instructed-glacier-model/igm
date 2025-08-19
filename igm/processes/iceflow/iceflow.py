@@ -69,7 +69,6 @@ from igm.processes.iceflow.diagnostic.diagnostic import (
     update_iceflow_diagnostic,
 )
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
-from igm.processes.iceflow.sliding import SlidingLaws, SlidingParams
 
 
 class Iceflow:
@@ -95,21 +94,6 @@ def initialize(cfg, state):
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
 
-    # Set ice-flow method
-    iceflow_method = cfg.processes.iceflow.method.lower()
-
-    if iceflow_method == "emulated":
-        # define the emulator, and the optimizer
-        initialize_iceflow_emulator(cfg, state)
-    elif iceflow_method == "solved":
-        # define the solver, and the optimizer
-        initialize_iceflow_solver(cfg, state)
-    elif iceflow_method == "diagnostic":
-        # define the second velocity field
-        initialize_iceflow_diagnostic(cfg, state)
-    else:
-        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
-
     # Set vertical discretization
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing
@@ -130,16 +114,31 @@ def initialize(cfg, state):
         )
     elif vertical_basis == "sia":
         if cfg_numerics.Nz != 2:
-            raise ValueError("SIA vertical basis only supports Nz=2.")
+            raise ValueError("❌ SIA vertical basis only supports Nz=2.")
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     else:
-        raise ValueError(f"Unknown vertical basis: {cfg_numerics.vert_basis}")
+        raise ValueError(f"❌ Unknown vertical basis: {cfg_numerics.vert_basis}.")
 
     vert_disc = [
         vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]
     ]  # Lets please not hard code this as it affects every function inside...
     vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
+
+    # Set ice-flow method
+    iceflow_method = cfg.processes.iceflow.method.lower()
+
+    if iceflow_method == "emulated":
+        # define the emulator, and the optimizer
+        initialize_iceflow_emulator(cfg, state)
+    elif iceflow_method == "solved":
+        # define the solver, and the optimizer
+        initialize_iceflow_solver(cfg, state)
+    elif iceflow_method == "diagnostic":
+        # define the second velocity field
+        initialize_iceflow_diagnostic(cfg, state)
+    else:
+        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
     if not iceflow_method == "solved":
 
@@ -157,6 +156,7 @@ def initialize(cfg, state):
         X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, True)
 
         data = get_emulator_inputs(state, nbit, lr)
+        # vertical_discr = state.iceflow.vertical_discr
         state.cost_emulator = update_iceflow_emulator(
             data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params
         )
