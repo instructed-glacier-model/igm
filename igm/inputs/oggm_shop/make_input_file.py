@@ -46,5 +46,9 @@ def make_input_file(cfg, ds, ds_vars, path_file):
         attrs={"pyproj_srs": pyproj_srs} if pyproj_srs else {}
     )
 
+    # Add EPSG number as dataset attribute
+    epsg       = ds.attrs.get("epsg", None)
+    ds_out.attrs["epsg"] = epsg
+
     # Save to disk
     ds_out.to_netcdf(path_file, format="NETCDF4")

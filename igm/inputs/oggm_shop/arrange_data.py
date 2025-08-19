@@ -61,8 +61,13 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
             vel = xr.where(ds_vars["icemask"], vel, 0)
         else:
             vel = np.full(ds["topo"].shape, np.nan)
+        # if velocity field only holds NaN, a TRY/EXCEPT block is required for medfilt2d
         if cfg.inputs.oggm_shop.smooth_obs_vel:
-            vel.data = scipy.signal.medfilt2d(vel.values, kernel_size=3)
+             try:
+                 scipy.signal.medfilt2d(vel.values, kernel_size=3)
+                 vel.data = scipy.signal.medfilt2d(vel.values, kernel_size=3)
+             except:
+                 vel.data = 1.0*vel #scipy.signal.medfilt2d(vel, kernel_size=3)
         ds_vars[key] = vel
  
     # Ice thickness observations from GlaThiDa
