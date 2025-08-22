@@ -26,7 +26,6 @@ from .vertical_discretization import (
 )
 from .misc import (
 	EarlyStopping,
-	is_retrain,
 	print_info,
 	initialize_iceflow_fields,
 )

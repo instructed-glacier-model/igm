@@ -91,6 +91,16 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
 
+def get_fieldin(cfg, state):
+
+    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+    if cfg.processes.iceflow.physics.dim_arrhenius == 3:
+        fieldin = match_fieldin_dimensions(fieldin)
+    elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
+        fieldin = tf.stack(fieldin, axis=-1)
+
+    return fieldin
+
 @tf.function(jit_compile=True)
 def fieldin_to_X_2d(fieldin):
     """Converts the fieldin variables to X (2D as the arrenhius dimension is 2D). This X is used as input to the emulator."""

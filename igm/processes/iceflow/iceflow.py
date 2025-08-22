@@ -39,10 +39,9 @@ import tensorflow as tf
 from igm.processes.iceflow.emulate.emulated import get_emulated_bag, update_iceflow_emulated
 from igm.processes.iceflow.emulate.emulator import get_emulator_bag, update_iceflow_emulator, initialize_iceflow_emulator
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
-
-from igm.processes.iceflow.utils.misc import is_retrain
+ 
 from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
-from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, match_fieldin_dimensions, prepare_X
+from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, match_fieldin_dimensions, prepare_X, get_fieldin
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight, compute_levels, compute_zeta_dzeta
 
 from igm.processes.iceflow.solve.solve import initialize_iceflow_solver, update_iceflow_solved
@@ -119,18 +118,11 @@ def initialize(cfg, state):
     
     if not cfg.processes.iceflow.method.lower() == "solved":
                 
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
+        fieldin = get_fieldin(cfg, state)
              
-        if (0 <= cfg.processes.iceflow.emulator.warm_up_it):
-            nbit = cfg.processes.iceflow.emulator.nbit_init
-            lr = cfg.processes.iceflow.emulator.lr_init
-        else:
-            nbit = cfg.processes.iceflow.emulator.nbit
-            lr = cfg.processes.iceflow.emulator.lr
+        warm_up = int(0 <= cfg.processes.iceflow.emulator.warm_up_it)
+        nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
+        lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
  
         X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
         bag = get_emulator_bag(state, nbit, lr)
@@ -156,25 +148,16 @@ def update(cfg, state):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
 
     if cfg.processes.iceflow.method.lower() in ["emulated","diagnostic"]:
-        
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
-        
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
-        
+
+        fieldin = get_fieldin(cfg, state)
+
         warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
-        if warm_up:
-            nbit = cfg.processes.iceflow.emulator.nbit_init
-            lr = cfg.processes.iceflow.emulator.lr_init
-        else:
-            nbit = cfg.processes.iceflow.emulator.nbit
-            lr = cfg.processes.iceflow.emulator.lr
+        nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
+        lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
         
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
-            do_retrain = is_retrain(state.it, cfg)
-            if do_retrain:
+            run_it = (state.it % cfg.processes.iceflow.emulator.retrain_freq == 0)
+            if run_it or warm_up:
                 X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
                 bag = get_emulator_bag(state, nbit, lr)
                 state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
