@@ -63,15 +63,15 @@ def initialize(cfg, state):
     if hasattr(state, "was_initialize_iceflow_already_called"):
         return
 
-    method = cfg.processes.iceflow.physics.sliding.method
+    law = cfg.processes.iceflow.physics.sliding.law
     
-    sliding_law_class = SlidingLaws[method]
-    sliding_law_params_class = SlidingParams[method]
+    sliding_law_class = SlidingLaws[law]
+    sliding_law_params_class = SlidingParams[law]
     sliding_law_params = sliding_law_params_class(
         staggered_grid=cfg.processes.iceflow.numerics.staggered_grid,
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
         Nz=cfg.processes.iceflow.numerics.Nz,
-        **cfg.processes.iceflow.physics.sliding[method]
+        **cfg.processes.iceflow.physics.sliding[law]
     )
 
     sliding_law = sliding_law_class(sliding_law_params)

@@ -4,7 +4,7 @@ iceflow:
   physics:
     energy_components: ['viscosity', 'gravity']
     sliding:
-      method: 'weertman'
+      law: 'weertman'
       weertman:
         coefficient: 0.0464 #1e-16 should we convert to a new unit that is used more in literature?
         regu_weertman: 1.0e-10
