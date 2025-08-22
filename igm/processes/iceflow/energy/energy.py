@@ -53,3 +53,23 @@ def iceflow_energy_XY(
     )
 
     return iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid)
+
+
+@tf.function()
+def iceflow_energy_UV(
+    Nz,
+    dim_arrhenius,
+    staggered_grid,
+    inputs_names,
+    inputs,
+    U,
+    V,
+    vert_disc,
+    energy_components,
+):
+
+    fieldin = X_to_fieldin(
+        X=inputs, fieldin_names=inputs_names, dim_arrhenius=dim_arrhenius, Nz=Nz
+    )
+
+    return iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid)

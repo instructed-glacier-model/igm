@@ -67,14 +67,12 @@ def update_iceflow_emulated(
         iz = parameters.exclude_borders
         X = tf.pad(X, [[0, 0], [iz, iz], [iz, iz], [0, 0]], "SYMMETRIC")
 
-    # Compute output of neural network: Y
-    if parameters.multiple_window_size == 0:
-        Y = data["iceflow_model_inference"](X)
-    else:
+    if parameters.multiple_window_size > 0:
         Ny, Nx = data["thk"].shape
-        Y = data["iceflow_model_inference"](tf.pad(X, data["PAD"], "CONSTANT"))[
-            :, :Ny, :Nx, :
-        ]
+        X = (tf.pad(X, data["PAD"], "CONSTANT"))[:, :Ny, :Nx, :]
+
+    # Compute output of neural network: Y
+    Y = data["iceflow_model_inference"](X)
 
     # Post-processing of output of neural network
     if parameters.exclude_borders > 0:

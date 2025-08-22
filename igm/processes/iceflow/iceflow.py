@@ -35,6 +35,7 @@ emulator as we minmize the same energy, however, with different controls,
 namely directly the velocity field U and V instead of the emulator parameters.
 """
 import tensorflow as tf
+import warnings
 
 from igm.processes.iceflow.emulate.emulated import (
     get_emulated_inputs,
@@ -68,6 +69,13 @@ from igm.processes.iceflow.diagnostic.diagnostic import (
     initialize_iceflow_diagnostic,
     update_iceflow_diagnostic,
 )
+from igm.processes.iceflow.unified.unified import (
+    initialize_iceflow_unified,
+    update_iceflow_unified,
+)
+from igm.processes.iceflow.emulate.utils.misc import (
+    get_effective_pressure_precentage,
+)
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
 
 
@@ -88,11 +96,25 @@ def initialize(cfg, state):
     state.iceflow = iceflow
 
     # Parameters aliases
+    cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
+
+    # Temporary fix for the effective pressure
+    if not hasattr(state, "effective_pressure"):
+        warnings.warn(
+            f"Effective pressure not provided for sliding law {cfg_physics.sliding.law}. Using 0% of ice overburden pressure as default."
+        )
+
+        state.effective_pressure = get_effective_pressure_precentage(
+            state.thk, percentage=0.0
+        )
+        state.effective_pressure = tf.where(
+            state.effective_pressure < 1e-3, 1e-3, state.effective_pressure
+        )
 
     # Set vertical discretization
     state.vert_weight = define_vertical_weight(
@@ -118,12 +140,13 @@ def initialize(cfg, state):
         state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
         state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
     else:
-        raise ValueError(f"❌ Unknown vertical basis: {cfg_numerics.vert_basis}.")
+        raise ValueError(f"❌ Unknown vertical basis: <{cfg_numerics.vert_basis}>.")
 
     vert_disc = [
         vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]
     ]  # Lets please not hard code this as it affects every function inside...
     vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
+    state.vert_disc = vert_disc
 
     # Set ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
@@ -137,23 +160,28 @@ def initialize(cfg, state):
     elif iceflow_method == "diagnostic":
         # define the second velocity field
         initialize_iceflow_diagnostic(cfg, state)
+    elif iceflow_method == "unified":
+        # define the velocity through a mapping
+        initialize_iceflow_unified(cfg, state)
     else:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
-    if not iceflow_method == "solved":
+    if not iceflow_method in ["solved", "unified"]:
 
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+        fieldin = [vars(state)[f] for f in cfg_emulator.fieldin]
         if cfg_physics.dim_arrhenius == 3:
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg_physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
 
         # Initial warm up for the emulator
-        nbit = cfg.processes.iceflow.emulator.nbit_init
-        lr = cfg.processes.iceflow.emulator.lr_init
+        nbit = cfg_emulator.nbit_init
+        lr = cfg_emulator.lr_init
         state.opti_retrain.lr = lr
 
-        X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, True)
+        X, padding, Ny, Nx, iz = prepare_data(
+            cfg, fieldin, pertubate=cfg_emulator.pertubate
+        )
 
         data = get_emulator_inputs(state, nbit, lr)
         # vertical_discr = state.iceflow.vertical_discr
@@ -169,8 +197,8 @@ def initialize(cfg, state):
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 
-    assert (cfg.processes.iceflow.emulator.exclude_borders == 0) | (
-        cfg.processes.iceflow.emulator.network.multiple_window_size == 0
+    assert (cfg_emulator.exclude_borders == 0) | (
+        cfg_emulator.network.multiple_window_size == 0
     )
     # if (cfg.processes.iceflow.emulator.exclude_borders==0) and (cfg.processes.iceflow.emulator.network.multiple_window_size==0):
     # raise ValueError("The emulator must exclude borders or use multiple windows, otherwise it will not work properly.")
@@ -240,6 +268,12 @@ def update(cfg, state):
 
     elif iceflow_method == "solved":
         update_iceflow_solved(cfg, state)
+
+    elif iceflow_method == "unified":
+        update_iceflow_unified(cfg, state)
+
+    else:
+        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
 
 def finalize(cfg, state):

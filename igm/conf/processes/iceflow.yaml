@@ -2,9 +2,9 @@ iceflow:
   method: emulated
   force_max_velbar: 0.0
   physics:
-    energy_components: ['viscosity', 'gravity', 'sliding']
+    energy_components: [viscosity, gravity, sliding]
     sliding:
-      law: 'weertman'
+      law: weertman
       weertman:
         regu_weertman: 1.0e-10
         exponent: 3.0
@@ -34,7 +34,7 @@ iceflow:
     Nz: 10
     vert_spacing: 4.0
     staggered_grid: 1
-    vert_basis: "Lagrange"
+    vert_basis: Lagrange
   solver:
     step_size: 1.0
     nbitmax: 100
@@ -43,6 +43,27 @@ iceflow:
     lbfgs: false
     save_cost: ''
     plot_sol: False
+  unified:
+    mapping: network
+    optimizer: adam
+    inputs: [thk, usurf, arrhenius, slidingco, dX]
+    inputs_scales: [1.0, 1.0, 1.0, 1.0, 1.0]
+    network:
+      output_scale: 1.0
+    lr: 2.0e-05
+    lr_init: 0.0001
+    lr_decay: 0.95
+    warm_up_it: -10000000000.0
+    nbit_init: 1
+    nbit: 1
+    retrain_freq: 10
+    optimizer_clipnorm: 1.0
+    optimizer_epsilon: 1.0e-07
+    perturbate: false
+    print_cost: false
+    split_patch_method: sequential
+    framesizemax: 750
+    exclude_borders: 0
   emulator:
     fieldin:
     - thk
@@ -59,7 +80,7 @@ iceflow:
     nbit_init: 1
     nbit: 1
     framesizemax: 750
-    split_patch_method: "sequential"
+    split_patch_method: sequential
     pretrained: true
     name: ''
     save_model: false

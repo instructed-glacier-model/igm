@@ -1,14 +1,16 @@
-import tensorflow as tf 
+import tensorflow as tf
 import math
-from typing import Tuple, List
+from typing import Any, Dict, Tuple, List
 
 
-def prepare_data(cfg, fieldin, pertubate=False) -> Tuple[tf.Tensor, List[List[int]], int, int, int]:
+def prepare_data(
+    cfg, fieldin, pertubate=False
+) -> Tuple[tf.Tensor, List[List[int]], int, int, int]:
     """General preprocessing of the data for the emulator: includes setting up the dimensions, perturbation, patching, and padding."""
-    
+
     arrhenius_dimesnion = cfg.processes.iceflow.physics.dim_arrhenius
     iz = cfg.processes.iceflow.emulator.exclude_borders
-    
+
     if arrhenius_dimesnion == 3:
         X = fieldin_to_X_3d(arrhenius_dimesnion, fieldin)
     elif arrhenius_dimesnion == 2:
@@ -22,13 +24,16 @@ def prepare_data(cfg, fieldin, pertubate=False) -> Tuple[tf.Tensor, List[List[in
         cfg.processes.iceflow.emulator.framesizemax,
         cfg.processes.iceflow.emulator.split_patch_method,
     )
-    
+
     Ny = X.shape[-3]
     Nx = X.shape[-2]
 
-    padding = compute_PAD(cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny)
-    
+    padding = compute_PAD(
+        cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny
+    )
+
     return X, padding, Ny, Nx, iz
+
 
 def split_into_patches(X, nbmax, split_patch_method):
     """
@@ -37,7 +42,7 @@ def split_into_patches(X, nbmax, split_patch_method):
     If stack along axis 0, the adata will be streammed in a sequential way
     If stack along axis 1, the adata will be streammed in a parallel way by baches
     """
-    
+
     XX = []
     ny = X.shape[1]
     nx = X.shape[2]
@@ -79,6 +84,7 @@ def pertubate_X(cfg, X):
 
     return tf.concat(XX, axis=0)
 
+
 def match_fieldin_dimensions(fieldin):
 
     for i in tf.range(len(fieldin)):
@@ -96,6 +102,7 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
 
+
 @tf.function(jit_compile=True)
 def fieldin_to_X_2d(fieldin):
     """Converts the fieldin variables to X (2D as the arrenhius dimension is 2D). This X is used as input to the emulator."""
@@ -105,10 +112,12 @@ def fieldin_to_X_2d(fieldin):
 
 def fieldin_to_X_3d(dim_arrhenius, fieldin):
     """Converts the fieldin variables to X (3D as the arrenhius dimension is 3D). This X is used as input to the emulator."""
-    
+
     return fieldin
 
+
 from typing import List
+
 
 @tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
@@ -116,7 +125,7 @@ def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int)
 
     thk = X[..., 0]
     usurf = X[..., 1]
-    
+
     if dim_arrhenius == 3:
         arrhenius = tf.experimental.numpy.moveaxis(X[..., 2 : 2 + Nz], [-1], [1])
         slidingco = X[..., 2 + Nz]
@@ -126,16 +135,11 @@ def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int)
         slidingco = X[..., 3]
         dX = X[..., 4]
     else:
-        raise ValueError("dim_arrhenius must be 2 or 3") # issue inside of jit?
-    
-    return dict(
-        thk=thk,
-        usurf=usurf,
-        arrhenius=arrhenius,
-        slidingco=slidingco,
-        dX=dX
-    )
-    
+        raise ValueError("dim_arrhenius must be 2 or 3")  # issue inside of jit?
+
+    return dict(thk=thk, usurf=usurf, arrhenius=arrhenius, slidingco=slidingco, dX=dX)
+
+
 @tf.function(jit_compile=True)
 def Y_to_UV(Nz, Y):
     """Converts the output of the emulator (Y) to the horizontal velocities (U, V)."""
@@ -145,23 +149,21 @@ def Y_to_UV(Nz, Y):
 
     return U, V
 
+
 def UV_to_Y(cfg, U, V):
     """Stacks horizontal velocities (U, V) to match the output of the emulator (Y)."""
     U = tf.experimental.numpy.moveaxis(U, [0], [-1])
     V = tf.experimental.numpy.moveaxis(V, [0], [-1])
 
-    return tf.concat([U, V], axis=-1)[None,...]
+    return tf.concat([U, V], axis=-1)[None, ...]
 
-def compute_PAD(multiple_window_size,Nx,Ny):
+
+def compute_PAD(multiple_window_size, Nx, Ny):
 
     # In case of a U-net, must make sure the I/O size is multiple of 2**N
     if multiple_window_size > 0:
-        NNy = multiple_window_size * math.ceil(
-            Ny / multiple_window_size
-        )
-        NNx = multiple_window_size * math.ceil(
-            Nx / multiple_window_size
-        )
+        NNy = multiple_window_size * math.ceil(Ny / multiple_window_size)
+        NNx = multiple_window_size * math.ceil(Nx / multiple_window_size)
         return [[0, 0], [0, NNy - Ny], [0, NNx - Nx], [0, 0]]
     else:
         return [[0, 0], [0, 0], [0, 0], [0, 0]]
