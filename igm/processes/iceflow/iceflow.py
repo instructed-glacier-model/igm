@@ -36,12 +36,12 @@ namely directly the velocity field U and V instead of the emulator parameters.
 """
 import tensorflow as tf
 
-from igm.processes.iceflow.emulate.emulated import get_emulated_bag, update_iceflow_emulated
-from igm.processes.iceflow.emulate.emulator import get_emulator_bag, update_iceflow_emulator, initialize_iceflow_emulator
+from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
+from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator, initialize_iceflow_emulator
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
  
 from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
-from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, match_fieldin_dimensions, prepare_X, get_fieldin
+from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, get_fieldin
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight, compute_levels, compute_zeta_dzeta
 
 from igm.processes.iceflow.solve.solve import initialize_iceflow_solver, update_iceflow_solved
@@ -117,23 +117,12 @@ def initialize(cfg, state):
     state.vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
     
     if not cfg.processes.iceflow.method.lower() == "solved":
-                
+
         fieldin = get_fieldin(cfg, state)
-             
-        warm_up = int(0 <= cfg.processes.iceflow.emulator.warm_up_it)
-        nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
-        lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
- 
-        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
-        bag = get_emulator_bag(state, nbit, lr)
-        state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
-        
-        X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
-        bag = get_emulated_bag(state)
-        updated_variable_dict = update_iceflow_emulated(bag, X, state.iceflow.emulated_params)
-        
-        for key, value in updated_variable_dict.items():
-            setattr(state, key, value)
+
+        update_iceflow_emulator(cfg, state, fieldin, initial=True, it=0)
+
+        update_iceflow_emulated(cfg, state, fieldin)
          
     assert (cfg.processes.iceflow.emulator.exclude_borders==0) | (cfg.processes.iceflow.emulator.network.multiple_window_size==0)
     # if (cfg.processes.iceflow.emulator.exclude_borders==0) and (cfg.processes.iceflow.emulator.network.multiple_window_size==0):
@@ -151,23 +140,9 @@ def update(cfg, state):
 
         fieldin = get_fieldin(cfg, state)
 
-        warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
-        nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
-        lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
-        
-        if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
-            run_it = (state.it % cfg.processes.iceflow.emulator.retrain_freq == 0)
-            if run_it or warm_up:
-                X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
-                bag = get_emulator_bag(state, nbit, lr)
-                state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
+        update_iceflow_emulator(cfg, state, fieldin, initial=False, it=state.it)
 
-        X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
-        bag = get_emulated_bag(state)
-        updated_variable_dict = update_iceflow_emulated(bag, X, state.iceflow.emulated_params)
-
-        for key, value in updated_variable_dict.items():
-            setattr(state, key, value)
+        update_iceflow_emulated(cfg, state, fieldin)
 
         if cfg.processes.iceflow.method.lower() == "diagnostic":
             update_iceflow_diagnostic(cfg, state)

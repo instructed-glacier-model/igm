@@ -5,6 +5,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
     Y_to_UV,
+    prepare_X
 )
 
 from igm.processes.iceflow.utils.velocities import (
@@ -12,7 +13,7 @@ from igm.processes.iceflow.utils.velocities import (
     get_velsurf,
     get_velbar,
     clip_max_velbar,
-)
+) 
 
 class EmulatedParams(tf.experimental.ExtensionType):
     Nz: int
@@ -35,8 +36,17 @@ def get_emulated_bag(state) -> Dict[str, Any]:
         }
     )
 
+def update_iceflow_emulated(cfg, state, fieldin):
+
+    X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
+    bag = get_emulated_bag(state)
+    updated_variable_dict = update_emulated(bag, X, state.iceflow.emulated_params)
+    
+    for key, value in updated_variable_dict.items():
+        setattr(state, key, value)
+
 @tf.function(jit_compile=True)
-def update_iceflow_emulated(
+def update_emulated(
     bag: Dict, X: tf.Tensor, parameters: EmulatedParams
 ) -> Dict[str, tf.Tensor]:
 

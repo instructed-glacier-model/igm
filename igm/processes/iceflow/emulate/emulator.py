@@ -19,6 +19,8 @@ from igm.processes.iceflow.energy import (
     SlidingWeertmanEnergyParams,
 )
 
+from igm.processes.iceflow.utils.data_preprocessing import prepare_X
+
 from igm.processes.iceflow.sliding import sliding_law_XY
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 
@@ -50,10 +52,25 @@ def get_emulator_bag(state, nbit, lr) -> Dict:
         "PAD": state.PAD,
         "vert_disc": state.vert_disc
 })
-    
+
+def update_iceflow_emulator(cfg, state, fieldin, initial, it):
+
+    warm_up = int(it <= cfg.processes.iceflow.emulator.warm_up_it)
+
+    nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
+    lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
+
+    run_it = (cfg.processes.iceflow.emulator.retrain_freq > 0) & (it > 0) \
+           & (it % cfg.processes.iceflow.emulator.retrain_freq == 0)
+
+    if initial or run_it or warm_up:
+        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+        bag = get_emulator_bag(state, nbit, lr)
+        state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+ 
 tf.config.optimizer.set_jit(True)
 @tf.function(jit_compile=False)
-def update_iceflow_emulator(bag, X, parameters):
+def update_emulator(bag, X, parameters):
 
     emulator_cost_tensor = tf.TensorArray(
         dtype=tf.float32, size=bag["nbit"]
