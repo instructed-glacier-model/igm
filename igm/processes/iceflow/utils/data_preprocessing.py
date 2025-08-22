@@ -3,7 +3,7 @@ import math
 from typing import Tuple, List
 
 
-def prepare_X(cfg, fieldin, pertubate=False) -> Tuple[tf.Tensor, List[List[int]]]:
+def prepare_X(cfg, fieldin, pertubate=False, split_into_patches=True) -> Tuple[tf.Tensor, List[List[int]]]:
     """General preprocessing of the data for the emulator: includes setting up the dimensions, perturbation, patching, and padding."""
     
     dim_arrhenius = cfg.processes.iceflow.physics.dim_arrhenius
@@ -16,11 +16,12 @@ def prepare_X(cfg, fieldin, pertubate=False) -> Tuple[tf.Tensor, List[List[int]]
     if pertubate:
         X = pertubate_X(cfg, X)
 
-    X = split_into_patches_X(
-        X,
-        cfg.processes.iceflow.emulator.framesizemax,
-        cfg.processes.iceflow.emulator.split_patch_method,
-    )
+    if split_into_patches:
+        X = split_into_patches_X(
+            X,
+            cfg.processes.iceflow.emulator.framesizemax,
+            cfg.processes.iceflow.emulator.split_patch_method,
+        )
      
     return X
 

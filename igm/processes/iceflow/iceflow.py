@@ -133,12 +133,13 @@ def initialize(cfg, state):
             lr = cfg.processes.iceflow.emulator.lr
         state.opti_retrain.lr = lr
  
-        X = prepare_X(cfg, fieldin, False)
+        X = prepare_X(cfg, fieldin, False, split_into_patches=True)
         bag = get_emulator_bag(state, nbit, lr)
         state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
         
+        X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
         bag = get_emulated_bag(state)
-        updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
+        updated_variable_dict = update_iceflow_emulated(bag, X, state.iceflow.emulated_params)
         
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
@@ -176,13 +177,14 @@ def update(cfg, state):
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
             do_retrain = is_retrain(state.it, cfg)
             if do_retrain:
-                X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
+                X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
                 bag = get_emulator_bag(state, nbit, lr)
                 state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
-        
+
+        X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
         bag = get_emulated_bag(state)
-        updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
-        
+        updated_variable_dict = update_iceflow_emulated(bag, X, state.iceflow.emulated_params)
+
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 

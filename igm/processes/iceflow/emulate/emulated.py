@@ -16,7 +16,6 @@ from igm.processes.iceflow.utils.velocities import (
 
 class EmulatedParams(tf.experimental.ExtensionType):
     Nz: int
-    arrhenius_dimension: int
     exclude_borders: int
     multiple_window_size: int
     force_max_velbar: float
@@ -38,17 +37,12 @@ def get_emulated_bag(state) -> Dict[str, Any]:
 
 @tf.function(jit_compile=True)
 def update_iceflow_emulated(
-    bag: Dict, fieldin: tf.Tensor, parameters: EmulatedParams
+    bag: Dict, X: tf.Tensor, parameters: EmulatedParams
 ) -> Dict[str, tf.Tensor]:
 
     # Define the input of the NN, include scaling
 
     Ny, Nx = bag["thk"].shape
-
-    if parameters.arrhenius_dimension == 3:
-        X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
-    elif parameters.arrhenius_dimension == 2:
-        X = fieldin_to_X_2d(fieldin)
 
     if parameters.exclude_borders > 0:
         iz = parameters.exclude_borders

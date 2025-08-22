@@ -279,7 +279,6 @@ def initialize_iceflow_emulator(cfg, state):
 
     emulated_params = EmulatedParams(
         Nz=cfg.processes.iceflow.numerics.Nz,
-        arrhenius_dimension=cfg.processes.iceflow.physics.dim_arrhenius,
         exclude_borders=cfg.processes.iceflow.emulator.exclude_borders,
         multiple_window_size=cfg.processes.iceflow.emulator.network.multiple_window_size,
         force_max_velbar=cfg.processes.iceflow.force_max_velbar,
