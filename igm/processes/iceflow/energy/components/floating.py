@@ -23,7 +23,7 @@ class FloatingComponent(EnergyComponent):
             U, V, fieldin, vert_disc, staggered_grid, self.params
         )
 
-class FloatingParams(tf.experimental.ExtensionType):
+class FloatingEnergyParams(tf.experimental.ExtensionType):
     """Floating parameters for the cost function."""
     Nz: int
     vert_spacing: float

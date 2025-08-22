@@ -13,10 +13,10 @@ from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_prec
 from igm.processes.iceflow.energy import EnergyComponents
 
 from igm.processes.iceflow.energy import (
-    GravityParams,
-    ViscosityParams,
-    FloatingParams,
-    SlidingWeertmanParams,
+    GravityEnergyParams,
+    ViscosityEnergyParams,
+    FloatingEnergyParams,
+    SlidingWeertmanEnergyParams,
 )
 
 from igm.processes.iceflow.sliding import sliding_law_XY
@@ -215,7 +215,7 @@ def initialize_iceflow_emulator(cfg, state):
 
     # ! Have a separate function that takes care of this
     # Todo: Lets try to find a convention so we can reliably use dictionary unpacking to keep this tidy
-    gravity_params = GravityParams(
+    gravity_params = GravityEnergyParams(
         exp_glen=cfg.processes.iceflow.physics.exp_glen,
         ice_density=cfg.processes.iceflow.physics.ice_density,
         gravity_cst=cfg.processes.iceflow.physics.gravity_cst,
@@ -223,7 +223,7 @@ def initialize_iceflow_emulator(cfg, state):
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
 
-    viscosity_params = ViscosityParams(
+    viscosity_params = ViscosityEnergyParams(
         exp_glen=cfg.processes.iceflow.physics.exp_glen,
         regu_glen=cfg.processes.iceflow.physics.regu_glen,
         thr_ice_thk=cfg.processes.iceflow.physics.thr_ice_thk,
@@ -232,13 +232,13 @@ def initialize_iceflow_emulator(cfg, state):
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
 
-    sliding_weertman_params = SlidingWeertmanParams(
+    sliding_weertman_params = SlidingWeertmanEnergyParams(
         exp_weertman=cfg.processes.iceflow.physics.sliding.weertman.exponent,
         regu_weertman=cfg.processes.iceflow.physics.sliding.weertman.regu_weertman,
         vert_basis=cfg.processes.iceflow.numerics.vert_basis,
     )
 
-    floating_params = FloatingParams(
+    floating_params = FloatingEnergyParams(
         Nz=cfg.processes.iceflow.numerics.Nz,
         vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
         cf_eswn=cfg.processes.iceflow.physics.cf_eswn,

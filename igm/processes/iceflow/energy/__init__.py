@@ -1,12 +1,12 @@
 from .components import (
 	GravityComponent,
- 	GravityParams,
+ 	GravityEnergyParams,
 	ViscosityComponent,
-	ViscosityParams,
+	ViscosityEnergyParams,
 	SlidingWeertmanComponent,
-	SlidingWeertmanParams,
+	SlidingWeertmanEnergyParams,
 	FloatingComponent,
-	FloatingParams,
+	FloatingEnergyParams,
 )
 
 EnergyComponents = {
@@ -17,8 +17,8 @@ EnergyComponents = {
 }
 
 EnergyParams = {
-    "gravity": GravityParams,
-    "viscosity": ViscosityParams,
-    "sliding_weertman": SlidingWeertmanParams,
-    "floating": FloatingParams
+    "gravity": GravityEnergyParams,
+    "viscosity": ViscosityEnergyParams,
+    "sliding_weertman": SlidingWeertmanEnergyParams,
+    "floating": FloatingEnergyParams
 }

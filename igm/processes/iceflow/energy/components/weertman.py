@@ -26,14 +26,14 @@ class SlidingWeertmanComponent(EnergyComponent):
             U, V, fieldin, vert_disc, staggered_grid, self.params
         )
 
-class SlidingWeertmanParams(tf.experimental.ExtensionType):
+class SlidingWeertmanEnergyParams(tf.experimental.ExtensionType):
     """Sliding Weertman parameters for the cost function."""
     exp_weertman: float
     regu_weertman: float
     vert_basis: str
 
 # ! I dont think this is needed if we have a sliding_law argument - its a bit confusing...
-def cost_sliding_weertman(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, sliding_weertman_params: SlidingWeertmanParams):
+def cost_sliding_weertman(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, sliding_weertman_params: SlidingWeertmanEnergyParams):
 
     thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
     zeta, dzeta = vert_disc

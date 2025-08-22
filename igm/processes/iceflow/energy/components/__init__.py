@@ -1,15 +1,15 @@
-from .floating import FloatingComponent, FloatingParams
-from .gravity import GravityComponent, GravityParams
-from .viscosity import ViscosityComponent, ViscosityParams
-from .weertman import SlidingWeertmanComponent, SlidingWeertmanParams
+from .floating import FloatingComponent, FloatingEnergyParams
+from .gravity import GravityComponent, GravityEnergyParams
+from .viscosity import ViscosityComponent, ViscosityEnergyParams
+from .weertman import SlidingWeertmanComponent, SlidingWeertmanEnergyParams
 
 __all__ = [
 	"FloatingComponent",
-	"FloatingParams",
+	"FloatingEnergyParams",
 	"GravityComponent",
-	"GravityParams",
+	"GravityEnergyParams",
 	"ViscosityComponent",
-	"ViscosityParams",
+	"ViscosityEnergyParams",
 	"SlidingWeertmanComponent",
-	"SlidingWeertmanParams"
+	"SlidingWeertmanEnergyParams"
 ]

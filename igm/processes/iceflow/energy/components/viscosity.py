@@ -23,7 +23,7 @@ class ViscosityComponent(EnergyComponent):
             U, V, fieldin, vert_disc, staggered_grid, self.params
         )
 
-class ViscosityParams(tf.experimental.ExtensionType):
+class ViscosityEnergyParams(tf.experimental.ExtensionType):
     """Viscosity parameters for the cost function."""
     exp_glen: float
     regu_glen: float
@@ -32,7 +32,7 @@ class ViscosityParams(tf.experimental.ExtensionType):
     max_sr: float
     vert_basis: str
     
-def cost_viscosity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, viscosity_params: ViscosityParams) -> tf.Tensor:
+def cost_viscosity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, viscosity_params: ViscosityEnergyParams) -> tf.Tensor:
 
     thk, usurf, arrhenius, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["arrhenius"], fieldin["slidingco"], fieldin["dX"]
 

@@ -22,7 +22,7 @@ class GravityComponent(EnergyComponent):
             U, V, fieldin, vert_disc, staggered_grid, self.params
         )
 
-class GravityParams(tf.experimental.ExtensionType):
+class GravityEnergyParams(tf.experimental.ExtensionType):
     """Gravity parameters for the cost function."""
     exp_glen: float
     ice_density: float
@@ -31,7 +31,7 @@ class GravityParams(tf.experimental.ExtensionType):
     vert_basis: str
 
 
-def cost_gravity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, gravity_params: GravityParams) -> tf.Tensor:
+def cost_gravity(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, gravity_params: GravityEnergyParams) -> tf.Tensor:
 
     thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
     zeta, dzeta, Leg_P, _ = vert_disc
