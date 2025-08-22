@@ -124,10 +124,13 @@ def initialize(cfg, state):
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
-            
-        # Initial warm up for the emulator
-        nbit = cfg.processes.iceflow.emulator.nbit_init
-        lr = cfg.processes.iceflow.emulator.lr_init
+             
+        if (0 <= cfg.processes.iceflow.emulator.warm_up_it):
+            nbit = cfg.processes.iceflow.emulator.nbit_init
+            lr = cfg.processes.iceflow.emulator.lr_init
+        else:
+            nbit = cfg.processes.iceflow.emulator.nbit
+            lr = cfg.processes.iceflow.emulator.lr
         state.opti_retrain.lr = lr
         
         X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, False)
