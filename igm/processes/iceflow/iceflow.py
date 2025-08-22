@@ -131,9 +131,8 @@ def initialize(cfg, state):
         else:
             nbit = cfg.processes.iceflow.emulator.nbit
             lr = cfg.processes.iceflow.emulator.lr
-        state.opti_retrain.lr = lr
  
-        X = prepare_X(cfg, fieldin, False, split_into_patches=True)
+        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
         bag = get_emulator_bag(state, nbit, lr)
         state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
         
@@ -172,7 +171,6 @@ def update(cfg, state):
         else:
             nbit = cfg.processes.iceflow.emulator.nbit
             lr = cfg.processes.iceflow.emulator.lr
-        state.opti_retrain.lr = lr
         
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
             do_retrain = is_retrain(state.it, cfg)
