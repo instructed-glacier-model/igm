@@ -1,8 +1,8 @@
 from .data_preprocessing import (
 	compute_PAD,
 	match_fieldin_dimensions,
-	prepare_data,
-	split_into_patches,
+	prepare_X,
+	split_into_patches_X,
 	pertubate_X,
 	fieldin_to_X_3d,
 	fieldin_to_X_2d,

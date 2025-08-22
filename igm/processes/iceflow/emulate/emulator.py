@@ -36,7 +36,7 @@ class EmulatorParams(tf.experimental.ExtensionType):
     fieldin_names: Tuple[str, ...]
     print_cost: bool
 
-def get_emulator_inputs(state, nbit, lr) -> Dict:
+def get_emulator_bag(state, nbit, lr) -> Dict:
     
     return dict({
         "iceflow_model_inference": state.iceflow_model_inference,
@@ -47,33 +47,38 @@ def get_emulator_inputs(state, nbit, lr) -> Dict:
         "nbit": nbit,
         "effective_pressure": state.effective_pressure,
         "lr": lr,
+        "PAD": state.PAD
 })
     
 tf.config.optimizer.set_jit(True)
 @tf.function(jit_compile=False)
-def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters):
+def update_iceflow_emulator(bag, X, vert_disc, parameters):
 
     emulator_cost_tensor = tf.TensorArray(
-        dtype=tf.float32, size=data["nbit"]
+        dtype=tf.float32, size=bag["nbit"]
     )
     # emulator_grad_tensor = tf.TensorArray(
     #     dtype=tf.float32, size=parameters.nbit
     # )
+
+    Nx = parameters.Nx
+    Ny = parameters.Ny
+    iz = parameters.iz
     
-    for iteration in tf.range(data["nbit"]):
+    for iteration in tf.range(bag["nbit"]):
         cost_emulator = 0.0
 
         for i in tf.range(tf.constant(X.shape[0])):
             with tf.GradientTape(persistent=True) as tape:
 
                 if parameters.lr_decay < 1:
-                    new_lr = data["lr"] * (
+                    new_lr = bag["lr"] * (
                         parameters.lr_decay ** (i / 1000)
                     )
-                    data["opti_retrain"].learning_rate.assign(tf.cast(new_lr, tf.float32))
+                    bag["opti_retrain"].learning_rate.assign(tf.cast(new_lr, tf.float32))
 
-                Y = data["iceflow_model_inference"](
-                    tf.pad(X[i, :, :, :, :], padding, "CONSTANT")
+                Y = bag["iceflow_model_inference"](
+                    tf.pad(X[i, :, :, :, :], bag["PAD"], "CONSTANT")
                 )[:, :Ny, :Nx, :]
 
                 nonstaggered_energy, staggered_energy = iceflow_energy_XY(
@@ -84,13 +89,13 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                     X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
                     vert_disc=vert_disc,
-                    energy_components=data["energy_components"],
+                    energy_components=bag["energy_components"],
                 )
 
                 basis_vectors, sliding_shear_stress = sliding_law_XY(
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                    effective_pressure=data["effective_pressure"],
-                    sliding_law=data["sliding_law"],
+                    effective_pressure=bag["effective_pressure"],
+                    sliding_law=bag["sliding_law"],
                 )
 
                 energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
@@ -103,11 +108,11 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 cost_emulator += total_energy
 
             nonsliding_gradients = tape.gradient(
-                total_energy, data["iceflow_model"].trainable_variables
+                total_energy, bag["iceflow_model"].trainable_variables
             )
             sliding_gradients = tape.gradient(
                 target=basis_vectors,
-                sources=data["iceflow_model"].trainable_variables,
+                sources=bag["iceflow_model"].trainable_variables,
                 output_gradients=sliding_shear_stress,
             )
 
@@ -116,12 +121,12 @@ def update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, parameters)
                 for grad, sgrad in zip(nonsliding_gradients, sliding_gradients)
             ]
 
-            data["opti_retrain"].apply_gradients(
-                zip(total_gradients, data["iceflow_model"].trainable_variables)
+            bag["opti_retrain"].apply_gradients(
+                zip(total_gradients, bag["iceflow_model"].trainable_variables)
             )
 
             if parameters.print_cost:
-                tf.print("Iteration", iteration + 1, "/", data["nbit"], end=" ")
+                tf.print("Iteration", iteration + 1, "/", bag["nbit"], end=" ")
                 tf.print(": Cost =", cost_emulator)
 
             del tape

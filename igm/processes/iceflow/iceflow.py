@@ -36,13 +36,13 @@ namely directly the velocity field U and V instead of the emulator parameters.
 """
 import tensorflow as tf
 
-from igm.processes.iceflow.emulate.emulated import get_emulated_inputs,update_iceflow_emulated, get_emulated_inputs
-from igm.processes.iceflow.emulate.emulator import get_emulator_inputs, update_iceflow_emulator, initialize_iceflow_emulator, get_emulator_inputs
+from igm.processes.iceflow.emulate.emulated import get_emulated_bag, update_iceflow_emulated
+from igm.processes.iceflow.emulate.emulator import get_emulator_bag, update_iceflow_emulator, initialize_iceflow_emulator
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
 
 from igm.processes.iceflow.utils.misc import is_retrain
 from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
-from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, match_fieldin_dimensions, prepare_data
+from igm.processes.iceflow.utils.data_preprocessing import compute_PAD, match_fieldin_dimensions, prepare_X
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight, compute_levels, compute_zeta_dzeta
 
 from igm.processes.iceflow.solve.solve import initialize_iceflow_solver, update_iceflow_solved
@@ -132,13 +132,13 @@ def initialize(cfg, state):
             nbit = cfg.processes.iceflow.emulator.nbit
             lr = cfg.processes.iceflow.emulator.lr
         state.opti_retrain.lr = lr
+ 
+        X = prepare_X(cfg, fieldin, False)
+        bag = get_emulator_bag(state, nbit, lr)
+        state.cost_emulator = update_iceflow_emulator(bag, X, vert_disc, state.iceflow.emulator_params)
         
-        X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, False)
-        data = get_emulator_inputs(state, nbit, lr)
-        state.cost_emulator = update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
-        
-        data = get_emulated_inputs(state)
-        updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
+        bag = get_emulated_bag(state)
+        updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
         
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
@@ -179,12 +179,12 @@ def update(cfg, state):
         if (cfg.processes.iceflow.emulator.retrain_freq > 0) & (state.it > 0): # lets try to combine logic into one function...
             do_retrain = is_retrain(state.it, cfg)
             if do_retrain:
-                X, padding, Ny, Nx, iz = prepare_data(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
-                data = get_emulator_inputs(state, nbit, lr)
-                state.cost_emulator = update_iceflow_emulator(data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params)
+                X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
+                bag = get_emulator_bag(state, nbit, lr)
+                state.cost_emulator = update_iceflow_emulator(bag, X, vert_disc, state.iceflow.emulator_params)
         
-        data = get_emulated_inputs(state)
-        updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
+        bag = get_emulated_bag(state)
+        updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 

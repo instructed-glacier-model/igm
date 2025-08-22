@@ -23,7 +23,7 @@ class EmulatedParams(tf.experimental.ExtensionType):
     vertical_basis: str
 
 
-def get_emulated_inputs(state) -> Dict[str, Any]:
+def get_emulated_bag(state) -> Dict[str, Any]:
 
     return dict(
         {
@@ -38,12 +38,12 @@ def get_emulated_inputs(state) -> Dict[str, Any]:
 
 @tf.function(jit_compile=True)
 def update_iceflow_emulated(
-    data: Dict, fieldin: tf.Tensor, parameters: EmulatedParams
+    bag: Dict, fieldin: tf.Tensor, parameters: EmulatedParams
 ) -> Dict[str, tf.Tensor]:
 
     # Define the input of the NN, include scaling
 
-    Ny, Nx = data["thk"].shape
+    Ny, Nx = bag["thk"].shape
 
     if parameters.arrhenius_dimension == 3:
         X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
@@ -55,9 +55,9 @@ def update_iceflow_emulated(
         X = tf.pad(X, [[0, 0], [iz, iz], [iz, iz], [0, 0]], "SYMMETRIC")
 
     if parameters.multiple_window_size == 0:
-        Y = data["iceflow_model_inference"](X)
+        Y = bag["iceflow_model_inference"](X)
     else:
-        Y = data["iceflow_model_inference"](tf.pad(X, data["PAD"], "CONSTANT"))[
+        Y = bag["iceflow_model_inference"](tf.pad(X, bag["PAD"], "CONSTANT"))[
             :, :Ny, :Nx, :
         ]
 
@@ -69,8 +69,8 @@ def update_iceflow_emulated(
     U = U[0]
     V = V[0]
 
-    U = tf.where(data["thk"] > 0, U, 0)
-    V = tf.where(data["thk"] > 0, V, 0)
+    U = tf.where(bag["thk"] > 0, U, 0)
+    V = tf.where(bag["thk"] > 0, V, 0)
 
     # If requested, the speeds are artifically upper-bounded
     if parameters.force_max_velbar > 0:
@@ -79,12 +79,12 @@ def update_iceflow_emulated(
             V,
             parameters.force_max_velbar,
             parameters.vertical_basis,
-            data["vert_weight"],
+            bag["vert_weight"],
         )
 
     uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
     uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(U, V, data["vert_weight"], parameters.vertical_basis)
+    ubar, vbar = get_velbar(U, V, bag["vert_weight"], parameters.vertical_basis)
 
     return {
         "U": U,
