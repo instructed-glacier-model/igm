@@ -47,12 +47,13 @@ def get_emulator_bag(state, nbit, lr) -> Dict:
         "nbit": nbit,
         "effective_pressure": state.effective_pressure,
         "lr": lr,
-        "PAD": state.PAD
+        "PAD": state.PAD,
+        "vert_disc": state.vert_disc
 })
     
 tf.config.optimizer.set_jit(True)
 @tf.function(jit_compile=False)
-def update_iceflow_emulator(bag, X, vert_disc, parameters):
+def update_iceflow_emulator(bag, X, parameters):
 
     emulator_cost_tensor = tf.TensorArray(
         dtype=tf.float32, size=bag["nbit"]
@@ -88,7 +89,7 @@ def update_iceflow_emulator(bag, X, vert_disc, parameters):
                     fieldin_names=parameters.fieldin_names,
                     X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                    vert_disc=vert_disc,
+                    vert_disc=bag['vert_disc'],
                     energy_components=bag["energy_components"],
                 )
 

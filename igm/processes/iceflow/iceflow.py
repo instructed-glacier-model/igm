@@ -115,7 +115,7 @@ def initialize(cfg, state):
                             state.thk.shape[1],state.thk.shape[0])
         
     vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
-    vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
+    state.vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
     
     if not cfg.processes.iceflow.method.lower() == "solved":
                 
@@ -135,7 +135,7 @@ def initialize(cfg, state):
  
         X = prepare_X(cfg, fieldin, False)
         bag = get_emulator_bag(state, nbit, lr)
-        state.cost_emulator = update_iceflow_emulator(bag, X, vert_disc, state.iceflow.emulator_params)
+        state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
         
         bag = get_emulated_bag(state)
         updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
@@ -163,9 +163,6 @@ def update(cfg, state):
             fieldin = match_fieldin_dimensions(fieldin)
         elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
             fieldin = tf.stack(fieldin, axis=-1)
-            
-        vert_disc = [vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]] # Lets please not hard code this as it affects every function inside...
-        vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
         
         warm_up = int(state.it <= cfg.processes.iceflow.emulator.warm_up_it)
         if warm_up:
@@ -181,10 +178,11 @@ def update(cfg, state):
             if do_retrain:
                 X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate)
                 bag = get_emulator_bag(state, nbit, lr)
-                state.cost_emulator = update_iceflow_emulator(bag, X, vert_disc, state.iceflow.emulator_params)
+                state.cost_emulator = update_iceflow_emulator(bag, X, state.iceflow.emulator_params)
         
         bag = get_emulated_bag(state)
         updated_variable_dict = update_iceflow_emulated(bag, fieldin, state.iceflow.emulated_params)
+        
         for key, value in updated_variable_dict.items():
             setattr(state, key, value)
 
