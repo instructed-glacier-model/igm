@@ -53,18 +53,16 @@ def get_emulator_bag(state, nbit, lr) -> Dict:
         "vert_disc": state.vert_disc
 })
 
-def update_iceflow_emulator(cfg, state, fieldin, initial, it):
+def update_iceflow_emulator(cfg, state, fieldin, initial, it, pertubate):
 
     warm_up = int(it <= cfg.processes.iceflow.emulator.warm_up_it)
-
-    nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
-    lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
-
     run_it = (cfg.processes.iceflow.emulator.retrain_freq > 0) & (it > 0) \
            & (it % cfg.processes.iceflow.emulator.retrain_freq == 0)
 
     if initial or run_it or warm_up:
-        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+        nbit = cfg.processes.iceflow.emulator.nbit_init if warm_up else cfg.processes.iceflow.emulator.nbit
+        lr = cfg.processes.iceflow.emulator.lr_init if warm_up else cfg.processes.iceflow.emulator.lr
+        X = prepare_X(cfg, fieldin, pertubate=pertubate, split_into_patches=True)
         bag = get_emulator_bag(state, nbit, lr)
         state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
  
