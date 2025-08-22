@@ -120,7 +120,8 @@ def initialize(cfg, state):
 
         fieldin = get_fieldin(cfg, state)
 
-        update_iceflow_emulator(cfg, state, fieldin, initial=True, it=0)
+        update_iceflow_emulator(cfg, state, fieldin, initial=True, it=0, \
+                                pertubate=cfg.processes.iceflow.emulator.pertubate)
 
         update_iceflow_emulated(cfg, state, fieldin)
          
@@ -140,7 +141,8 @@ def update(cfg, state):
 
         fieldin = get_fieldin(cfg, state)
 
-        update_iceflow_emulator(cfg, state, fieldin, initial=False, it=state.it)
+        update_iceflow_emulator(cfg, state, fieldin, initial=False, it=state.it, \
+                                pertubate=cfg.processes.iceflow.emulator.pertubate)
 
         update_iceflow_emulated(cfg, state, fieldin)
 
