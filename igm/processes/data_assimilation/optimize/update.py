@@ -5,13 +5,17 @@
 
 import tensorflow as tf
  
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
+#from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.gradient.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model, match_fieldin_dimensions
-from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
+#from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model, match_fieldin_dimensions
+#from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
+
+from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
+from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
+
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing
 
@@ -44,19 +48,9 @@ def optimize_update(cfg, state, cost, i):
             else:
                 vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
 
-        fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
-        
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
-        
-        # update_iceflow_emulated(cfg, state)
-        data = extract_state_for_emulated(state)
-        updated_variable_dict = update_iceflow_emulated(data, fieldin, state.iceflow.emulated_params)
+        fieldin = get_fieldin(cfg, state)
 
-        for key, value in updated_variable_dict.items():
-            setattr(state, key, value)
+        update_iceflow_emulated(cfg, state, fieldin)
         
         if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
             compute_flow_direction_for_anisotropic_smoothing(state)

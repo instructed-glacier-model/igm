@@ -3,6 +3,8 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import tensorflow as tf
+
 from .utils import compute_rms_std_optimization
 from .optimize.initialize import optimize_initialize
 from .optimize.update import optimize_update
@@ -11,7 +13,9 @@ from .outputs.output_ncdf import update_ncdf_optimize, output_ncdf_optimize_fina
 from .outputs.prints import print_costs, save_rms_std, print_info_data_assimilation
 from .outputs.plots import update_plot_inversion, plot_cost_functions
 
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator
+from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator
+from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
+
 from igm.processes.iceflow import initialize as iceflow_initialize
 
 def initialize(cfg, state):
@@ -38,9 +42,14 @@ def initialize(cfg, state):
             
         # retraning the iceflow emulator
         if cfg.processes.data_assimilation.optimization.retrain_iceflow_model:
-            update_iceflow_emulator(cfg, state, i+1, 
-                                    pertubate=cfg.processes.data_assimilation.optimization.pertubate) 
-            cost["glen"] = state.COST_EMULATOR[-1]
+
+            fieldin = get_fieldin(cfg, state)
+
+            # pertubate=cfg.processes.data_assimilation.optimization.pertubate ???
+            update_iceflow_emulator(cfg, state, fieldin, initial=False, it=i+1, \
+                                    pertubate=cfg.processes.data_assimilation.optimization.pertubate)
+
+            cost["glen"] = state.COST_EMULATOR[-1] if hasattr(state, "COST_EMULATOR") else tf.constant(0.0)
             
         print_costs(cfg, state, cost, i)
         print_info_data_assimilation(cfg, state,  cost, i)
