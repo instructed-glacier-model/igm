@@ -13,7 +13,7 @@ from ..optimizers import Optimizer
 
 from igm.processes.iceflow.utils.data_preprocessing import (
     match_fieldin_dimensions,
-    split_into_patches,
+    split_into_patches_X,
     pertubate_X,
 )
 
@@ -49,7 +49,7 @@ def get_inputs_from_state(cfg, state) -> tf.Tensor:
     if cfg_unified.perturbate:
         inputs = pertubate_X(cfg, inputs)
 
-    inputs = split_into_patches(
+    inputs = split_into_patches_X(
         inputs,
         cfg.processes.iceflow.unified.framesizemax,
         cfg.processes.iceflow.unified.split_patch_method,

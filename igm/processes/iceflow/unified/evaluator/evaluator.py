@@ -10,10 +10,7 @@ import warnings
 import igm
 from ..mappings import Mappings
 
-from igm.processes.iceflow.utils.data_preprocessing import (
-    match_fieldin_dimensions,
-    prepare_data,
-)
+from igm.processes.iceflow.utils.data_preprocessing import match_fieldin_dimensions
 from igm.processes.iceflow.energy import (
     EnergyComponents,
     EnergyParams,

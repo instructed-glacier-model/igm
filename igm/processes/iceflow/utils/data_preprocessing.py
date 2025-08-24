@@ -3,39 +3,32 @@ import math
 from typing import Any, Dict, Tuple, List
 
 
-def prepare_data(
-    cfg, fieldin, pertubate=False
-) -> Tuple[tf.Tensor, List[List[int]], int, int, int]:
+def prepare_X(
+    cfg, fieldin, pertubate=False, split_into_patches=True
+) -> Tuple[tf.Tensor, List[List[int]]]:
     """General preprocessing of the data for the emulator: includes setting up the dimensions, perturbation, patching, and padding."""
 
-    arrhenius_dimesnion = cfg.processes.iceflow.physics.dim_arrhenius
-    iz = cfg.processes.iceflow.emulator.exclude_borders
+    dim_arrhenius = cfg.processes.iceflow.physics.dim_arrhenius
 
-    if arrhenius_dimesnion == 3:
-        X = fieldin_to_X_3d(arrhenius_dimesnion, fieldin)
-    elif arrhenius_dimesnion == 2:
+    if dim_arrhenius == 3:
+        X = fieldin_to_X_3d(dim_arrhenius, fieldin)
+    elif dim_arrhenius == 2:
         X = fieldin_to_X_2d(fieldin)
 
     if pertubate:
         X = pertubate_X(cfg, X)
 
-    X = split_into_patches(
-        X,
-        cfg.processes.iceflow.emulator.framesizemax,
-        cfg.processes.iceflow.emulator.split_patch_method,
-    )
+    if split_into_patches:
+        X = split_into_patches_X(
+            X,
+            cfg.processes.iceflow.emulator.framesizemax,
+            cfg.processes.iceflow.emulator.split_patch_method,
+        )
 
-    Ny = X.shape[-3]
-    Nx = X.shape[-2]
-
-    padding = compute_PAD(
-        cfg.processes.iceflow.emulator.network.multiple_window_size, Nx, Ny
-    )
-
-    return X, padding, Ny, Nx, iz
+    return X
 
 
-def split_into_patches(X, nbmax, split_patch_method):
+def split_into_patches_X(X, nbmax, split_patch_method):
     """
     This function splits the input tensor into patches of size nbmax x nbmax.
     The patches are then stacked together to form a new tensor.
@@ -101,6 +94,17 @@ def match_fieldin_dimensions(fieldin):
     fieldin_matched = tf.expand_dims(fieldin_matched, axis=0)
     fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
     return fieldin_matched
+
+
+def get_fieldin(cfg, state):
+
+    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+    if cfg.processes.iceflow.physics.dim_arrhenius == 3:
+        fieldin = match_fieldin_dimensions(fieldin)
+    elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
+        fieldin = tf.stack(fieldin, axis=-1)
+
+    return fieldin
 
 
 @tf.function(jit_compile=True)

@@ -38,22 +38,18 @@ import tensorflow as tf
 import warnings
 
 from igm.processes.iceflow.emulate.emulated import (
-    get_emulated_inputs,
     update_iceflow_emulated,
-    get_emulated_inputs,
 )
 from igm.processes.iceflow.emulate.emulator import (
     update_iceflow_emulator,
     initialize_iceflow_emulator,
-    get_emulator_inputs,
 )
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
 
-from igm.processes.iceflow.utils.misc import is_retrain
 from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
 from igm.processes.iceflow.utils.data_preprocessing import (
-    match_fieldin_dimensions,
-    prepare_data,
+    compute_PAD,
+    get_fieldin,
 )
 from igm.processes.iceflow.utils.vertical_discretization import (
     define_vertical_weight,
@@ -148,6 +144,13 @@ def initialize(cfg, state):
     vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
     state.vert_disc = vert_disc
 
+    # padding is necessary when using U-net emulator
+    state.PAD = compute_PAD(
+        cfg_emulator.network.multiple_window_size,
+        state.thk.shape[1],
+        state.thk.shape[0],
+    )
+
     # Set ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
 
@@ -168,34 +171,18 @@ def initialize(cfg, state):
 
     if not iceflow_method in ["solved", "unified"]:
 
-        fieldin = [vars(state)[f] for f in cfg_emulator.fieldin]
-        if cfg_physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg_physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
+        fieldin = get_fieldin(cfg, state)
 
-        # Initial warm up for the emulator
-        nbit = cfg_emulator.nbit_init
-        lr = cfg_emulator.lr_init
-        state.opti_retrain.lr = lr
-
-        X, padding, Ny, Nx, iz = prepare_data(
-            cfg, fieldin, pertubate=cfg_emulator.pertubate
+        update_iceflow_emulator(
+            cfg,
+            state,
+            fieldin,
+            initial=True,
+            it=0,
+            pertubate=cfg.processes.iceflow.emulator.pertubate,
         )
 
-        data = get_emulator_inputs(state, nbit, lr)
-        # vertical_discr = state.iceflow.vertical_discr
-        state.cost_emulator = update_iceflow_emulator(
-            data, X, padding, Ny, Nx, iz, vert_disc, state.iceflow.emulator_params
-        )
-
-        data = get_emulated_inputs(state)
-        updated_variable_dict = update_iceflow_emulated(
-            data, fieldin, state.iceflow.emulated_params
-        )
-
-        for key, value in updated_variable_dict.items():
-            setattr(state, key, value)
+        update_iceflow_emulated(cfg, state, fieldin)
 
     assert (cfg_emulator.exclude_borders == 0) | (
         cfg_emulator.network.multiple_window_size == 0
@@ -213,55 +200,18 @@ def update(cfg, state):
 
     if iceflow_method in ["emulated", "diagnostic"]:
 
-        cfg_emulator = cfg.processes.iceflow.emulator
+        fieldin = get_fieldin(cfg, state)
 
-        fieldin = [vars(state)[f] for f in cfg_emulator.fieldin]
-
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            fieldin = match_fieldin_dimensions(fieldin)
-        elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-            fieldin = tf.stack(fieldin, axis=-1)
-
-        vert_disc = [
-            vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]
-        ]  # Lets please not hard code this as it affects every function inside...
-        vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
-
-        warm_up = int(state.it <= cfg_emulator.warm_up_it)
-        if warm_up:
-            nbit = cfg_emulator.nbit_init
-            lr = cfg_emulator.lr_init
-        else:
-            nbit = cfg_emulator.nbit
-            lr = cfg_emulator.lr
-        state.opti_retrain.lr = lr
-
-        if (cfg_emulator.retrain_freq > 0) & (
-            state.it > 0
-        ):  # lets try to combine logic into one function...
-            do_retrain = is_retrain(state.it, cfg)
-            if do_retrain:
-                X, padding, Ny, Nx, iz = prepare_data(
-                    cfg, fieldin, pertubate=cfg_emulator.pertubate
-                )
-                data = get_emulator_inputs(state, nbit, lr)
-                state.cost_emulator = update_iceflow_emulator(
-                    data,
-                    X,
-                    padding,
-                    Ny,
-                    Nx,
-                    iz,
-                    vert_disc,
-                    state.iceflow.emulator_params,
-                )
-
-        data = get_emulated_inputs(state)
-        updated_variable_dict = update_iceflow_emulated(
-            data, fieldin, state.iceflow.emulated_params
+        update_iceflow_emulator(
+            cfg,
+            state,
+            fieldin,
+            initial=False,
+            it=state.it,
+            pertubate=cfg.processes.iceflow.emulator.pertubate,
         )
-        for key, value in updated_variable_dict.items():
-            setattr(state, key, value)
+
+        update_iceflow_emulated(cfg, state, fieldin)
 
         if iceflow_method == "diagnostic":
             update_iceflow_diagnostic(cfg, state)

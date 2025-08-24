@@ -5,6 +5,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
     Y_to_UV,
+    prepare_X,
 )
 
 from igm.processes.iceflow.utils.velocities import (
@@ -40,7 +41,7 @@ def get_emulated_params_args(cfg) -> Dict[str, Any]:
     }
 
 
-def get_emulated_inputs(state) -> Dict[str, Any]:
+def get_emulated_bag(state) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
@@ -52,27 +53,31 @@ def get_emulated_inputs(state) -> Dict[str, Any]:
     }
 
 
-@tf.function(jit_compile=True)
-def update_iceflow_emulated(
-    data: Dict, fieldin: tf.Tensor, parameters: EmulatedParams
-) -> Dict[str, tf.Tensor]:
+def update_iceflow_emulated(cfg, state, fieldin):
 
-    # Define input of neural network: X
-    if parameters.arrhenius_dimension == 3:
-        X = fieldin_to_X_3d(parameters.arrhenius_dimension, fieldin)
-    elif parameters.arrhenius_dimension == 2:
-        X = fieldin_to_X_2d(fieldin)
+    X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
+    bag = get_emulated_bag(state)
+    updated_variable_dict = update_emulated(bag, X, state.iceflow.emulated_params)
+
+    for key, value in updated_variable_dict.items():
+        setattr(state, key, value)
+
+
+@tf.function(jit_compile=True)
+def update_emulated(
+    bag: Dict, X: tf.Tensor, parameters: EmulatedParams
+) -> Dict[str, tf.Tensor]:
 
     if parameters.exclude_borders > 0:
         iz = parameters.exclude_borders
         X = tf.pad(X, [[0, 0], [iz, iz], [iz, iz], [0, 0]], "SYMMETRIC")
 
     if parameters.multiple_window_size > 0:
-        Ny, Nx = data["thk"].shape
-        X = (tf.pad(X, data["PAD"], "CONSTANT"))[:, :Ny, :Nx, :]
+        Ny, Nx = bag["thk"].shape
+        X = (tf.pad(X, bag["PAD"], "CONSTANT"))[:, :Ny, :Nx, :]
 
     # Compute output of neural network: Y
-    Y = data["iceflow_model_inference"](X)
+    Y = bag["iceflow_model_inference"](X)
 
     # Post-processing of output of neural network
     if parameters.exclude_borders > 0:
@@ -85,8 +90,8 @@ def update_iceflow_emulated(
     V = V[0]
 
     # Post-processing of velocity fields
-    U = tf.where(data["thk"] > 0.0, U, 0.0)
-    V = tf.where(data["thk"] > 0.0, V, 0.0)
+    U = tf.where(bag["thk"] > 0.0, U, 0.0)
+    V = tf.where(bag["thk"] > 0.0, V, 0.0)
 
     if parameters.force_max_velbar > 0.0:
         U, V = clip_max_velbar(
@@ -94,13 +99,13 @@ def update_iceflow_emulated(
             V,
             parameters.force_max_velbar,
             parameters.vertical_basis,
-            data["vert_weight"],
+            bag["vert_weight"],
         )
 
     # Retrieve derived quantities from velocity fields
     uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
     uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(U, V, data["vert_weight"], parameters.vertical_basis)
+    ubar, vbar = get_velbar(U, V, bag["vert_weight"], parameters.vertical_basis)
 
     return {
         "U": U,
