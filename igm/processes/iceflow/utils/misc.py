@@ -80,13 +80,3 @@ def print_info(state, it, cfg, energy_mean_list, velsurf_mag):
 
         state.pbar_train.set_postfix(dic_postfix)
         state.pbar_train.update(1)
-
-def is_retrain(iteration, cfg: DictConfig) -> bool:
-
-    # run_it = False
-    if cfg.processes.iceflow.emulator.retrain_freq > 0:
-        run_it = iteration % cfg.processes.iceflow.emulator.retrain_freq == 0
-
-    warm_up = int(iteration <= cfg.processes.iceflow.emulator.warm_up_it)
-    
-    return run_it or warm_up

@@ -18,7 +18,6 @@ from igm.processes.iceflow.utils.velocities import (
 
 class EmulatedParams(tf.experimental.ExtensionType):
     Nz: int
-    arrhenius_dimension: int
     exclude_borders: int
     multiple_window_size: int
     force_max_velbar: float
@@ -33,7 +32,6 @@ def get_emulated_params_args(cfg) -> Dict[str, Any]:
 
     return {
         "Nz": cfg_numerics.Nz,
-        "arrhenius_dimension": cfg_physics.dim_arrhenius,
         "exclude_borders": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,

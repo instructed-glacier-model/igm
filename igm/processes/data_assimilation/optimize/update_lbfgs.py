@@ -5,9 +5,12 @@
 
 import tensorflow as tf
  
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
+# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.gradient.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
+
+from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
+from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing
 
@@ -43,7 +46,9 @@ def optimize_update_lbfgs(cfg, state, cost, i):
             else:
                 vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
 
-        update_iceflow_emulated(cfg, state)
+        fieldin = get_fieldin(cfg, state)
+
+        update_iceflow_emulated(cfg, state, fieldin)
 
         if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
             compute_flow_direction_for_anisotropic_smoothing(state)
