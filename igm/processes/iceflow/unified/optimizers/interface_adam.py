@@ -54,6 +54,6 @@ class InterfaceAdam(InterfaceOptimizer):
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        optimizer.update_parameters(lr, iter_max)
+        optimizer.update_parameters(iter_max=iter_max, lr=lr)
 
         return True

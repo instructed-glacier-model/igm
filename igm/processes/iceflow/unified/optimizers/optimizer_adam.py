@@ -25,7 +25,6 @@ class OptimizerAdam(Optimizer):
     ):
         super().__init__(cost_fn, map)
         self.name = "adam"
-        self.iter_max = iter_max
         self.print_cost = print_cost
 
         version_tf = int(tf.__version__.split(".")[1])
@@ -34,11 +33,12 @@ class OptimizerAdam(Optimizer):
         else:
             module_optimizer = tf.keras.optimizers.legacy
 
-        self.optim_adam = module_optimizer.Adam(learning_rate=lr)
+        self.iter_max = tf.Variable(iter_max)
+        self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr))
 
-    def update_parameters(self, lr: float, iter_max: int) -> None:
-        self.iter_max = iter_max
-        self.optim_adam.lr = lr
+    def update_parameters(self, iter_max: int, lr: float) -> None:
+        self.iter_max.assign(iter_max)
+        self.optim_adam.learning_rate.assign(lr)
 
     @tf.function(jit_compile=False)
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -57,7 +57,7 @@ class OptimizerAdam(Optimizer):
 
         costs = tf.TensorArray(dtype=tf.float32, size=self.iter_max)
 
-        for iter in range(self.iter_max):
+        for iter in tf.range(self.iter_max):
             input = inputs[0, :, :, :, :]
 
             # Save previous solution
