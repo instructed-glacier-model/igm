@@ -3,23 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Any, Dict, Tuple
 import tensorflow as tf
-import os
-import warnings
-import igm
+from typing import Any, Dict
+
 from ..mappings import Mappings
 
-from igm.processes.iceflow.utils.data_preprocessing import match_fieldin_dimensions
-from igm.processes.iceflow.energy import (
-    EnergyComponents,
-    EnergyParams,
-    get_energy_params_args,
-)
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
-    Y_to_UV,
+    match_fieldin_dimensions,
 )
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
@@ -85,6 +77,7 @@ def evaluator_iceflow(
     inputs: tf.Tensor, data: Dict, parameters: EvaluatorParams
 ) -> Dict[str, tf.Tensor]:
 
+    # Compute velocity from mapping
     U, V = data["mapping"].get_UV(inputs)
     U, V = U[0], V[0]
 

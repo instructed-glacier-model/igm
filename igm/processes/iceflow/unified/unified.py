@@ -10,10 +10,7 @@ import warnings
 import igm
 from .mappings import Mappings
 from .optimizers import Optimizers
-from igm.processes.iceflow.emulate.utils.misc import (
-    get_pretrained_emulator_path,
-    get_effective_pressure_precentage,
-)
+from igm.processes.iceflow.emulate.utils.misc import get_pretrained_emulator_path
 from igm.processes.iceflow.energy import (
     EnergyComponents,
     EnergyParams,

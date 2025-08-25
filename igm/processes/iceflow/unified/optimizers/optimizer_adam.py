@@ -20,10 +20,11 @@ class OptimizerAdam(Optimizer):
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
         lr: float = 1e-3,
-        iter_max: int = int(1),
+        iter_max: int = int(1e5),
         print_cost: bool = False,
     ):
         super().__init__(cost_fn, map)
+        self.name = "adam"
         self.iter_max = iter_max
         self.print_cost = print_cost
 

@@ -6,19 +6,18 @@
 import tensorflow as tf
 import numpy as np
 from abc import ABC, abstractmethod
-from typeguard import typechecked
 from typing import Callable, Tuple, Any
 
 from ..mappings import Mapping
 
 
 class Optimizer(ABC):
-    @typechecked
     def __init__(
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
     ):
+        self.name = ""
         self.cost_fn = cost_fn
         self.map = map
 

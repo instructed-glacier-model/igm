@@ -3,13 +3,11 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Any, Dict, Tuple
+from omegaconf import DictConfig
 import tensorflow as tf
-import os
-import warnings
-import igm
-from ..mappings import Mappings
-from ..optimizers import Optimizer
+
+from igm.common.core import State
+from ..optimizers import Interfaces, Status
 
 from igm.processes.iceflow.utils.data_preprocessing import (
     match_fieldin_dimensions,
@@ -23,7 +21,25 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 )
 
 
-def get_inputs_from_state(cfg, state) -> tf.Tensor:
+def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
+
+    cfg_unified = cfg.processes.iceflow.unified
+    warm_up_it = cfg_unified.warm_up_it
+    retrain_freq = cfg_unified.retrain_freq
+
+    if init:
+        status = Status.INIT
+    elif state.it <= warm_up_it:
+        status = Status.WARM_UP
+    elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
+        status = Status.DEFAULT
+    else:
+        status = Status.IDLE
+
+    return status
+
+
+def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     # TO DO: full data prep?
 
@@ -51,47 +67,26 @@ def get_inputs_from_state(cfg, state) -> tf.Tensor:
 
     inputs = split_into_patches_X(
         inputs,
-        cfg.processes.iceflow.unified.framesizemax,
-        cfg.processes.iceflow.unified.split_patch_method,
+        cfg_unified.framesizemax,
+        cfg_unified.split_patch_method,
     )
 
     return inputs
 
 
-@tf.function(jit_compile=False)
-def solver_iceflow(optimizer: Optimizer, inputs: tf.Tensor) -> tf.Tensor:
-    return optimizer.minimize(inputs)
+def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
-
-def solve_iceflow(cfg, state, init: bool = False):
-
-    cfg_unified = cfg.processes.iceflow.unified
-
-    # TO DO: nbit and lr should be set within the optimizer
-    if init:
-        nbit = cfg_unified.nbit_init
-        lr = cfg_unified.lr_init
-    else:
-        warm_up = int(state.it <= cfg_unified.warm_up_it)
-        if warm_up:
-            nbit = cfg_unified.nbit_init
-            lr = cfg_unified.lr_init
-        else:
-            nbit = cfg_unified.nbit
-            lr = cfg_unified.lr
-    state.optimizer.lr = lr
-
-    # Get inputs for mapping
-    inputs = get_inputs_from_state(cfg, state)
+    # Get status: should we optimize again?
+    status = get_status(cfg, state, init)
 
     # Get optimizer
     optimizer = state.optimizer
 
-    # Set its parameters
-    # optimizer.update_parameters()
+    # Set optimizer parameters
+    set_optimizer_params = Interfaces[optimizer.name].set_optimizer_params
+    do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Optimize
-    cost = optimizer.minimize(inputs)
-
-    # Save cost
-    state.cost = cost
+    # Optimize and save cost
+    if do_solve:
+        inputs = get_inputs_from_state(cfg, state)
+        state.cost = optimizer.minimize(inputs)
