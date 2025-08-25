@@ -5,9 +5,9 @@
 
 import tensorflow as tf
 from typing import Any, Dict
+from omegaconf import DictConfig
 
-from ..mappings import Mappings
-
+from igm.common.core import State
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
@@ -28,7 +28,7 @@ class EvaluatorParams(tf.experimental.ExtensionType):
     dim_arrhenius: int
 
 
-def get_evaluator_params_args(cfg) -> Dict[str, Any]:
+def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
@@ -41,16 +41,16 @@ def get_evaluator_params_args(cfg) -> Dict[str, Any]:
     }
 
 
-def get_data_from_state(state) -> Dict[str, Any]:
+def get_data_from_state(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
         "vert_weight": state.vert_weight,
-        "mapping": state.mapping,
+        "mapping": state.iceflow.mapping,
     }
 
 
-def get_inputs_from_state(cfg, state):
+def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
@@ -111,7 +111,7 @@ def evaluator_iceflow(
     }
 
 
-def evaluate_iceflow(cfg, state):
+def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
 
     # Get inputs for mapping
     inputs = get_inputs_from_state(cfg, state)

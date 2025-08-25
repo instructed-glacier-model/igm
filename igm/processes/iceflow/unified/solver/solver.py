@@ -7,18 +7,16 @@ from omegaconf import DictConfig
 import tensorflow as tf
 
 from igm.common.core import State
-from ..optimizers import Interfaces, Status
-
 from igm.processes.iceflow.utils.data_preprocessing import (
     match_fieldin_dimensions,
     split_into_patches_X,
     pertubate_X,
 )
-
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
 )
+from ..optimizers import InterfaceOptimizers, Status
 
 
 def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
@@ -80,10 +78,10 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     status = get_status(cfg, state, init)
 
     # Get optimizer
-    optimizer = state.optimizer
+    optimizer = state.iceflow.optimizer
 
     # Set optimizer parameters
-    set_optimizer_params = Interfaces[optimizer.name].set_optimizer_params
+    set_optimizer_params = InterfaceOptimizers[optimizer.name].set_optimizer_params
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
     # Optimize and save cost

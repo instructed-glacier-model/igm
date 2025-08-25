@@ -9,11 +9,10 @@ from typing import Any, Callable, Dict
 
 from ..mappings import Mapping
 from .optimizer import Optimizer
+from .interface import InterfaceOptimizer, Status
 
-from .interface import Interface, Status
 
-
-class InterfaceAdam(Interface):
+class InterfaceAdam(InterfaceOptimizer):
 
     @staticmethod
     def get_optimizer_args(

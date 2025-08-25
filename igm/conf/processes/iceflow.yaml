@@ -50,6 +50,7 @@ iceflow:
     inputs_scales: [1.0, 1.0, 1.0, 1.0, 1.0]
     network:
       output_scale: 1.0
+      architecture: cnn
     lr: 2.0e-05
     lr_init: 0.0001
     lr_decay: 0.95
@@ -64,6 +65,7 @@ iceflow:
     split_patch_method: sequential
     framesizemax: 750
     exclude_borders: 0
+    pretrained: true
   emulator:
     fieldin:
     - thk

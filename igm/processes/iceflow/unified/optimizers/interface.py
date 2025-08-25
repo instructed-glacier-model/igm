@@ -20,7 +20,7 @@ class Status(Enum):
     IDLE = auto()
 
 
-class Interface(ABC):
+class InterfaceOptimizer(ABC):
 
     @staticmethod
     @abstractmethod

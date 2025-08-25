@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from typing import List, Optional
 import tensorflow as tf
 from omegaconf import DictConfig
 import importlib_resources
@@ -70,6 +70,21 @@ def get_pretrained_emulator_path(cfg: DictConfig, state) -> str:
             )
 
     return dir_path
+
+
+def load_model_from_path(path: str, cfg_inputs: Optional[List[str]]) -> tf.keras.Model:
+
+    inputs = []
+    fid = open(os.path.join(path, "fieldin.dat"), "r")
+    for fileline in fid:
+        part = fileline.split()
+        inputs.append(part[0])
+    fid.close()
+
+    if cfg_inputs is not None:
+        assert cfg_inputs == inputs
+
+    return tf.keras.models.load_model(os.path.join(path, "model.h5"), compile=False)
 
 
 def save_iceflow_model(cfg, state):
