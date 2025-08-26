@@ -17,6 +17,16 @@ from igm.processes.iceflow.energy import (
     get_energy_params_args,
 )
 
+from igm.processes.iceflow.data_preparation.data_preprocessing import (
+    create_training_set_from_patches,
+    split_fieldin_to_patches,
+    PreparationParams,
+    calculate_expected_dimensions,
+    get_input_params_args,
+)
+
+from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.vertical import VerticalDiscrs
 
@@ -25,18 +35,17 @@ class EmulatorParams(tf.experimental.ExtensionType):
     lr_decay: float
     Nx: int
     Ny: int
+    BatchSize: int
     Nz: int
     iz: int
     multiple_window_size: int
-    framesizemax: int
-    split_patch_method: str
     arrhenius_dimension: int
     staggered_grid: int
     fieldin_names: Tuple[str, ...]
     print_cost: bool
 
 
-def get_emulator_params_args(cfg, Nx: int, Ny: int) -> Dict[str, Any]:
+def get_emulator_params_args(cfg, Nx: int, Ny: int, BatchSize: int) -> Dict[str, Any]:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
@@ -46,11 +55,10 @@ def get_emulator_params_args(cfg, Nx: int, Ny: int) -> Dict[str, Any]:
         "lr_decay": cfg_emulator.lr_decay,
         "Nx": Nx,
         "Ny": Ny,
+        "BatchSize": BatchSize,
         "Nz": cfg_numerics.Nz,
         "iz": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
-        "framesizemax": cfg_emulator.framesizemax,
-        "split_patch_method": cfg_emulator.split_patch_method,
         "arrhenius_dimension": cfg_physics.dim_arrhenius,
         "staggered_grid": cfg_numerics.staggered_grid,
         "fieldin_names": tuple(cfg_emulator.fieldin),
@@ -58,7 +66,7 @@ def get_emulator_params_args(cfg, Nx: int, Ny: int) -> Dict[str, Any]:
     }
 
 
-def get_emulator_bag(state, nbit, lr) -> Dict:
+def get_emulator_bag(state, nbit, lr, batch_size) -> Dict:
 
     return {
         "iceflow_model_inference": state.iceflow_model_inference,
@@ -70,6 +78,7 @@ def get_emulator_bag(state, nbit, lr) -> Dict:
         "lr": lr,
         "PAD": state.PAD,
         "vert_disc": state.vert_disc,
+        "batch_size": batch_size,
     }
 
 
@@ -87,16 +96,22 @@ def update_iceflow_emulator(cfg, state, fieldin, initial, it, pertubate):
     if initial or run_it or warm_up:
         nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
-        X = prepare_X(cfg, fieldin, pertubate=pertubate, split_into_patches=True)
-        bag = get_emulator_bag(state, nbit, lr)
-        state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+        patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
+        dataset, batch_size = create_training_set_from_patches(
+            patches, state.iceflow.preparation_params
+        )
+
+        bag = get_emulator_bag(state, nbit, lr, batch_size)
+        state.cost_emulator = update_emulator(
+            bag, dataset, state.iceflow.emulator_params
+        )
 
 
 tf.config.optimizer.set_jit(True)
 
 
-@tf.function(jit_compile=False)
-def update_emulator(bag, X, parameters):
+# @tf.function(jit_compile=False)
+def update_emulator(bag, dataset, parameters):
 
     emulator_cost_tensor = tf.TensorArray(dtype=tf.float32, size=bag["nbit"])
     # emulator_grad_tensor = tf.TensorArray(
@@ -110,17 +125,20 @@ def update_emulator(bag, X, parameters):
     for iteration in tf.range(bag["nbit"]):
         cost_emulator = 0.0
 
-        for i in tf.range(tf.constant(X.shape[0])):
+        for batch in dataset:
+
             with tf.GradientTape(persistent=True) as tape:
 
                 if parameters.lr_decay < 1:
-                    new_lr = bag["lr"] * (parameters.lr_decay ** (i / 1000))
+                    new_lr = bag["lr"] * (
+                        parameters.lr_decay ** (int(iteration) / 1000)
+                    )
                     bag["opti_retrain"].learning_rate.assign(
                         tf.cast(new_lr, tf.float32)
                     )
 
                 Y = bag["iceflow_model_inference"](
-                    tf.pad(X[i, :, :, :, :], bag["PAD"], "CONSTANT")
+                    tf.pad(batch, bag["PAD"], "CONSTANT")
                 )[:, :Ny, :Nx, :]
 
                 nonstaggered_energy, staggered_energy = iceflow_energy_XY(
@@ -128,10 +146,13 @@ def update_emulator(bag, X, parameters):
                     dim_arrhenius=parameters.arrhenius_dimension,
                     staggered_grid=parameters.staggered_grid,
                     fieldin_names=parameters.fieldin_names,
-                    X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
+                    X=batch[:, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
                     vert_disc=bag["vert_disc"],
                     energy_components=bag["energy_components"],
+                    batch_size=bag["batch_size"],
+                    Ny=Ny,
+                    Nx=Nx,
                 )
 
                 energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
@@ -177,8 +198,21 @@ def initialize_iceflow_emulator(cfg, state):
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
 
-    Nx = state.thk.shape[1]
-    Ny = state.thk.shape[0]
+    input_height = state.thk.shape[0]
+    input_width = state.thk.shape[1]
+
+    preparation_params_args = get_input_params_args(cfg)
+    preparation_params = PreparationParams(**preparation_params_args)
+
+    state.iceflow.preparation_params = preparation_params
+
+    Ny, Nx, effective_batch_size = calculate_expected_dimensions(
+        input_height, input_width, preparation_params
+    )
+
+    state.iceflow.patching = OverlapPatching(
+        patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
+    )
 
     # Retraining option
     if (int(tf.__version__.split(".")[1]) <= 10) | (
@@ -265,7 +299,7 @@ def initialize_iceflow_emulator(cfg, state):
         state.iceflow.energy_components.append(component_obj)
 
     # Instantiate emulator params
-    emulator_params_args = get_emulator_params_args(cfg, Nx, Ny)
+    emulator_params_args = get_emulator_params_args(cfg, Nx, Ny, effective_batch_size)
     emulator_params = EmulatorParams(**emulator_params_args)
 
     # Instantiate emulated params

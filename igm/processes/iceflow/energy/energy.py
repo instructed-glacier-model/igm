@@ -8,15 +8,17 @@ import tensorflow as tf
 from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin, Y_to_UV
 
 
-def iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid):
-
+def iceflow_energy(
+    U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
+):
     if staggered_grid == 2:
         energy_tensor_length = 2 * len(energy_components)
     else:
         energy_tensor_length = len(energy_components)
 
-    staggered_shape = (U.shape[0], U.shape[2] - 1, U.shape[3] - 1)
-    nonstaggered_shape = (U.shape[0], U.shape[2], U.shape[3])
+    # Define element shapes for TensorArray with static values
+    staggered_shape = (batch_size, Ny - 1, Nx - 1)
+    nonstaggered_shape = (batch_size, Ny, Nx)
 
     energy_tensor_staggered = tf.TensorArray(
         dtype=tf.float32, size=energy_tensor_length, element_shape=staggered_shape
@@ -44,7 +46,17 @@ def iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid):
 
 @tf.function()
 def iceflow_energy_XY(
-    Nz, dim_arrhenius, staggered_grid, fieldin_names, X, Y, vert_disc, energy_components
+    Nz,
+    dim_arrhenius,
+    staggered_grid,
+    fieldin_names,
+    X,
+    Y,
+    vert_disc,
+    energy_components,
+    batch_size,
+    Ny,
+    Nx,
 ):
 
     U, V = Y_to_UV(Nz, Y)
@@ -52,7 +64,9 @@ def iceflow_energy_XY(
         X=X, fieldin_names=fieldin_names, dim_arrhenius=dim_arrhenius, Nz=Nz
     )
 
-    return iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid)
+    return iceflow_energy(
+        U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
+    )
 
 
 @tf.function()

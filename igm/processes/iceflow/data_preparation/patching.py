@@ -8,7 +8,7 @@ class Patching(ABC):
     """
     Abstract base class for tensor patching strategies.
 
-    Patching takes an input tensor with shape (batch, height, width, channels)
+    Patching takes an input tensor with shape (height, width, channels)
     and splits it into smaller patches for processing. Different strategies
     can be used for determining patch layout, overlap, and stacking behavior.
 
@@ -38,7 +38,7 @@ class Patching(ABC):
         patching strategy (e.g., with/without overlap, different stacking methods).
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
             **kwargs: Additional parameters specific to each implementation.
 
         Returns:
@@ -58,11 +58,11 @@ class Patching(ABC):
             tf.errors.InvalidArgumentError: If input is invalid.
         """
         tf.debugging.assert_rank(
-            X, 4, "Input tensor must be 4D (batch, height, width, channels)"
+            X, 3, "Input tensor must be 3D (height, width, channels)"
         )
-        tf.debugging.assert_greater(tf.shape(X)[1], 0, "Height must be positive")
-        tf.debugging.assert_greater(tf.shape(X)[2], 0, "Width must be positive")
-        tf.debugging.assert_greater(tf.shape(X)[3], 0, "Channels must be positive")
+        tf.debugging.assert_greater(tf.shape(X)[0], 0, "Height must be positive")
+        tf.debugging.assert_greater(tf.shape(X)[1], 0, "Width must be positive")
+        tf.debugging.assert_greater(tf.shape(X)[2], 0, "Channels must be positive")
 
     @tf.function(reduce_retracing=True)
     def _get_patch_dimensions(self, X: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -70,13 +70,13 @@ class Patching(ABC):
         Get height and width from input tensor.
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
 
         Returns:
             Tuple of (height, width) as TensorFlow tensors.
         """
         shape = tf.shape(X)
-        return shape[1], shape[2]
+        return shape[0], shape[1]
 
     @tf.function(reduce_retracing=True)
     def _extract_patch(
@@ -86,15 +86,14 @@ class Patching(ABC):
         Extract a single patch from the input tensor.
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
             start_y: Starting y coordinate for the patch.
             start_x: Starting x coordinate for the patch.
 
         Returns:
-            Extracted patch of shape (batch, patch_size, patch_size, channels).
+            Extracted patch of shape (patch_size, patch_size, channels).
         """
         return X[
-            :,
             start_y : start_y + self.patch_size,
             start_x : start_x + self.patch_size,
             :,
@@ -186,17 +185,16 @@ class OverlapPatching(Patching):
 
         return n_patches_y, n_patches_x, stride_y, stride_x
 
-    @typechecked
     @tf.function(reduce_retracing=True)
     def patch_tensor(self, X: tf.Tensor) -> tf.Tensor:
         """
         Split input tensor into overlapping patches.
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
 
         Returns:
-            Tensor of patches with shape (num_patches × batch, patch_size, patch_size, channels).
+            Tensor of patches with shape (num_patches, patch_size, patch_size, channels).
             All patches are stacked along the batch dimension.
         """
         self._validate_input(X)
@@ -204,7 +202,8 @@ class OverlapPatching(Patching):
 
         # Handle case where input is smaller than patch size
         if tf.logical_and(self.patch_size > width, self.patch_size > height):
-            return X  # Return original tensor (already has correct batch dimension)
+            # Add batch dimension and return
+            return tf.expand_dims(X, axis=0)
 
         n_patches_y, n_patches_x, stride_y, stride_x = (
             self._calculate_overlap_parameters(height, width)
@@ -224,26 +223,13 @@ class OverlapPatching(Patching):
             lambda coords: self._extract_patch(X, coords[0], coords[1]),
             tf.stack([y_flat, x_flat], axis=1),
             fn_output_signature=tf.TensorSpec(
-                shape=[None, self.patch_size, self.patch_size, None], dtype=X.dtype
+                shape=[self.patch_size, self.patch_size, None], dtype=X.dtype
             ),
             parallel_iterations=10,
         )
 
-        # Reshape to stack all patches along batch dimension
-        # patches shape: (num_patches, batch, patch_size, patch_size, channels)
-        # Reshape to: (num_patches × batch, patch_size, patch_size, channels)
-        num_patches = tf.shape(patches)[0]
-        original_batch = tf.shape(patches)[1]
-
-        return tf.reshape(
-            patches,
-            [
-                num_patches * original_batch,
-                self.patch_size,
-                self.patch_size,
-                tf.shape(X)[-1],
-            ],
-        )
+        # patches shape: (num_patches, patch_size, patch_size, channels)
+        return patches
 
 
 class GridPatching(Patching):
@@ -300,7 +286,7 @@ class GridPatching(Patching):
         Extract a patch from the regular grid.
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
             i: Grid row index.
             j: Grid column index.
             patch_height: Height of each patch.
@@ -314,7 +300,7 @@ class GridPatching(Patching):
         end_y = start_y + patch_height
         end_x = start_x + patch_width
 
-        return X[:, start_y:end_y, start_x:end_x, :]
+        return X[start_y:end_y, start_x:end_x, :]
 
     @tf.function(reduce_retracing=True)
     def _extract_all_grid_patches(
@@ -357,9 +343,7 @@ class GridPatching(Patching):
         patches = tf.map_fn(
             extract_single_patch,
             coordinates,
-            fn_output_signature=tf.TensorSpec(
-                shape=[None, None, None, None], dtype=X.dtype
-            ),
+            fn_output_signature=tf.TensorSpec(shape=[None, None, None], dtype=X.dtype),
             parallel_iterations=1,  # Set to 1 to avoid warning in eager execution
         )
 
@@ -371,10 +355,10 @@ class GridPatching(Patching):
         Split input tensor into grid patches.
 
         Args:
-            X: Input tensor of shape (batch, height, width, channels).
+            X: Input tensor of shape (height, width, channels).
 
         Returns:
-            Tensor of patches with shape (num_patches × batch, patch_height, patch_width, channels).
+            Tensor of patches with shape (num_patches, patch_height, patch_width, channels).
             All patches are stacked along the batch dimension.
         """
         self._validate_input(X)
@@ -389,13 +373,5 @@ class GridPatching(Patching):
             X, n_patches_y, n_patches_x, patch_height, patch_width
         )
 
-        # Reshape to stack all patches along batch dimension
-        # patches shape: (num_patches, batch, patch_height, patch_width, channels)
-        # Reshape to: (num_patches × batch, patch_height, patch_width, channels)
-        num_patches = tf.shape(patches)[0]
-        original_batch = tf.shape(patches)[1]
-
-        return tf.reshape(
-            patches,
-            [num_patches * original_batch, patch_height, patch_width, tf.shape(X)[-1]],
-        )
+        # patches shape: (num_patches, patch_height, patch_width, channels)
+        return patches

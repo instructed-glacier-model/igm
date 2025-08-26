@@ -54,6 +54,9 @@ def split_into_patches_X(X, nbmax, split_patch_method):
     elif split_patch_method.lower() == "parallel":
         XXX = tf.expand_dims(tf.concat(XX, axis=0), axis=0)
 
+    # remove the extra 0 dimension with only 1 element
+    XXX = tf.squeeze(XXX, axis=0)
+
     return XXX
 
 

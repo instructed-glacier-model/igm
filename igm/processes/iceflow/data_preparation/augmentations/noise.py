@@ -5,6 +5,7 @@ from .base import Augmentation
 class NoiseParams(tf.experimental.ExtensionType):
     noise_type: str
     noise_scale: float
+    channel_mask: tf.Tensor  # Boolean mask indicating which channels to apply noise to
 
 
 class NoiseAugmentation(Augmentation):
@@ -12,19 +13,54 @@ class NoiseAugmentation(Augmentation):
         self.params = params
 
     def apply(self, x):
-        return add_noise(x, self.params.noise_type, self.params.noise_scale)
+        return add_noise_selective(
+            x, self.params.noise_type, self.params.noise_scale, self.params.channel_mask
+        )
+
+
+# Create a registry of noise functions for cleaner dispatch
+NOISE_FUNCTIONS = {
+    "gaussian": lambda x, scale: add_gaussian_noise(x, scale),
+    "perlin": lambda x, scale: add_perlin_noise(x, scale),
+    "intensity": lambda x, scale: add_intensity_noise(x, scale),
+    "none": lambda x, scale: x,
+}
+
+
+@tf.function
+def add_noise_selective(x, noise_type, noise_scale, channel_mask):
+    """Apply noise selectively to specific channels based on mask."""
+    # First apply noise to the entire tensor
+    noisy_x = add_noise(x, noise_type, noise_scale)
+
+    # Create a mask that matches the tensor shape
+    # channel_mask should be shape [num_channels] with boolean values
+    mask_expanded = tf.reshape(channel_mask, [1, 1, -1])  # Shape: [1, 1, channels]
+    mask_expanded = tf.cast(mask_expanded, x.dtype)
+
+    # Apply noise only to selected channels, keep original values for others
+    return x * (1 - mask_expanded) + noisy_x * mask_expanded
 
 
 @tf.function
 def add_noise(x, noise_type, noise_scale):
-    if noise_type == "gaussian":
-        return add_gaussian_noise(x, noise_scale)
-    elif noise_type == "perlin":
-        return add_perlin_noise(x, noise_scale)
-    elif noise_type == "intensity":
-        return add_intensity_noise(x, noise_scale)
-    else:
-        return x
+    """Apply noise based on type using a more elegant dispatch pattern."""
+    # Use tf.case for cleaner conditional logic
+    return tf.case(
+        [
+            (
+                tf.equal(noise_type, "gaussian"),
+                lambda: add_gaussian_noise(x, noise_scale),
+            ),
+            (tf.equal(noise_type, "perlin"), lambda: add_perlin_noise(x, noise_scale)),
+            (
+                tf.equal(noise_type, "intensity"),
+                lambda: add_intensity_noise(x, noise_scale),
+            ),
+        ],
+        default=lambda: x,  # Default case for "none" or unknown types
+        exclusive=True,
+    )
 
 
 @tf.function
