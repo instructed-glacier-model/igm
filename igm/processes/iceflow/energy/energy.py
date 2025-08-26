@@ -86,4 +86,10 @@ def iceflow_energy_UV(
         X=inputs, fieldin_names=inputs_names, dim_arrhenius=dim_arrhenius, Nz=Nz
     )
 
-    return iceflow_energy(U, V, fieldin, vert_disc, energy_components, staggered_grid)
+    Ny = inputs.shape[1]
+    Nx = inputs.shape[2]
+    batch_size = inputs.shape[0]
+
+    return iceflow_energy(
+        U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
+    )
