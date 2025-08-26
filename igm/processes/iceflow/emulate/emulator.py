@@ -83,7 +83,7 @@ def get_emulator_bag(state, nbit, lr, batch_size) -> Dict:
     }
 
 
-def update_iceflow_emulator(cfg, state, fieldin, initial, it, pertubate):
+def update_iceflow_emulator(cfg, state, fieldin, initial, it):
 
     cfg_emulator = cfg.processes.iceflow.emulator
 

@@ -149,7 +149,15 @@ def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0
         return i < octaves
 
     _, _, max_amplitude, total_noise = tf.while_loop(
-        cond, octave_body, loop_vars=[i0, amplitude0, max_amplitude0, total_noise0]
+        cond, 
+        octave_body, 
+        loop_vars=[i0, amplitude0, max_amplitude0, total_noise0],
+        shape_invariants=[
+            tf.TensorShape([]),  # i
+            tf.TensorShape([]),  # amplitude  
+            tf.TensorShape([]),  # max_amplitude
+            tf.TensorShape([None, None, None])  # total_noise - allow variable shape
+        ]
     )
 
     # Normalize by max_amplitude to account for octave scaling

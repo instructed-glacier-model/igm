@@ -185,7 +185,6 @@ def initialize(cfg, state):
             fieldin,
             initial=True,
             it=0,
-            pertubate=cfg.processes.iceflow.emulator.pertubate,
         )
 
         update_iceflow_emulated(cfg, state, fieldin)
@@ -214,7 +213,6 @@ def update(cfg, state):
             fieldin,
             initial=False,
             it=state.it,
-            pertubate=cfg.processes.iceflow.emulator.pertubate,
         )
 
         update_iceflow_emulated(cfg, state, fieldin)
