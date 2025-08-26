@@ -3,23 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Any, Dict, Tuple
 import tensorflow as tf
-import os
-import warnings
-import igm
-from ..mappings import Mappings
+from typing import Any, Dict
+from omegaconf import DictConfig
 
-from igm.processes.iceflow.utils.data_preprocessing import match_fieldin_dimensions
-from igm.processes.iceflow.energy import (
-    EnergyComponents,
-    EnergyParams,
-    get_energy_params_args,
-)
+from igm.common.core import State
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
-    Y_to_UV,
+    match_fieldin_dimensions,
 )
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
@@ -36,7 +28,7 @@ class EvaluatorParams(tf.experimental.ExtensionType):
     dim_arrhenius: int
 
 
-def get_evaluator_params_args(cfg) -> Dict[str, Any]:
+def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
@@ -49,16 +41,16 @@ def get_evaluator_params_args(cfg) -> Dict[str, Any]:
     }
 
 
-def get_data_from_state(state) -> Dict[str, Any]:
+def get_data_from_state(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
         "vert_weight": state.vert_weight,
-        "mapping": state.mapping,
+        "mapping": state.iceflow.mapping,
     }
 
 
-def get_inputs_from_state(cfg, state):
+def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
@@ -85,6 +77,7 @@ def evaluator_iceflow(
     inputs: tf.Tensor, data: Dict, parameters: EvaluatorParams
 ) -> Dict[str, tf.Tensor]:
 
+    # Compute velocity from mapping
     U, V = data["mapping"].get_UV(inputs)
     U, V = U[0], V[0]
 
@@ -118,7 +111,7 @@ def evaluator_iceflow(
     }
 
 
-def evaluate_iceflow(cfg, state):
+def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
 
     # Get inputs for mapping
     inputs = get_inputs_from_state(cfg, state)

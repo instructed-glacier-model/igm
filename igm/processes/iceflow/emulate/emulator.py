@@ -9,6 +9,7 @@ from igm.processes.iceflow.emulate import EmulatedParams
 from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
+    load_model_from_path,
 )
 from igm.processes.iceflow.utils.data_preprocessing import prepare_X
 from igm.processes.iceflow.energy import (
@@ -234,17 +235,7 @@ def initialize_iceflow_emulator(cfg, state):
 
     if cfg_emulator.pretrained:
         dir_path = get_pretrained_emulator_path(cfg, state)
-
-        fieldin = []
-        fid = open(os.path.join(dir_path, "fieldin.dat"), "r")
-        for fileline in fid:
-            part = fileline.split()
-            fieldin.append(part[0])
-        fid.close()
-        assert cfg_emulator.fieldin == fieldin
-        state.iceflow_model = tf.keras.models.load_model(
-            os.path.join(dir_path, "model.h5"), compile=False
-        )
+        state.iceflow_model = load_model_from_path(dir_path, cfg_emulator.fieldin)
         state.iceflow_model.compile(jit_compile=True)
     else:
         warnings.warn("No pretrained emulator found. Starting from scratch.")

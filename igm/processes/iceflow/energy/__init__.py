@@ -1,4 +1,5 @@
 from .components import (
+    EnergyComponent,
     GravityComponent,
     GravityParams,
     get_gravity_params_args,
