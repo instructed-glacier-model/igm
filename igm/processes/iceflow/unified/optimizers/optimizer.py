@@ -4,9 +4,8 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-import numpy as np
 from abc import ABC, abstractmethod
-from typing import Callable, Tuple, Any
+from typing import Callable, Tuple
 
 from ..mappings import Mapping
 
@@ -36,7 +35,7 @@ class Optimizer(ABC):
     @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
-    ) -> tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
+    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
         w = self.map.get_w()
         with tf.GradientTape(persistent=True) as tape:
             U, V = self.map.get_UV(inputs)

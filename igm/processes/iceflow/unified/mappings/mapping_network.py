@@ -7,9 +7,7 @@ import tensorflow as tf
 from typing import Tuple
 
 from .mapping import Mapping
-from igm.processes.iceflow.utils.data_preprocessing import (
-    Y_to_UV,
-)
+from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
 class MappingNetwork(Mapping):

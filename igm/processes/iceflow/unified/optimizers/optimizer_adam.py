@@ -55,7 +55,7 @@ class OptimizerAdam(Optimizer):
                 + f"n_batches = {n_batches}."
             )
 
-        costs = tf.TensorArray(dtype=tf.float32, size=self.iter_max)
+        costs = tf.TensorArray(dtype=tf.float32, size=int(self.iter_max))
 
         for iter in tf.range(self.iter_max):
             input = inputs[0, :, :, :, :]
