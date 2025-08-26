@@ -4,11 +4,10 @@ from typing import Any, Dict, Tuple
 from .augmentations.rotation import RotationAugmentation, RotationParams
 from .augmentations.flip import FlipAugmentation, FlipParams
 from .augmentations.noise import NoiseAugmentation, NoiseParams
-from .patching import OverlapPatching, GridPatching, Patching
+from .patching import OverlapPatching
 from igm.processes.iceflow.utils import fieldin_to_X_2d, fieldin_to_X_3d
 
 
-# Define PreparationParams as a tf.experimental.ExtensionType
 class PreparationParams(tf.experimental.ExtensionType):
     overlap: float  # overlap is the fraction of the patch size that overlaps between adjacent patches (0.0 to 1.0)
     batch_size: int  # batch size for training
@@ -24,9 +23,30 @@ class PreparationParams(tf.experimental.ExtensionType):
     noise_channels: Tuple[str, ...]  # names of input fields to apply noise
 
 
-def get_input_params_args(cfg) -> Dict[str, Any]:
+def _determine_noise_channels(cfg) -> Tuple[str, ...]:
+    """
+    Determine which channels should have noise applied based on configuration.
 
-    cfg_emulator = cfg.processes.iceflow.emulator
+    Args:
+        cfg: Configuration object
+
+    Returns:
+        Tuple[str, ...]: Channel names to apply noise to
+    """
+    if hasattr(cfg.processes, "data_assimilation"):
+        # Use control_list fields that are suitable for noise
+        noise_channels = []
+        for f in cfg.processes.data_assimilation.control_list:
+            if f in ["thk", "usurf"]:  # Only apply noise to these fields
+                noise_channels.append(f)
+        # Convert to tuple for tf.experimental.ExtensionType compatibility
+        return tuple(noise_channels) if noise_channels else ("thk", "usurf")
+    else:
+        # Default noise channels
+        return ("thk", "usurf")
+
+
+def get_input_params_args(cfg) -> Dict[str, Any]:
 
     # return {
     #     "overlap": cfg_emulator.overlap,
@@ -39,35 +59,109 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
     #     "target_samples": cfg_emulator.target_samples,
     # }
 
-    # Determine noise channels - default to ["thk", "usurf"] similar to pertubate_X
-    if hasattr(cfg.processes, "data_assimilation"):
-        # Use control_list fields that are suitable for noise
-        noise_channels = []
-        for f in cfg.processes.data_assimilation.control_list:
-            if f in ["thk", "usurf"]:  # Only apply noise to these fields
-                noise_channels.append(f)
-        # Convert to tuple for tf.experimental.ExtensionType compatibility
-        noise_channels = tuple(noise_channels) if noise_channels else ("thk", "usurf")
-    else:
-        # Default noise channels
-        noise_channels = ("thk", "usurf")
-
     return {
         "overlap": 0.25,
         "batch_size": 32,
-        "patch_size": 64,
+        "patch_size": 1000,
         "rotation_probability": 0.0,
         "flip_probability": 0.0,
-        "noise_type": "perlin",
+        "noise_type": "none",
         "noise_scale": 0.1,
-        "target_samples": 64,
-        "fieldin_names": (
-            tuple(cfg.processes.iceflow.emulator.fieldin)
-            if hasattr(cfg.processes.iceflow.emulator, "fieldin")
-            else ("thk", "usurf", "arrhenius", "slidingco")
-        ),
-        "noise_channels": noise_channels,
+        "target_samples": 1,
+        "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
+        "noise_channels": _determine_noise_channels(cfg),
     }
+
+
+def _handle_small_input_case(
+    input_height: int,
+    input_width: int,
+    patch_size: int,
+    batch_size: int,
+    target_samples: int,
+) -> tuple:
+    """
+    Handle the case where input is smaller than patch size.
+
+    Args:
+        input_height: Height of input tensor
+        input_width: Width of input tensor
+        patch_size: Size of patches
+        batch_size: Batch size
+        target_samples: Target number of samples
+
+    Returns:
+        tuple: (input_height, input_width, effective_batch_size)
+    """
+    return (
+        input_height,
+        input_width,
+        min(batch_size, max(target_samples, 1)),
+    )
+
+
+def _calculate_patch_counts(
+    input_height: int, input_width: int, patch_size: int, overlap: float
+) -> tuple:
+    """
+    Calculate number of patches in each direction.
+
+    Args:
+        input_height: Height of input tensor
+        input_width: Width of input tensor
+        patch_size: Size of patches
+        overlap: Overlap fraction
+
+    Returns:
+        tuple: (n_patches_y, n_patches_x, total_patches)
+    """
+    import math
+
+    height_f = float(input_height)
+    width_f = float(input_width)
+    patch_size_f = float(patch_size)
+
+    # Calculate minimum stride and number of patches
+    min_stride = int(patch_size_f * (1.0 - overlap))
+
+    # Calculate number of patches in each direction
+    n_patches_y = max(
+        1, int(math.ceil((height_f - patch_size_f) / float(min_stride))) + 1
+    )
+    n_patches_x = max(
+        1, int(math.ceil((width_f - patch_size_f) / float(min_stride))) + 1
+    )
+
+    total_patches = n_patches_y * n_patches_x
+    return n_patches_y, n_patches_x, total_patches
+
+
+def _calculate_final_dimensions(
+    patch_size: int, num_patches: int, batch_size: int, target_samples: int
+) -> tuple:
+    """
+    Calculate final dimensions and batch size.
+
+    Args:
+        patch_size: Size of patches
+        num_patches: Total number of patches
+        batch_size: Requested batch size
+        target_samples: Target number of samples
+
+    Returns:
+        tuple: (Ny, Nx, effective_batch_size)
+    """
+    # Patch dimensions are always patch_size x patch_size
+    Ny = patch_size
+    Nx = patch_size
+
+    # Calculate adjusted target samples (must be at least num_patches)
+    adjusted_target_samples = max(target_samples, num_patches)
+
+    # Calculate effective batch size (min of batch_size and adjusted_target_samples)
+    effective_batch_size = min(batch_size, adjusted_target_samples)
+
+    return Ny, Nx, effective_batch_size
 
 
 def calculate_expected_dimensions(
@@ -99,93 +193,87 @@ def calculate_expected_dimensions(
 
     # Handle case where input is smaller than patch size
     if patch_size > input_width and patch_size > input_height:
-        # Single patch case - return input dimensions
-        return (
-            input_height,
-            input_width,
-            min(batch_size, max(target_samples, 1)),
+        return _handle_small_input_case(
+            input_height, input_width, patch_size, batch_size, target_samples
         )
 
-    # Calculate overlap parameters using the same logic as OverlapPatching
-    height_f = float(input_height)
-    width_f = float(input_width)
-    patch_size_f = float(patch_size)
-
-    # Calculate minimum stride and number of patches
-    min_stride = int(patch_size_f * (1.0 - overlap))
-
-    # Calculate number of patches in each direction
-    import math
-
-    n_patches_y = max(
-        1, int(math.ceil((height_f - patch_size_f) / float(min_stride))) + 1
-    )
-    n_patches_x = max(
-        1, int(math.ceil((width_f - patch_size_f) / float(min_stride))) + 1
+    # Calculate patch counts and final dimensions
+    n_patches_y, n_patches_x, num_patches = _calculate_patch_counts(
+        input_height, input_width, patch_size, overlap
     )
 
-    # Total number of patches
-    num_patches = n_patches_y * n_patches_x
-
-    # Patch dimensions are always patch_size x patch_size (except for the edge case above)
-    Ny = patch_size
-    Nx = patch_size
-
-    # Calculate adjusted target samples (must be at least num_patches)
-    adjusted_target_samples = max(target_samples, num_patches)
-
-    # Calculate effective batch size (min of batch_size and adjusted_target_samples)
-    effective_batch_size = min(batch_size, adjusted_target_samples)
-
-    return Ny, Nx, effective_batch_size
+    return _calculate_final_dimensions(
+        patch_size, num_patches, batch_size, target_samples
+    )
 
 
-def split_fieldin_to_patches(cfg, fieldin, patching: OverlapPatching) -> tuple:
+def _convert_fieldin_to_tensor(cfg, fieldin) -> tf.Tensor:
     """
-    Create base patches without augmentation (static preprocessing).
-    This only needs to be done once and can be reused across epochs.
+    Convert fieldin to tensor based on dimensionality configuration.
 
+    Args:
+        cfg: Configuration object containing physics parameters
+        fieldin: Input field data
+
+    Returns:
+        tf.Tensor: Converted tensor
     """
-
     dim_arrhenius = cfg.processes.iceflow.physics.dim_arrhenius
 
     if dim_arrhenius == 3:
         X = fieldin_to_X_3d(dim_arrhenius, fieldin)
     elif dim_arrhenius == 2:
         X = fieldin_to_X_2d(fieldin)
+    else:
+        raise ValueError(f"Unsupported dim_arrhenius value: {dim_arrhenius}")
 
-    X = tf.squeeze(X, axis=0)  # temporary fix necessary for backwards compatibility
+    return tf.squeeze(X, axis=0)  # temporary fix necessary for backwards compatibility
 
+
+def split_fieldin_to_patches(cfg, fieldin, patching: OverlapPatching) -> tuple:
+    """
+    Create base patches without augmentation (static preprocessing).
+    This only needs to be done once and can be reused across epochs.
+    """
+    X = _convert_fieldin_to_tensor(cfg, fieldin)
     patches = patching.patch_tensor(X)
-
     return patches
 
 
-def create_training_set_from_patches(
-    patches: tf.Tensor, preparation_params: PreparationParams
-) -> tf.data.Dataset:
+def _should_apply_augmentations(preparation_params: PreparationParams) -> bool:
     """
-    Create a training dataset from pre-computed patches with fresh augmentations.
-    This can be called multiple times to get different augmentations.
+    Determine if any augmentations should be applied based on parameters.
+
+    Args:
+        preparation_params: Parameters containing augmentation settings
+
+    Returns:
+        bool: True if any augmentation should be applied
     """
-    patch_shape = tf.shape(patches)
-    dtype = patches.dtype
-
-    # Create dataset from patches
-    dataset = tf.data.Dataset.from_tensor_slices(patches)
-
-    # Check if augmentations should be applied
     has_rotation = preparation_params.rotation_probability > 0
     has_flip = preparation_params.flip_probability > 0
     has_noise = (
         preparation_params.noise_type != "none" and preparation_params.noise_scale > 0
     )
+    return has_rotation or has_flip or has_noise
 
-    apply_augmentations = has_rotation or has_flip or has_noise
 
-    # Apply augmentations only if needed
-    if apply_augmentations:
-        dataset = dataset.map(
+def _apply_augmentations_to_dataset(
+    dataset: tf.data.Dataset, preparation_params: PreparationParams, dtype: tf.DType
+) -> tf.data.Dataset:
+    """
+    Apply augmentations to the dataset if they should be applied.
+
+    Args:
+        dataset: Input dataset
+        preparation_params: Parameters containing augmentation settings
+        dtype: Data type for casting
+
+    Returns:
+        tf.data.Dataset: Dataset with augmentations applied
+    """
+    if _should_apply_augmentations(preparation_params):
+        return dataset.map(
             lambda x: _apply_all_augmentations(
                 x,
                 preparation_params.rotation_probability,
@@ -198,12 +286,23 @@ def create_training_set_from_patches(
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
+    return dataset
 
-    # Shuffle before upsampling
-    dataset = dataset.shuffle(buffer_size=100)
 
-    # Check if upsampling is needed and useful
-    num_patches = int(patch_shape[0])
+def _should_upsample_dataset(
+    preparation_params: PreparationParams, num_patches: int, apply_augmentations: bool
+) -> bool:
+    """
+    Determine if upsampling should be performed.
+
+    Args:
+        preparation_params: Parameters containing target samples
+        num_patches: Current number of patches
+        apply_augmentations: Whether augmentations are being applied
+
+    Returns:
+        bool: True if upsampling should be performed
+    """
     should_upsample = preparation_params.target_samples > num_patches
 
     if should_upsample and not apply_augmentations:
@@ -216,9 +315,71 @@ def create_training_set_from_patches(
             f"Skipping upsampling and using original {num_patches} samples.",
             UserWarning,
         )
-        should_upsample = False
+        return False
 
-    # Upsample with repeat and take to reach exactly target_samples
+    return should_upsample
+
+
+def _calculate_effective_batch_size(
+    preparation_params: PreparationParams, adjusted_target_samples: int
+) -> int:
+    """
+    Calculate the effective batch size based on parameters and available samples.
+
+    Args:
+        preparation_params: Parameters containing batch size
+        adjusted_target_samples: Number of samples after adjustment
+
+    Returns:
+        int: Effective batch size to use
+    """
+    return min(preparation_params.batch_size, adjusted_target_samples)
+
+
+def _configure_final_dataset(
+    dataset: tf.data.Dataset, batch_size: int
+) -> tf.data.Dataset:
+    """
+    Configure the final dataset with batching and prefetching.
+
+    Args:
+        dataset: Input dataset
+        batch_size: Batch size to use
+
+    Returns:
+        tf.data.Dataset: Final configured dataset
+    """
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    return dataset
+
+
+def create_training_set_from_patches(
+    patches: tf.Tensor, preparation_params: PreparationParams
+) -> tf.data.Dataset:
+    """
+    Create a training dataset from pre-computed patches with fresh augmentations.
+    This can be called multiple times to get different augmentations.
+    """
+    patch_shape = tf.shape(patches)
+    dtype = patches.dtype
+    num_patches = int(patch_shape[0])
+
+    # Create base dataset
+    dataset = tf.data.Dataset.from_tensor_slices(patches)
+
+    # Apply augmentations if needed
+    apply_augmentations = _should_apply_augmentations(preparation_params)
+    dataset = _apply_augmentations_to_dataset(dataset, preparation_params, dtype)
+
+    # Shuffle before upsampling
+    dataset = dataset.shuffle(buffer_size=100)
+
+    # Handle upsampling
+    should_upsample = _should_upsample_dataset(
+        preparation_params, num_patches, apply_augmentations
+    )
+
     if should_upsample:
         dataset, adjusted_target_samples = _upsample_dataset(
             dataset,
@@ -229,12 +390,12 @@ def create_training_set_from_patches(
     else:
         adjusted_target_samples = num_patches
 
-    # if batch size > target_samples, batch_size = target_samples
-    batch_size = min(preparation_params.batch_size, adjusted_target_samples)
+    # Calculate batch size and configure final dataset
+    batch_size = _calculate_effective_batch_size(
+        preparation_params, adjusted_target_samples
+    )
+    dataset = _configure_final_dataset(dataset, batch_size)
 
-    # Batch and prefetch
-    dataset = dataset.batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(tf.data.AUTOTUNE)
     return dataset, batch_size
 
 
@@ -257,6 +418,63 @@ def calculate_bytes_per_patch(patch_shape, dtype):
     return elements_per_patch * bytes_per_element
 
 
+def _calculate_memory_constraints(
+    patch_shape: tuple, dtype: tf.DType, target_samples: int
+) -> int:
+    """
+    Calculate memory-constrained target samples.
+
+    Args:
+        patch_shape: Shape of patches
+        dtype: Data type of patches
+        target_samples: Desired target samples
+
+    Returns:
+        int: Memory-constrained target samples
+    """
+    bytes_per_patch = calculate_bytes_per_patch(patch_shape[1:], dtype)
+    safe_memory = 1024**3  # make this configurable
+    max_samples_in_memory = safe_memory // bytes_per_patch
+
+    if max_samples_in_memory < target_samples:
+        print(
+            f"Warning: Reducing target_samples from {target_samples} to {max_samples_in_memory} to fit in GPU memory"
+        )
+        print(
+            f"Memory per patch: {bytes_per_patch / 1024**2:.2f} MB, Safe GPU memory: {safe_memory / 1024**3:.2f} GB"
+        )
+        return max_samples_in_memory
+
+    return target_samples
+
+
+def _apply_dataset_repeats(
+    dataset: tf.data.Dataset, num_patches: int, adjusted_target_samples: int
+) -> tf.data.Dataset:
+    """
+    Apply repeats to dataset if needed to reach target samples.
+
+    Args:
+        dataset: Input dataset
+        num_patches: Number of original patches
+        adjusted_target_samples: Target number of samples after adjustment
+
+    Returns:
+        tf.data.Dataset: Dataset with repeats applied if needed
+    """
+    if num_patches < adjusted_target_samples:
+        repeats = tf.cast(
+            tf.math.ceil(
+                tf.cast(adjusted_target_samples, tf.float32)
+                / tf.cast(num_patches, tf.float32)
+            ),
+            tf.int64,
+        )
+        dataset = dataset.repeat(repeats)
+
+    return dataset.take(tf.cast(adjusted_target_samples, tf.int64))
+
+
 def _upsample_dataset(
     dataset: tf.data.Dataset,
     patch_shape: tuple,
@@ -268,38 +486,21 @@ def _upsample_dataset(
     Returns:
         tuple: (upsampled_dataset, adjusted_target_samples)
     """
-
     num_patches = patch_shape[0]
 
     # Ensure target_samples is at least equal to the number of available patches
     adjusted_target_samples = max(target_samples, int(num_patches))
 
-    bytes_per_patch = calculate_bytes_per_patch(patch_shape[1:], dtype)
+    # Apply memory constraints
+    adjusted_target_samples = _calculate_memory_constraints(
+        patch_shape, dtype, adjusted_target_samples
+    )
 
-    safe_memory = 1024**3  # make this configurable
+    # Apply repeats and take to reach target samples
+    upsampled_dataset = _apply_dataset_repeats(
+        dataset, num_patches, adjusted_target_samples
+    )
 
-    # Calculate maximum samples that fit in memory
-    max_samples_in_memory = safe_memory // bytes_per_patch
-
-    if max_samples_in_memory < adjusted_target_samples:
-        adjusted_target_samples = max_samples_in_memory
-        print(
-            f"Warning: Reducing target_samples from {target_samples} to {adjusted_target_samples} to fit in GPU memory"
-        )
-        print(
-            f"Memory per patch: {bytes_per_patch / 1024**2:.2f} MB, Safe GPU memory: {safe_memory / 1024**3:.2f} GB"
-        )
-
-    if num_patches < adjusted_target_samples:
-        repeats = tf.cast(
-            tf.math.ceil(
-                tf.cast(adjusted_target_samples, tf.float32)
-                / tf.cast(num_patches, tf.float32)
-            ),
-            tf.int64,
-        )
-        dataset = dataset.repeat(repeats)
-    upsampled_dataset = dataset.take(tf.cast(adjusted_target_samples, tf.int64))
     return upsampled_dataset, adjusted_target_samples
 
 
