@@ -46,6 +46,9 @@ iceflow:
   unified:
     mapping: network
     optimizer: adam
+    lbfgs:
+      memory: 10
+      alpha_min: 0.0
     inputs: [thk, usurf, arrhenius, slidingco, dX]
     inputs_scales: [1.0, 1.0, 1.0, 1.0, 1.0]
     network:
