@@ -41,7 +41,7 @@ def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
     }
 
 
-def get_data_from_state(state: State) -> Dict[str, Any]:
+def get_kwargs_from_state(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
@@ -74,16 +74,16 @@ def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
 @tf.function(jit_compile=True)
 def evaluator_iceflow(
-    inputs: tf.Tensor, data: Dict, parameters: EvaluatorParams
+    inputs: tf.Tensor, parameters: EvaluatorParams, **kwargs: Dict[str, Any]
 ) -> Dict[str, tf.Tensor]:
 
     # Compute velocity from mapping
-    U, V = data["mapping"].get_UV(inputs)
+    U, V = kwargs["mapping"].get_UV(inputs)
     U, V = U[0], V[0]
 
     # Post-processing of velocity fields
-    U = tf.where(data["thk"] > 0.0, U, 0.0)
-    V = tf.where(data["thk"] > 0.0, V, 0.0)
+    U = tf.where(kwargs["thk"] > 0.0, U, 0.0)
+    V = tf.where(kwargs["thk"] > 0.0, V, 0.0)
 
     if parameters.force_max_velbar > 0.0:
         U, V = clip_max_velbar(
@@ -91,13 +91,13 @@ def evaluator_iceflow(
             V,
             parameters.force_max_velbar,
             parameters.vertical_basis,
-            data["vert_weight"],
+            kwargs["vert_weight"],
         )
 
     # Retrieve derived quantities from velocity fields
     uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
     uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(U, V, data["vert_weight"], parameters.vertical_basis)
+    ubar, vbar = get_velbar(U, V, kwargs["vert_weight"], parameters.vertical_basis)
 
     return {
         "U": U,
@@ -116,12 +116,12 @@ def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
     # Get inputs for mapping
     inputs = get_inputs_from_state(cfg, state)
 
-    # Get data for evaluator
-    data = get_data_from_state(state)
+    # Get kwargs for evaluator
+    kwargs = get_kwargs_from_state(state)
 
     # Evaluate ice-flow model
     evaluator_params = state.iceflow.evaluator_params
-    update = evaluator_iceflow(inputs, data, evaluator_params)
+    update = evaluator_iceflow(inputs, evaluator_params, **kwargs)
 
     # Update velocity state
     for key, value in update.items():

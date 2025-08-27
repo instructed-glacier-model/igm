@@ -1,15 +1,15 @@
 from .mapping import Mapping
 from .mapping_network import MappingNetwork
-from .mapping_nodal import MappingNodal
+from .mapping_identity import MappingIdentity
 from .interface_network import InterfaceNetwork
-from .interface_nodal import InterfaceNodal
+from .interface_identity import InterfaceIdentity
 
 Mappings = {
     "network": MappingNetwork,
-    "nodal": MappingNodal,
+    "identity": MappingIdentity,
 }
 
 InterfaceMappings = {
     "network": InterfaceNetwork,
-    "nodal": InterfaceNodal,
+    "identity": InterfaceIdentity,
 }

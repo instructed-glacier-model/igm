@@ -9,7 +9,7 @@ from typing import Tuple
 from .mapping import Mapping
 
 
-class MappingNodal(Mapping):
+class MappingIdentity(Mapping):
     def __init__(self, U_guess: tf.Tensor, V_guess: tf.Tensor):
 
         if U_guess.shape != V_guess.shape:

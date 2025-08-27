@@ -11,7 +11,7 @@ from igm.common.core import State
 from .interface import InterfaceMapping
 
 
-class InterfaceNodal(InterfaceMapping):
+class InterfaceIdentity(InterfaceMapping):
 
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
