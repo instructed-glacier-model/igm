@@ -5,7 +5,7 @@ from .base import Augmentation
 class NoiseParams(tf.experimental.ExtensionType):
     noise_type: str
     noise_scale: float
-    channel_mask: tf.Tensor  # Boolean mask indicating which channels to apply noise to
+    channel_mask: tf.Tensor  # Boolean mask for which channels get noise
 
 
 class NoiseAugmentation(Augmentation):
@@ -18,7 +18,7 @@ class NoiseAugmentation(Augmentation):
         )
 
 
-# Create a registry of noise functions for cleaner dispatch
+# Noise function registry
 NOISE_FUNCTIONS = {
     "gaussian": lambda x, scale: add_gaussian_noise(x, scale),
     "perlin": lambda x, scale: add_perlin_noise(x, scale),
@@ -29,23 +29,20 @@ NOISE_FUNCTIONS = {
 
 @tf.function
 def add_noise_selective(x, noise_type, noise_scale, channel_mask):
-    """Apply noise selectively to specific channels based on mask."""
-    # First apply noise to the entire tensor
+    """Apply noise to only the channels specified by the mask."""
     noisy_x = add_noise(x, noise_type, noise_scale)
 
-    # Create a mask that matches the tensor shape
-    # channel_mask should be shape [num_channels] with boolean values
-    mask_expanded = tf.reshape(channel_mask, [1, 1, -1])  # Shape: [1, 1, channels]
+    # Expand mask to match tensor dimensions
+    mask_expanded = tf.reshape(channel_mask, [1, 1, -1])
     mask_expanded = tf.cast(mask_expanded, x.dtype)
 
-    # Apply noise only to selected channels, keep original values for others
+    # Mix original and noisy versions based on mask
     return x * (1 - mask_expanded) + noisy_x * mask_expanded
 
 
 @tf.function
 def add_noise(x, noise_type, noise_scale):
-    """Apply noise based on type using a more elegant dispatch pattern."""
-    # Use tf.case for cleaner conditional logic
+    """Dispatch noise application based on type."""
     return tf.case(
         [
             (
@@ -58,32 +55,108 @@ def add_noise(x, noise_type, noise_scale):
                 lambda: add_intensity_noise(x, noise_scale),
             ),
         ],
-        default=lambda: x,  # Default case for "none" or unknown types
+        default=lambda: x,
         exclusive=True,
     )
 
 
 @tf.function
+def generate_intensity_noise(shape, dtype):
+    """
+    Generate uniform noise with same value across all pixels.
+
+    Args:
+        shape: Output tensor shape
+        dtype: Data type
+
+    Returns:
+        Tensor filled with single random value in [-1, 1]
+    """
+    noise_value = tf.random.uniform([], minval=-1.0, maxval=1.0, dtype=dtype)
+    return tf.fill(shape, noise_value)
+
+
+@tf.function
+def generate_gaussian_noise(shape, dtype, num_uniforms: int = 6):
+    """
+    Generate bell-shaped noise by summing uniform random variables.
+
+    Uses central limit theorem to approximate Gaussian distribution while
+    guaranteeing values stay in [-1, 1] range.
+
+    Args:
+        shape: Output tensor shape
+        dtype: Data type
+        num_uniforms: Number of uniform variables to sum (higher = more bell-shaped)
+
+    Returns:
+        Bell-shaped noise tensor with values in [-1, 1]
+    """
+    u = tf.random.uniform(
+        tf.concat([shape, [num_uniforms]], axis=0),
+        minval=-1.0 / tf.cast(num_uniforms, dtype),
+        maxval=1.0 / tf.cast(num_uniforms, dtype),
+        dtype=dtype,
+    )
+    return tf.reduce_sum(u, axis=-1)
+
+
+@tf.function
+def apply_multiplicative_noise(x, noise, noise_scale):
+    """
+    Apply noise multiplicatively: result = x * (1 + noise_scale * noise).
+
+    Args:
+        x: Input tensor
+        noise: Noise tensor with same shape as x
+        noise_scale: Scaling factor for noise intensity
+
+    Returns:
+        Input tensor with multiplicative noise applied
+    """
+    return x * (1.0 + noise_scale * noise)
+
+
+@tf.function
 def add_intensity_noise(x, noise_scale):
-    noise_value = tf.random.uniform([], minval=-1.0, maxval=1.0, dtype=x.dtype)
-    noise_tensor = tf.fill(tf.shape(x), noise_value)
-    return x * (1.0 + noise_scale * noise_tensor)
+    """Add uniform global scaling noise to input."""
+    noise = generate_intensity_noise(tf.shape(x), x.dtype)
+    return apply_multiplicative_noise(x, noise, noise_scale)
 
 
 @tf.function
 def add_gaussian_noise(x, noise_scale):
-    noise = tf.random.normal(tf.shape(x), stddev=1.0)
-    return x + noise_scale * noise
+    """Add bell-shaped random noise to input."""
+    noise = generate_gaussian_noise(tf.shape(x), x.dtype)
+    return apply_multiplicative_noise(x, noise, noise_scale)
 
 
 @tf.function
-def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0.5):
-    height = tf.shape(x)[0]
-    width = tf.shape(x)[1]
-    n_channels = tf.shape(x)[-1]
-    dtype = x.dtype
+def generate_perlin_noise(shape, dtype, base_resolution=4, octaves=3, persistence=0.6):
+    """
+    Generate spatially coherent Perlin noise.
 
-    def octave_body(i, amplitude, max_amplitude, total_noise):
+    Creates smooth, natural-looking noise patterns by combining multiple
+    octaves of procedural noise at different frequencies.
+
+    Args:
+        shape: Output tensor shape [height, width, channels]
+        dtype: Data type
+        base_resolution: Grid resolution for first octave
+        octaves: Number of noise octaves to combine
+        persistence: Amplitude scaling between octaves
+
+    Returns:
+        Spatially coherent noise tensor with values in [-1, 1]
+    """
+    height = shape[0]
+    width = shape[1]
+    n_channels = shape[-1]
+
+    octaves = tf.convert_to_tensor(octaves, dtype=tf.int32)
+    persistence = tf.cast(persistence, dtype)
+
+    def octave_body(i, amplitude, total_noise):
         freq = tf.cast(base_resolution, tf.int32) * (2**i)
         resolution = (freq, freq)
         angles = tf.random.uniform(
@@ -112,6 +185,8 @@ def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0
             g10 = gradients_rep[d0:, :-d1]
             g01 = gradients_rep[:-d0, d1:]
             g11 = gradients_rep[d0:, d1:]
+
+            # Calculate offset vectors from grid points to gradients
             offset_00 = tf.stack([grid[:, :, 0], grid[:, :, 1]], axis=-1)
             offset_10 = tf.stack([grid[:, :, 0] - 1, grid[:, :, 1]], axis=-1)
             offset_01 = tf.stack([grid[:, :, 0], grid[:, :, 1] - 1], axis=-1)
@@ -124,9 +199,8 @@ def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0
             t = t_vals * t_vals * t_vals * (t_vals * (t_vals * 6 - 15) + 10)
             n0 = n00 * (1 - t[:, :, 0]) + t[:, :, 0] * n10
             n1 = n01 * (1 - t[:, :, 0]) + t[:, :, 0] * n11
-            result = tf.cast(tf.sqrt(2.0), dtype) * (
-                (1 - t[:, :, 1]) * n0 + t[:, :, 1] * n1
-            )
+            # Bilinear interpolation between corner values
+            result = (1 - t[:, :, 1]) * n0 + t[:, :, 1] * n1
             return result
 
         perlin_noise = tf.map_fn(
@@ -136,35 +210,37 @@ def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0
         )
         perlin_noise = tf.transpose(perlin_noise, [1, 2, 0])
         total_noise = total_noise + amplitude * perlin_noise
-        max_amplitude = max_amplitude + amplitude
         amplitude = amplitude * persistence
-        return i + 1, amplitude, max_amplitude, total_noise
+        return i + 1, amplitude, total_noise
 
     i0 = tf.constant(0)
-    amplitude0 = tf.constant(1.0, dtype=dtype)
-    max_amplitude0 = tf.constant(0.0, dtype=dtype)
-    total_noise0 = tf.zeros_like(x, dtype=dtype)
+    amplitude0 = tf.cast(0.8, dtype=dtype)
+    total_noise0 = tf.zeros(shape, dtype=dtype)
 
-    def cond(i, amplitude, max_amplitude, total_noise):
+    def cond(i, amplitude, total_noise):
         return i < octaves
 
-    _, _, max_amplitude, total_noise = tf.while_loop(
-        cond, 
-        octave_body, 
-        loop_vars=[i0, amplitude0, max_amplitude0, total_noise0],
+    _, _, total_noise = tf.while_loop(
+        cond,
+        octave_body,
+        loop_vars=[i0, amplitude0, total_noise0],
         shape_invariants=[
             tf.TensorShape([]),  # i
-            tf.TensorShape([]),  # amplitude  
-            tf.TensorShape([]),  # max_amplitude
-            tf.TensorShape([None, None, None])  # total_noise - allow variable shape
-        ]
+            tf.TensorShape([]),  # amplitude
+            tf.TensorShape([None, None, None]),  # total_noise
+        ],
     )
 
-    # Normalize by max_amplitude to account for octave scaling
-    total_noise = total_noise / max_amplitude
+    # Scale and bound output to maximize use of [-1, 1] range
+    total_noise = tf.tanh(total_noise * 1.2)
 
-    # Additional normalization to ensure range is always [-1, 1]
-    # The Perlin noise function has an inherent range factor of sqrt(2)
-    total_noise = total_noise / tf.cast(tf.sqrt(2.0), dtype)
+    return total_noise
 
-    return x + noise_scale * total_noise
+
+@tf.function
+def add_perlin_noise(x, noise_scale, base_resolution=4, octaves=2, persistence=0.5):
+    """Add spatially coherent Perlin noise to input."""
+    noise = generate_perlin_noise(
+        tf.shape(x), x.dtype, base_resolution, octaves, persistence
+    )
+    return apply_multiplicative_noise(x, noise, noise_scale)
