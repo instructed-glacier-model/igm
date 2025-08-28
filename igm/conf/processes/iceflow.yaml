@@ -46,6 +46,7 @@ iceflow:
   unified:
     mapping: network
     optimizer: adam
+    line_search: hager-zhang
     lbfgs:
       memory: 10
       alpha_min: 0.0

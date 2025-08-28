@@ -4,18 +4,16 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-import tensorflow_probability as tfp
 import itertools
 import time
-from collections import deque, namedtuple
+from collections import deque
 from typing import Callable
 
 from ..mappings import Mapping
 from .optimizer import Optimizer
+from .line_search import LineSearches, ValueAndGradient
 
 tf.config.optimizer.set_jit(True)
-
-ValueAndGradient = namedtuple("ValueAndGradient", ["x", "f", "df"])
 
 
 class OptimizerLBFGS(Optimizer):
@@ -23,6 +21,7 @@ class OptimizerLBFGS(Optimizer):
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        line_search_method: str,
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
@@ -32,9 +31,10 @@ class OptimizerLBFGS(Optimizer):
         self.name = "lbfgs"
         self.print_cost = print_cost
 
-        self.memory = memory
+        self.line_search = LineSearches[line_search_method]()
         self.iter_max = tf.Variable(iter_max)
         self.alpha_min = tf.Variable(alpha_min)
+        self.memory = memory
 
     def update_parameters(self, iter_max: int, alpha_min: float) -> None:
         self.iter_max.assign(iter_max)
@@ -104,12 +104,7 @@ class OptimizerLBFGS(Optimizer):
 
             return ValueAndGradient(x=alpha, f=f, df=df)
 
-        result = tfp.optimizer.linesearch.hager_zhang(
-            value_and_gradients_function,
-            initial_step_size=tf.constant(1.0, dtype=w_flat.dtype),
-        )
-
-        return result.left.x
+        return self.line_search.search(w_flat, p_flat, value_and_gradients_function)
 
     @tf.function(jit_compile=False)
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:

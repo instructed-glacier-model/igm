@@ -26,6 +26,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         return {
             "cost_fn": cost_fn,
             "map": map,
+            "line_search_method": cfg_unified.line_search,
             "iter_max": cfg_unified.nbit,
             "alpha_min": cfg_unified.lbfgs.alpha_min,
             "memory": cfg_unified.lbfgs.memory,
