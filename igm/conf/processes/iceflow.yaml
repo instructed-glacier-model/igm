@@ -6,16 +6,14 @@ iceflow:
     sliding:
       law: weertman
       weertman:
-        regu_weertman: 1.0e-10
+        regu: 1.0e-10
         exponent: 3.0
       coulomb:
-        coefficient: 0.25
+        regu: 1.0e-10
         exponent: 3.0
-        gamma_0: 2e-17
-        epsilon: 1e-3
-        min_effective_pressure: 0.25 # Mpa this should be in hydrology eventually when we have the model...
+        mu: 0.4
       budd:
-        coefficient: 5e-9
+        regu: 1.0e-10
         exponent: 3.0
     gravity_cst: 9.81
     ice_density: 910.0

@@ -75,9 +75,6 @@ from igm.processes.iceflow.unified.unified import (
     initialize_iceflow_unified,
     update_iceflow_unified,
 )
-from igm.processes.iceflow.emulate.utils.misc import (
-    get_effective_pressure_precentage,
-)
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
 
 
@@ -104,19 +101,6 @@ def initialize(cfg, state):
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
-
-    # Temporary fix for the effective pressure
-    if not hasattr(state, "effective_pressure"):
-        warnings.warn(
-            f"Effective pressure not provided for sliding law {cfg_physics.sliding.law}. Using 0% of ice overburden pressure as default."
-        )
-
-        state.effective_pressure = get_effective_pressure_precentage(
-            state.thk, percentage=0.0
-        )
-        state.effective_pressure = tf.where(
-            state.effective_pressure < 1e-3, 1e-3, state.effective_pressure
-        )
 
     # Set vertical discretization
     state.vert_weight = define_vertical_weight(
