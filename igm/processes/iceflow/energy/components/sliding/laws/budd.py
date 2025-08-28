@@ -6,6 +6,7 @@
 import tensorflow as tf
 from typing import Dict, Tuple
 
+from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.utils.velocities import get_velbase
 from igm.utils.gradient.compute_gradient import compute_gradient
@@ -13,16 +14,16 @@ from igm.utils.gradient.compute_gradient import compute_gradient
 from ..sliding import SlidingComponent
 
 
-class WeertmanParams(tf.experimental.ExtensionType):
+class BuddParams(tf.experimental.ExtensionType):
 
     regu: float
     exponent: float
     vert_basis: str
 
 
-class Weertman(SlidingComponent):
+class Budd(SlidingComponent):
 
-    def __init__(self, params: WeertmanParams):
+    def __init__(self, params: BuddParams):
         self.params = params
 
     def cost(
@@ -33,16 +34,16 @@ class Weertman(SlidingComponent):
         vert_disc: Tuple,
         staggered_grid: bool,
     ) -> tf.Tensor:
-        return cost_weertman(U, V, fieldin, vert_disc, staggered_grid, self.params)
+        return cost_budd(U, V, fieldin, vert_disc, staggered_grid, self.params)
 
 
-def cost_weertman(
+def cost_budd(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict,
     vert_disc: Tuple,
     staggered_grid: bool,
-    weertman_params: WeertmanParams,
+    budd_params: BuddParams,
 ) -> tf.Tensor:
 
     thk, usurf, slidingco, dX = (
@@ -53,9 +54,9 @@ def cost_weertman(
     )
     zeta, dzeta, _, _ = vert_disc
 
-    expo = weertman_params.exponent
-    regu = weertman_params.regu
-    vert_basis = weertman_params.vert_basis
+    expo = budd_params.exponent
+    regu = budd_params.regu
+    vert_basis = budd_params.vert_basis
 
     return _cost(
         U,
@@ -88,6 +89,9 @@ def _cost(
     staggered_grid,
     vert_basis,
 ):
+    # Temporary fix for effective pressure - should be within the inputs
+    N = get_effective_pressure_precentage(thk, percentage=0.0)
+    N = tf.where(N < 1e-3, 1e-3, N)
 
     # Coefficient and effective exponent
     C = 1.0 * slidingco
@@ -110,4 +114,4 @@ def _cost(
 
     u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + regu * regu + corr_bed * corr_bed)
 
-    return C * tf.pow(u_b, s) / s
+    return C * N * tf.pow(u_b, s) / s
