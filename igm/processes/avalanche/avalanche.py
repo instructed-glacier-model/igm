@@ -13,69 +13,27 @@ def initialize(cfg, state):
     
     state.tlast_avalanche = tf.Variable(cfg.processes.time.start, dtype=tf.float32)
 
-
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
 def update(cfg, state):
+
     if (state.t - state.tlast_avalanche) >= cfg.processes.avalanche.update_freq:
-=======
-def params(parser):
-    parser.add_argument(
-        "--aval_update_freq",
-        type=float,
-        default=1,
-        help="Update avalanche each X years (1)",
-    )
-
-    parser.add_argument(
-        "--aval_angleOfRepose",
-        type=float,
-        default=30,
-        help="Angle of repose (30°)",
-    )
-    
-    parser.add_argument(
-        "--aval_stop_redistribution_thk",
-        type=float,
-        default=0.02,
-        help="Stop redistribution if the mean thickness is below this value (m) over the whole grid",
-    )
-
-
-def initialize(params, state):
-    state.tcomp_avalanche = []
-    state.tlast_avalanche = tf.Variable(params.time_start, dtype=tf.float32)
-
-
-def update(params, state):
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
-    if (state.t - state.tlast_avalanche) >= params.avalanche_update_freq:
->>>>>>> 3d1e1f5 (Add consistent parameter names, add code annotations, add new exiting strategy based on mean ice thickness to redistribute):igm/modules/process/avalanche/avalanche.py
-=======
-    if (state.t - state.tlast_avalanche) >= params.aval_update_freq:
->>>>>>> 2705a24 (fixed avalanche.py for already changed params in params now also adapted for update function):igm/modules/process/avalanche/avalanche.py
+        
         if hasattr(state, "logger"):
             state.logger.info("Update AVALANCHE at time : " + str(state.t.numpy()))
-
-
+ 
         H = state.thk
         Zb = state.topg
         Zi = Zb + H
         
         # the elevation difference of the cells that is considered to be stable
-        dHRepose = state.dx * tf.math.tan(
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
+        dHRepose = state.dx * tf.math.tan( 
             cfg.processes.avalanche.angleOfRepose * np.pi / 180.0
-=======
-            params.aval_angleOfRepose * np.pi / 180.0
->>>>>>> 2705a24 (fixed avalanche.py for already changed params in params now also adapted for update function):igm/modules/process/avalanche/avalanche.py
         )
         Ho = tf.maximum(H, 0)
 
         count = 0
         # volume redistributed # for documentation if needed
         # volumes = []
-        
-
+         
         while count <=300:
             count += 1
             
@@ -102,27 +60,19 @@ def update(params, state):
             gradT = tf.where(gradT == 0, 1, gradT) # avoid devide by zero error. However, could influence the results (not checked) 
             grad = tf.where(Ho < 0.1, 0, grad)
 
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
 #            Was before Andreas's update
 #            mxGrad = tf.reduce_max(grad)
 #            if mxGrad <= 1.1 * dHRepose:
 #                break
 
-=======
->>>>>>> 3d1e1f5 (Add consistent parameter names, add code annotations, add new exiting strategy based on mean ice thickness to redistribute):igm/modules/process/avalanche/avalanche.py
             delH = tf.maximum(0, (grad - dHRepose) / 3.0)
 
             # ============ ANDREAS ADDED ===========
             # if there is less than a certain thickness to redesitribute, just redistribute the remaining thickness and stop afterwards
             # print(count, np.max(delH), np.sum(delH) / (np.shape(H)[0]*np.shape(H)[1]))
             mean_thickness = np.sum(delH) / (np.shape(H)[0]*np.shape(H)[1])
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
 
             if mean_thickness < cfg.processes.avalanche.stop_redistribution_thk:
-=======
-            
-            if mean_thickness < params.aval_stop_redistribution_thk:
->>>>>>> 3d1e1f5 (Add consistent parameter names, add code annotations, add new exiting strategy based on mean ice thickness to redistribute):igm/modules/process/avalanche/avalanche.py
                 # for a last time, use all the thickness to redistribute and then stop
                 delH = tf.maximum(0, grad - dHRepose)
                 count = 2000 # set to random high number to exit the loop
@@ -161,12 +111,9 @@ def update(params, state):
 
             Zi = Zb + Ho
 
-<<<<<<< HEAD:igm/processes/avalanche/avalanche.py
         # print(count)
         # fig = plt.figure(figsize=(10, 10))
         # plt.imshow( Ho + tf.where(H<0,H,0) - state.thk ,origin='lower'); plt.colorbar()
-=======
->>>>>>> 3d1e1f5 (Add consistent parameter names, add code annotations, add new exiting strategy based on mean ice thickness to redistribute):igm/modules/process/avalanche/avalanche.py
 
         state.thk = Ho + tf.where(H < 0, H, 0)
 
