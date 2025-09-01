@@ -34,5 +34,3 @@ RUN pip install -e .
 WORKDIR /home/igmuser/
 
 RUN echo 'alias igm_run="python /home/igmuser/igm/igm/igm_run.py"' >> ~/.bashrc
-
-# CMD ["python", "/home/igmuser/igm/igm/igm_run.py"]
