@@ -47,7 +47,7 @@ jobs:
           cd igm-doc
           
           # Check if this is a tagged release
-          if startsWith(github.ref, 'refs/tags/v'); then # check if this is correct or if the previous way was better...
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
             TAG=${GITHUB_REF#refs/tags/}
             echo "Tagged release detected: $TAG"
             mike deploy --config-file mkdocs.yml --remote origin --push --update-aliases $TAG latest --allow-empty
