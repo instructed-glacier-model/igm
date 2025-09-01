@@ -47,7 +47,7 @@ jobs:
       - name: Deploy documentation with Mike
         run: |
           cd igm-doc
-          
+          git fetch origin gh-pages:gh-pages || true # fixes concurrent updates being out of sync
           # Check if this is a tagged release
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             TAG=${GITHUB_REF#refs/tags/}
