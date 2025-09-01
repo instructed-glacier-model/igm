@@ -6,7 +6,6 @@ from .augmentations.flip import FlipAugmentation, FlipParams
 from .augmentations.noise import NoiseAugmentation, NoiseParams
 from .patching import OverlapPatching
 from igm.processes.iceflow.utils import fieldin_to_X_2d, fieldin_to_X_3d
-from igm.processes.iceflow.utils.data_preprocessing import match_fieldin_dimensions
 
 
 class PreparationParams(tf.experimental.ExtensionType):

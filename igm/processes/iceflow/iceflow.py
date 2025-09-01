@@ -52,11 +52,6 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     get_fieldin,
 )
 
-from igm.processes.iceflow.data_preparation.data_preprocessing import (
-    split_fieldin_to_patches,
-    PreparationParams,
-)
-
 from igm.processes.iceflow.utils.vertical_discretization import (
     define_vertical_weight,
     compute_levels,

@@ -7,16 +7,19 @@ from omegaconf import DictConfig
 import tensorflow as tf
 
 from igm.common.core import State
-from igm.processes.iceflow.utils.data_preprocessing import (
-    match_fieldin_dimensions,
-    split_into_patches_X,
-    pertubate_X,
-)
-from igm.processes.iceflow.utils.data_preprocessing import (
-    fieldin_to_X_2d,
-    fieldin_to_X_3d,
-)
+
 from ..optimizers import InterfaceOptimizers, Status
+from igm.processes.iceflow.utils.data_preprocessing import (
+    get_fieldin,
+)
+
+from igm.processes.iceflow.data_preparation.data_preprocessing import (
+    split_fieldin_to_patches,
+)
+
+from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
+    create_training_tensor_from_patches,
+)
 
 
 def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
@@ -37,34 +40,15 @@ def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
     return status
 
 
-def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
+def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
-    # TO DO: full data prep?
-
-    cfg_physics = cfg.processes.iceflow.physics
-    cfg_unified = cfg.processes.iceflow.unified
-
-    inputs = [vars(state)[input] for input in cfg_unified.inputs]
-
-    if cfg_physics.dim_arrhenius == 3:
-        inputs = match_fieldin_dimensions(inputs)
-        inputs = fieldin_to_X_3d(cfg_physics.dim_arrhenius, inputs)
-    elif cfg_physics.dim_arrhenius == 2:
-        inputs = tf.stack(inputs, axis=-1)
-        inputs = fieldin_to_X_2d(inputs)
-    else:
-        raise ValueError("❌ Invalid Arrhenius dimension value.")
-
-    if cfg_unified.perturbate:
-        inputs = pertubate_X(cfg, inputs)
-
-    inputs = split_into_patches_X(
-        inputs,
-        cfg_unified.framesizemax,
-        cfg_unified.split_patch_method,
+    fieldin = get_fieldin(cfg, state)
+    patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
+    X, batch_size = create_training_tensor_from_patches(
+        patches, state.iceflow.preparation_params
     )
 
-    return inputs
+    return X
 
 
 def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
@@ -81,5 +65,5 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
     # Optimize and save cost
     if do_solve:
-        inputs = get_inputs_from_state(cfg, state)
+        inputs = get_solver_inputs_from_state(cfg, state)
         state.cost = optimizer.minimize(inputs)

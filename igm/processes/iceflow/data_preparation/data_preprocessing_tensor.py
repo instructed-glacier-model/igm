@@ -10,13 +10,11 @@ from typing import Any, Dict, Tuple
 from .augmentations.rotation import RotationAugmentation, RotationParams
 from .augmentations.flip import FlipAugmentation, FlipParams
 from .augmentations.noise import NoiseAugmentation, NoiseParams
-from .patching import OverlapPatching
 from .data_preprocessing import (
     PreparationParams,
     create_channel_mask,
     _calculate_memory_constraints,
 )
-from igm.processes.iceflow.utils import fieldin_to_X_2d, fieldin_to_X_3d
 
 
 def create_training_tensor_from_patches(

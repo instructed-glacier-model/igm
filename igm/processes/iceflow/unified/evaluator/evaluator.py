@@ -50,7 +50,7 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
     }
 
 
-def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
+def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
@@ -109,7 +109,7 @@ def evaluator_iceflow(
 def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
 
     # Get inputs for mapping
-    inputs = get_inputs_from_state(cfg, state)
+    inputs = get_evaluator_inputs_from_state(cfg, state)
 
     # Get kwargs for evaluator
     kwargs = get_kwargs_from_state(state)

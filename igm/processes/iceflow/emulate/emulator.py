@@ -12,7 +12,6 @@ from igm.processes.iceflow.emulate.utils.misc import (
     get_effective_pressure_precentage,
     load_model_from_path,
 )
-from igm.processes.iceflow.utils.data_preprocessing import prepare_X
 from igm.processes.iceflow.energy import (
     EnergyComponents,
     EnergyParams,

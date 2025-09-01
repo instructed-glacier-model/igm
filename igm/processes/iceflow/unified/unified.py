@@ -12,8 +12,33 @@ from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_icef
 from .solver import solve_iceflow
 from .utils import get_cost_fn
 
+from igm.processes.iceflow.data_preparation.data_preprocessing import (
+    PreparationParams,
+    calculate_expected_dimensions,
+    get_input_params_args,
+)
+
+from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
+
+    # Initialize training set
+    preparation_params_args = get_input_params_args(cfg)
+    preparation_params = PreparationParams(**preparation_params_args)
+
+    state.iceflow.preparation_params = preparation_params
+
+    input_height = state.thk.shape[0]
+    input_width = state.thk.shape[1]
+
+    Ny, Nx, effective_batch_size = calculate_expected_dimensions(
+        input_height, input_width, preparation_params
+    )
+
+    state.iceflow.patching = OverlapPatching(
+        patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
+    )
 
     # Initialize mapping
     mapping_name = cfg.processes.iceflow.unified.mapping
