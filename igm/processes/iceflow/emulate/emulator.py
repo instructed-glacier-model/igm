@@ -9,6 +9,7 @@ from igm.processes.iceflow.emulate import EmulatedParams
 from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
+    get_effective_pressure_precentage,
     load_model_from_path,
 )
 from igm.processes.iceflow.utils.data_preprocessing import prepare_X
@@ -27,6 +28,9 @@ from igm.processes.iceflow.data_preparation.data_preprocessing import (
 )
 
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
+    create_training_tensor_from_patches,
+)
 
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.vertical import VerticalDiscrs
@@ -98,21 +102,19 @@ def update_iceflow_emulator(cfg, state, fieldin, initial, it):
         nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
         patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
-        dataset, batch_size = create_training_set_from_patches(
+        X, batch_size = create_training_tensor_from_patches(
             patches, state.iceflow.preparation_params
         )
 
         bag = get_emulator_bag(state, nbit, lr, batch_size)
-        state.cost_emulator = update_emulator(
-            bag, dataset, state.iceflow.emulator_params
-        )
+        state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
 
 
 tf.config.optimizer.set_jit(True)
 
 
-# @tf.function(jit_compile=False)
-def update_emulator(bag, dataset, parameters):
+@tf.function(jit_compile=False)
+def update_emulator(bag, X, parameters):
 
     emulator_cost_tensor = tf.TensorArray(dtype=tf.float32, size=bag["nbit"])
     # emulator_grad_tensor = tf.TensorArray(
@@ -126,7 +128,7 @@ def update_emulator(bag, dataset, parameters):
     for iteration in tf.range(bag["nbit"]):
         cost_emulator = 0.0
 
-        for batch in dataset:
+        for i in tf.range(X.shape[0]):
 
             with tf.GradientTape(persistent=True) as tape:
 
@@ -139,7 +141,7 @@ def update_emulator(bag, dataset, parameters):
                     )
 
                 Y = bag["iceflow_model_inference"](
-                    tf.pad(batch, bag["PAD"], "CONSTANT")
+                    tf.pad(X[i, :, :, :, :], bag["PAD"], "CONSTANT")
                 )[:, :Ny, :Nx, :]
 
                 nonstaggered_energy, staggered_energy = iceflow_energy_XY(
@@ -147,7 +149,7 @@ def update_emulator(bag, dataset, parameters):
                     dim_arrhenius=parameters.arrhenius_dimension,
                     staggered_grid=parameters.staggered_grid,
                     fieldin_names=parameters.fieldin_names,
-                    X=batch[:, iz : Ny - iz, iz : Nx - iz, :],
+                    X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
                     vert_disc=bag["vert_disc"],
                     energy_components=bag["energy_components"],
@@ -300,3 +302,13 @@ def initialize_iceflow_emulator(cfg, state):
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
+    if not hasattr(
+        state, "effective_pressure"
+    ):  # temporarly putting this here but should put in budd / coulomb
+
+        state.effective_pressure = get_effective_pressure_precentage(
+            state.thk, percentage=0.0
+        )
+        state.effective_pressure = tf.where(
+            state.effective_pressure < 1e-3, 1e-3, state.effective_pressure
+        )
