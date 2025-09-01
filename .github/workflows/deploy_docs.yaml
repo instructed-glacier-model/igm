@@ -3,10 +3,10 @@ name: Deploy Documentation
 on:
   push:
     branches:
-      - feature/hydra
+      - main
   pull_request:
     branches:
-      - feature/hydra
+      - main
 
 jobs:
   deploy-docs:
