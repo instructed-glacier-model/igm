@@ -53,7 +53,7 @@ jobs:
             TAG=${GITHUB_REF#refs/tags/}
             echo "Tagged release detected: $TAG"
             mike deploy --config-file mkdocs.yml --remote origin --push $TAG --allow-empty
-            mike alias --config-file mkdocs.yml --remote origin --push $TAG latest --allow-empty
+            #mike alias --config-file mkdocs.yml --remote origin --push $TAG latest --allow-empty # ! latest is causing issues here... so check later
           else
             echo "Branch push detected: updating latest"
             mike deploy --config-file mkdocs.yml --remote origin --push --update-aliases latest --allow-empty
