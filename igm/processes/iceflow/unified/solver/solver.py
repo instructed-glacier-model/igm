@@ -44,12 +44,7 @@ def get_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
     cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
 
-    if len(cfg_unified.inputs) != len(cfg_unified.inputs_scales):
-        raise ValueError("❌ The inputs and input scales should have the same size.")
-
     inputs = [vars(state)[input] for input in cfg_unified.inputs]
-
-    inputs = [input / scale for input, scale in zip(inputs, cfg_unified.inputs_scales)]
 
     if cfg_physics.dim_arrhenius == 3:
         inputs = match_fieldin_dimensions(inputs)

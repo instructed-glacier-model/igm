@@ -6,6 +6,7 @@ from .augmentations.flip import FlipAugmentation, FlipParams
 from .augmentations.noise import NoiseAugmentation, NoiseParams
 from .patching import OverlapPatching
 from igm.processes.iceflow.utils import fieldin_to_X_2d, fieldin_to_X_3d
+from igm.processes.iceflow.utils.data_preprocessing import match_fieldin_dimensions
 
 
 class PreparationParams(tf.experimental.ExtensionType):
@@ -98,6 +99,34 @@ def _handle_small_input_case(
         input_width,
         min(batch_size, max(target_samples, 1)),
     )
+
+
+def scale_inputs(cfg, X: tf.Tensor) -> tf.Tensor:
+    """
+    Apply input scaling to a tensor based on configuration.
+
+    Args:
+        cfg: Configuration object
+        X: Input tensor to scale
+
+    Returns:
+        tf.Tensor: Scaled tensor
+    """
+    try:
+        # Try to get scaling factors from configuration
+        inputs_scales_list = cfg.processes.iceflow.unified.inputs_scales
+    except AttributeError:
+        # If not configured, use scaling factor of 1 for all channels
+        num_channels = tf.shape(X)[-1]
+        inputs_scales_list = [1.0] * num_channels
+
+    # Convert to tensor for TensorFlow operations
+    scales = tf.constant(inputs_scales_list, dtype=X.dtype)
+
+    # Apply scaling by dividing each channel by its corresponding scale
+    scaled_X = X / scales
+
+    return scaled_X
 
 
 def _calculate_patch_counts(
@@ -236,6 +265,10 @@ def split_fieldin_to_patches(cfg, fieldin, patching: OverlapPatching) -> tuple:
     This only needs to be done once and can be reused across epochs.
     """
     X = _convert_fieldin_to_tensor(cfg, fieldin)
+
+    # Apply input scaling
+    X = scale_inputs(cfg, X)
+
     patches = patching.patch_tensor(X)
     return patches
 
