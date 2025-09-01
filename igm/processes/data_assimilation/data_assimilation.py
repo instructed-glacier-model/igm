@@ -66,6 +66,7 @@ def initialize(cfg, state):
     plot_cost_functions() # ! Bug right now with plotting values... (extra headers)
 
     save_rms_std(cfg, state) 
+ 
 
 def update(cfg, state):
     pass

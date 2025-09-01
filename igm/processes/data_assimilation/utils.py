@@ -19,6 +19,7 @@ def compute_rms_std_optimization(state, i):
         state.stdusurf = []
         state.rmsdiv = []
         state.stddiv = []
+        state.vol = []
 
     if hasattr(state, "thkobs"):
         ACT = ~tf.math.is_nan(state.thkobs)
@@ -61,6 +62,8 @@ def compute_rms_std_optimization(state, i):
     else:
         state.rmsusurf.append(0)
         state.stdusurf.append(0)
+
+    state.vol.append((np.sum(state.thk) * (state.dx**2) / 1e9).numpy())
  
 def create_density_matrix(data, kernel_size):
     # Convert data to binary mask (1 for valid data, 0 for NaN)

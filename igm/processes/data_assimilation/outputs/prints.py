@@ -61,7 +61,7 @@ def print_info_data_assimilation(cfg, state, cost, i):
 def save_rms_std(cfg, state):
 
     np.savetxt(
-        "rms_std.dat",
+        "rms_std_vol.dat",
         np.stack(
             [
                 state.rmsthk,
@@ -72,10 +72,11 @@ def save_rms_std(cfg, state):
                 state.stddiv,
                 state.rmsusurf,
                 state.stdusurf,
+                state.vol,
             ],
             axis=-1,
         ),
         fmt="%.10f",
         comments='',
-        header="        rmsthk      stdthk       rmsvel       stdvel       rmsdiv       stddiv       rmsusurf       stdusurf",
+        header="        rmsthk      stdthk       rmsvel       stdvel       rmsdiv       stddiv       rmsusurf       stdusurf       vol",
     )
