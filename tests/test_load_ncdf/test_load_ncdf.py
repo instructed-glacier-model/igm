@@ -4,29 +4,21 @@ import pytest
 import numpy as np
 from make_fake_ncdf import write_ncdf
 import os
-
+ 
 def test_load_ncdf():
     
     write_ncdf()
  
     state = igm.State()
-    modules_dict = {'modules_preproc': ['load_ncdf'], 'modules_process': [], 'modules_postproc': []}
+
+    state.original_cwd = ""
+
+    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+    
+    cfg.core.folder_data = ""
+    cfg.inputs.load_ncdf.input_file = 'input.nc'
  
-    imported_modules = igm.load_modules(modules_dict)
- 
-    module = imported_modules[0] 
-
-    parser = igm.params_core()
-
-    module.params(parser)
-
-    params, __ = parser.parse_known_args()
- 
-    module.initialize(params, state)
-
-    module.update(params, state)
-
-    module.finalize(params, state)
+    igm.inputs.load_ncdf.run(cfg, state)
 
     ny,nx = state.thk.shape
 

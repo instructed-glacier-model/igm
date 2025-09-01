@@ -1,0 +1,31 @@
+core:
+  # Input / Output
+  url_data: ""
+  folder_data: data
+  logging_file: ""
+
+  # Logging
+  logging: False
+  logging_level: 30
+
+  # Hardware
+  hardware:
+    gpu_info: True
+    visible_gpus: [0]
+    strategy: none
+
+  # Misc
+  print_params: False
+  print_comp: False
+  print_info: True
+  print_imported_modules: True
+  check_compat_params: True
+  
+  # Custom Modules
+  structure:
+    root_foldername: user
+    conf_foldername: conf
+    code_foldername: code
+    input_modules_foldername: inputs
+    process_modules_foldername: processes
+    output_modules_foldername: outputs

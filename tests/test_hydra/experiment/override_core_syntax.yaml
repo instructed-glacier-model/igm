@@ -1,0 +1,16 @@
+# @package _global_
+
+# These values should also overide the core values ...
+core:
+  logging: True
+  logging_level: 10
+  logging_file: "logging file directory"
+  print_params: True
+  gpu_info: True
+  gpu_id: 8
+  saved_params_filename: params_saved
+  url_data: ""
+  folder_data: data_folder
+
+defaults:
+  - override /modules: [time, thk] # These values have to already exist in the config defaults list!!! (note that we do not have to specify replacing the arguments)

@@ -1,0 +1,72 @@
+iceflow:
+  method: emulated
+  force_max_velbar: 0.0
+  physics:
+    energy_components: ['shear', 'sliding_weertman', 'gravity']
+    sliding_law: ''
+    gravity_cst: 9.81
+    ice_density: 910.0
+    init_slidingco: 0.0464
+    init_arrhenius: 78.0
+    enhancement_factor: 1.0
+    exp_glen: 3.0
+    exp_weertman: 3.0
+    regu_glen: 1.0e-05
+    regu_weertman: 1.0e-10
+    dim_arrhenius: 2 
+    thr_ice_thk: 0.1
+    min_sr: 1.0e-20
+    max_sr: 1.0e+20
+    force_negative_gravitational_energy: false
+    cf_eswn: []
+  numerics:
+    Nz: 10
+    vert_spacing: 4.0
+    staggered_grid: 1
+    vert_basis: "Lagrange"
+  solver:
+    step_size: 1.0
+    nbitmax: 100
+    stop_if_no_decrease: true
+    optimizer: Adam
+    lbfgs: false
+    save_cost: ''
+    plot_sol: False
+  emulator:
+    fieldin:
+    - thk
+    - usurf
+    - arrhenius
+    - slidingco
+    - dX
+    retrain_freq: 10
+    lr: 2.0e-05
+    lr_init: 0.0001
+    lr_decay: 0.95
+    warm_up_it: -10000000000.0
+    nbit_init: 1
+    nbit: 1
+    framesizemax: 750
+    split_patch_method: "sequential"
+    pretrained: true
+    name: ''
+    save_model: false
+    exclude_borders: 0
+    optimizer: Adam
+    optimizer_clipnorm: 1.0
+    optimizer_epsilon: 1.0e-07
+    save_cost: ''
+    output_directory: ''
+    plot_sol: False
+    pertubate: false
+    network:
+      architecture: cnn
+      multiple_window_size: 0
+      activation: LeakyReLU
+      nb_layers: 16
+      nb_blocks: 4
+      nb_out_filter: 32
+      conv_ker_size: 3
+      dropout_rate: 0
+      weight_initialization: glorot_uniform
+      cnn3d_for_vertical: false

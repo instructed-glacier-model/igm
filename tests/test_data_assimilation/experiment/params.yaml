@@ -1,0 +1,38 @@
+# @package _global_
+ 
+defaults:
+- override /inputs:
+  - oggm_shop
+  - local
+- override /processes:
+  - data_assimilation 
+  - iceflow
+
+inputs:
+  oggm_shop:
+    RGI_ID: RGI60-11.01238
+    RGI_version: 6
+
+processes:
+  data_assimilation:
+    nbitmax: 100
+    fitting:
+       usurfobs_std: 0.3
+       velsurfobs_std: 0.25
+       thkobs_std: 1
+       divfluxobs_std: 0.1
+    regularization:
+       thk: 1
+       slidingco: 1000000
+       smooth_anisotropy_factor: 1.0
+       convexity_weight: 0    
+    output:
+      freq: 1000
+      plot2d: false
+  iceflow:
+    physics:
+      init_slidingco: 0.045
+       
+
+      
+

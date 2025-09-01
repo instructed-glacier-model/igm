@@ -1,0 +1,5 @@
+smb_oggm:
+  update_freq: 1
+  ice_density: 910.0
+  wat_density: 1000.0
+  melt_enhancer: 1

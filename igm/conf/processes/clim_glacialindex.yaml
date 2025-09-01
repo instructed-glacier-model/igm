@@ -1,0 +1,8 @@
+clim_glacialindex:
+  update_freq: 100
+  climate_0_file: data/climate.nc
+  climate_1_file: data/climate1.nc
+  signal_file: data/GI.dat
+  vertical_lapse_rate_0: 6.0
+  vertical_lapse_rate_1: 5.74
+  temporal_resampling: 12

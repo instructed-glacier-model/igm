@@ -1,27 +1,12 @@
-import igm
+import igm, os
 import tensorflow as tf
 import pytest
  
 def test_iceflow():
     
     state = igm.State()
-    modules_dict = {'modules_preproc': [], 'modules_process': ['iceflow'], 'modules_postproc': []}
 
-    print(modules_dict)
-    
-    imported_modules = igm.load_modules(modules_dict)
-
-    print(imported_modules)
-
-    module = imported_modules[0] 
-
-    parser = igm.params_core()
-
-    module.params(parser)
-
-    params, __ = parser.parse_known_args()
-
-    params.iflo_network = 'cnn'
+    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
     Ny,Nx = 40,30
 
@@ -30,10 +15,10 @@ def test_iceflow():
     state.dX    = tf.Variable(tf.ones((Ny,Nx))*100)
     state.it    = -1
     
-    module.initialize(params, state)
+    igm.processes.iceflow.initialize(cfg, state)
 
-    module.update(params, state)
+    igm.processes.iceflow.update(cfg, state)
 
-    module.finalize(params, state)
+    igm.processes.iceflow.finalize(cfg, state)
 
     assert (tf.reduce_mean(state.ubar).numpy()<10*10)

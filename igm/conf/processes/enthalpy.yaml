@@ -1,0 +1,23 @@
+enthalpy:  
+  water_density: 1000.0
+  spy: 31556926.0
+  ki: 2.1
+  ci: 2009.0
+  Lh: 3.34e+5
+  KtdivKc: 1e-1
+  claus_clape: 7.9e-8
+  melt_temp: 273.15
+  ref_temp: 223.15
+  till_friction_angle: 30.0
+  till_friction_angle_bed_min: null
+  till_friction_angle_bed_max: null
+  till_friction_angle_phi_min: 15.0
+  till_friction_angle_phi_max: 45.0
+  uthreshold: 100.0
+  drain_rate: 0.001
+  till_wat_max: 2.0
+  drain_ice_column: True
+  default_bheatflx: 0.065
+  temperature_offset_air_to_ice: 0.0
+  tauc_min: 1.0e+5
+  tauc_max: 1.0e+10

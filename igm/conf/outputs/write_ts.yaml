@@ -1,0 +1,2 @@
+write_ts:
+  output_file: output_ts.nc

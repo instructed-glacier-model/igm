@@ -1,0 +1,4 @@
+avalanche:
+  update_freq: 1
+  angleOfRepose: 30.0
+  stop_redistribution_thk: 0.02

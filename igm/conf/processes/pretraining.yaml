@@ -1,0 +1,13 @@
+pretraining:
+  data_dir: "surflib3d_shape_100"
+  batch_size: 1
+  freq_test: 20
+  train_iceflow_emulator_restart_lr: 2500
+  epochs: 5000
+  min_arrhenius: 5.0
+  max_arrhenius: 151.0
+  min_slidingco: 0.0
+  max_slidingco: 20000.0
+  min_coarsen: 0
+  max_coarsen: 2
+  soft_begining: 500

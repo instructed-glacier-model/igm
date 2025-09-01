@@ -2,9 +2,6 @@ __pycache__
 igm_model.egg-info/
 dist
 sol_analytic
-paper.tex
-fig/
-biblio.bib
 pix2pixhd-texture-model/
 texture-aif-test
 tests/examples/texture-test/
@@ -12,31 +9,11 @@ checkpoints/
 logdir/
 .DS_Store
 
-# texture/
-smb_accpdd/
-clim_glacialindex/
-
 # hide output files and data
-input_saved.nc
-output.nc
-optimize.nc
-computational-statistics.txt
-memory-statistics.txt
-computational-pie.png
-memory-pie.png
-examples/params.json
-clean.sh
-params_saved.json
-
-smb_accpdd/
-clim_glacialindex/
-input_saved.nc
-RGI60-*/
 .vscode/
 data
-thk_MG
+*.dat
 .history/
+output/
+multirun/
 .idea/
-energy_iceflow_DG.py
-emulate_DG.py
-optimize_fw.py

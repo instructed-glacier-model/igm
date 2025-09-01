@@ -1,20 +1,12 @@
-import igm
+import igm, os
 import tensorflow as tf
 import pytest
 
 def test_vert_flow():
     
     state = igm.State()
-    modules_dict = {'modules_preproc': [], 'modules_process': ["iceflow","vert_flow"], 'modules_postproc': []}
-    
-    modules = igm.load_modules(modules_dict)
 
-    parser = igm.params_core()
-
-    for module in modules:
-        module.params(parser)
-
-    params, __ = parser.parse_known_args()
+    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
     Nz,Ny,Nx = 10,40,30
 
@@ -25,13 +17,13 @@ def test_vert_flow():
     state.dx    = 100
     state.it    = -1
     
-    for module in modules:
-        module.initialize(params, state)
+    igm.processes.iceflow.initialize(cfg, state)
+    igm.processes.vert_flow.initialize(cfg, state)
 
-    for module in modules:
-        module.update(params, state)
+    igm.processes.iceflow.update(cfg, state)
+    igm.processes.vert_flow.update(cfg, state)
 
-    for module in modules:
-        module.finalize(params, state)
-        
+    igm.processes.iceflow.finalize(cfg, state)
+    igm.processes.vert_flow.finalize(cfg, state)
+     
     assert (tf.reduce_mean(state.W).numpy()<10*10)

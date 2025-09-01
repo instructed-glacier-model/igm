@@ -1,0 +1,67 @@
+data_assimilation:
+  control_list:
+  - thk
+  cost_list:
+  - velsurf
+  - thk
+  - icemask
+  optimization:
+    nbitmin: 50
+    nbitmax: 500
+    step_size: 1.0
+    step_size_decay: 0.9
+    init_zero_thk: false
+    sole_mask: false
+    retrain_iceflow_model: true
+    fix_opti_normalization_issue: false
+    method: ADAM
+    obstacle_constraint: [reproject,penalty]
+    optimizer_clipnorm: 10000000.0
+    optimizer_epsilon: 1.0e-07
+    pertubate: False
+  regularization:
+    thk: 10.0
+    slidingco: 1.0
+    arrhenius: 10.0
+    divflux: 1.0
+    smooth_anisotropy_factor: 0.2
+    smooth_anisotropy_factor_sl: 1.0
+    convexity_weight: 0.002
+    convexity_power: 1.3
+    to_regularize: topg
+  fitting:
+    usurfobs_std: 2.0
+    velsurfobs_std: 1.0
+    thkobs_std: 3.0
+    divfluxobs_std: 1.0
+    uniformize_thkobs: true
+    include_low_speed_term: false
+    velsurfobs_thr: 0.0
+    log_slidingco: false
+  divflux:
+    method: upwind
+    force_zero_sum: false
+  scaling:
+    thk: 2.0
+    usurf: 0.5
+    slidingco: 0.0001
+    arrhenius: 0.1
+  output:
+    freq: 50
+    plot2d_live: true
+    plot2d: true
+    save_result_in_ncdf: geology-optimized.nc
+    save_iterat_in_ncdf: true
+    editor_plot2d: vs
+    vars_to_save:
+    - usurf
+    - thk
+    - slidingco
+    - velsurf_mag
+    - velsurfobs_mag
+    - divflux
+    - icemask
+  cook:
+    infer_params: false
+    tidewater_glacier: false
+    vol_std: 1000.0

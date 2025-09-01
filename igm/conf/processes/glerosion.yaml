@@ -1,0 +1,4 @@
+glerosion:
+  cst: 2.7e-7
+  exp: 2
+  update_freq: 1

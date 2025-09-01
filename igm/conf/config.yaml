@@ -1,0 +1,23 @@
+cwd: ${get_cwd:0} #0 is a dummy input since resolvers require callables
+# cwd: ${hydra.runtime.cwd} # do I need a custom resolver or can I just access the cwd from hydra?
+
+
+# ! Problem
+# We need to start with NO modules such that if a user specifies a module and just one change, it will load it and then overwrite it.
+# If we do not load the module beforehand, it will create a new module and not overwrite the existing one...
+
+defaults:
+  - _self_
+  - core
+  - optional processes: null
+  - optional inputs: null # made it not mandatory so that one can use 'igm_run -h' without +experiement
+  - optional outputs: null # output can be empty as opposed to input (???), which requires something (could change if we have synthetic case...)
+  
+hydra:
+  searchpath:
+    - file:///${cwd} # adds cwd to the search path
+  job:
+    chdir: True
+
+# modules:
+  # order: null # this is a list of modules that will be executed in order

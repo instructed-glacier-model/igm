@@ -1,0 +1,12 @@
+cst:
+  Type: float
+  Units: dimless
+  Description: Erosion multiplicative factor, here taken from Herman, F. et al. Erosion by an Alpine glacier. Science 350, 193–195 (2015)
+exp:
+  Type: float
+  Units: dimless
+  Description: Erosion exponent factor, here taken from Herman, F. et al. Eerosion by an Alpine glacier. Science 350, 193–195 (2015)
+update_freq:
+  Type: float
+  Units: y
+  Description: Update the erosion only each X years

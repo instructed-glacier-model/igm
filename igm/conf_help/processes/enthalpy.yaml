@@ -1,0 +1,88 @@
+water_density:
+  Type: float
+  Description: "Constant of the Water density"
+  Units: kg~m^{-3}
+spy:
+  Type: float
+  Description: "Number of seconds per years"
+  Units: s y^{-1}
+ki:
+  Type: float
+  Description: "Conductivity of cold ice (Aschwanden and al, JOG, 2012)"
+  Units: W~m^{-1}~K^{-1}
+ci:
+  Type: float
+  Description: "Specific heat capacity of ice (Aschwanden and al, JOG, 2012)"
+  Units: W~s~kg^{-1}~K^{-1}
+Lh:
+  Type: float
+  Description: "Latent heat of fusion (Aschwanden and al, JOG, 2012)"
+  Units: W~s~kg^{-1} = E
+KtdivKc:
+  Type: float
+  Description: "Ratio of temp vs cold ice diffusivity (Aschwanden and al, JOG, 2012)"
+  Units: \frac{Kt}{Kc}
+claus_clape:
+  Type: float
+  Description: "Clausius-Clapeyron constant (Aschwanden and al, JOG, 2012)"
+  Units: K~Pa^{-1}
+melt_temp:
+  Type: float
+  Description: "Melting point at standard pressure (Aschwanden and al, JOG, 2012)"
+  Units: K
+ref_temp:
+  Type: float
+  Description: "Reference temperature (Aschwanden and al, JOG, 2012)"
+  Units: K
+till_friction_angle:
+  Type: float
+  Description: "Till friction angle in the Mohr-Coulomb friction law"
+  Units: \circ
+till_friction_angle_bed_min:
+  Type: float
+  Description: "Minimum till friction angle at the bed"
+  Units: \circ
+till_friction_angle_bed_max:
+  Type: float
+  Description: "Maximum till friction angle at the bed"
+  Units: \circ
+till_friction_angle_phi_min:
+  Type: float
+  Description: "Minimum till friction angle phi"
+  Units: \circ
+till_friction_angle_phi_max:
+  Type: float
+  Description: "Maximum till friction angle phi"
+  Units: \circ
+uthreshold:
+  Type: float
+  Description: "Threshold velocity"
+  Units: \frac{m}{y}
+drain_rate:
+  Type: float
+  Description: "Drain rate at 1 mm/y (Bueler and Pelt, GMD, 2015)"
+  Units: \frac{m}{y}
+till_wat_max:
+  Type: float
+  Description: "Maximum water till thickness (Bueler and Pelt, GMD, 2015)"
+  Units: m
+drain_ice_column:
+  Type: float
+  Description: "Transform the water content beyond a threshold into water, drain it, and add it to basal melt rate"
+  Units: m
+default_bheatflx:
+  Type: float
+  Description: "Geothermal heat flux"
+  Units: W~m^{-2}
+temperature_offset_air_to_ice:
+  Type: float
+  Description: "Offset between the air temperature and the ice temperature"
+  Units: K
+tauc_min:
+  Type: float
+  Description: "Lower bound for tauc"
+  Units: Pa
+tauc_max:
+  Type: float
+  Description: "Upper bound for tauc"
+  Units: Pa

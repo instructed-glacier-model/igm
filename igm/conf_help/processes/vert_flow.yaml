@@ -1,0 +1,8 @@
+version:
+  Type: integer
+  Units: dimless
+  Description: Version of the vert_flow method (1 original, 2 improved by claire-mathilde)
+method:
+  Type: string
+  Units: dimless
+  Description: Method to retrieve the vertical velocity (kinematic, incompressibility)

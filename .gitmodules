@@ -1,0 +1,4 @@
+[submodule "igm-doc"]
+	path = igm-doc
+	url = git@github.com:instructed-glacier-model/igm-doc.git
+ branch = main

@@ -1,0 +1,63 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - feature/hydra
+  pull_request:
+    branches:
+      - feature/hydra
+
+jobs:
+  deploy-docs:
+    # Skip deployment on pull requests
+    if: github.event_name == 'push'
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          # Use the PAT to access the submodule
+          token: ${{ secrets.IGM_DOC_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs dependencies
+        run: |
+          pip install mike mkdocs mkdocs-material mkdocs-macros-plugin mkdocs-include-markdown-plugin mkdocs-table-reader-plugin mkdocs-material-extensions
+
+      - name: Configure git for submodule
+        run: |
+          cd igm-doc
+          # Use github-actions bot identity
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Update remote URL to use the PAT for authentication
+          git remote set-url origin https://x-access-token:${{ secrets.IGM_DOC_TOKEN }}@github.com/instructed-glacier-model/igm-doc.git
+
+      - name: Deploy documentation with Mike
+        run: |
+          cd igm-doc
+          
+          # Check if this is a tagged release
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+            echo "Tagged release detected: $TAG"
+            mike deploy --config-file mkdocs.yml --remote origin --push --update-aliases $TAG latest --allow-empty
+          else
+            echo "Branch push detected: updating latest"
+            mike deploy --config-file mkdocs.yml --remote origin --push --update-aliases latest --allow-empty
+          fi
+
+      - name: Display deployment info
+        run: |
+          echo "Documentation deployed successfully!"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"

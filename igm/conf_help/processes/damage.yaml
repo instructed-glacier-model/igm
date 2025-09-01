@@ -1,0 +1,32 @@
+B:
+  Type: float
+  Description: "Parameter for the damage evolution equation from (Pralong & Funk, 2005)"
+  Units: Pa−r s−1
+r:
+  Type: float
+  Description: "Exponent for the damage evolution equation from (Pralong & Funk, 2005)"
+  Units: dimless
+k:
+  Type: float
+  Description: "Exponent for the damage evolution equation from (Pralong & Funk, 2005)"
+  Units: dimless
+epsilon:
+  Type: float
+  Description: "Small value to prevent dividing by zero damage"
+  Units: dimless
+alpha:
+  Type: float
+  Description: "Coefficient for the first stress term in eq (6) of Pralong & Funk (2005)"
+  Units: dimless
+beta:
+  Type: float
+  Description: "Coefficient for the second stress term in eq (6) of Pralong & Funk (2005)"
+  Units: dimless
+sigmabar:
+  Type: float
+  Description: "Reference stress value for the damage evolution equation in Pralong & Funk (2005)"
+  Units: MPa
+lamb:
+  Type: float
+  Description: "Coefficient to weight the healing term in the damage evolution equation"
+  Units: dimless  

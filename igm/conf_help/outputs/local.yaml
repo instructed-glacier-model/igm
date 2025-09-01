@@ -1,0 +1,20 @@
+file_format_list:
+  Type: list
+  Units: dimless
+  Description: List of file formats to be used for output (e.g., ['netcdf','tif'])
+output_file:
+  Type: str
+  Units: dimless
+  Description: Output ncdf data file
+vars_to_save:
+  Type: list
+  Units: dimless
+  Description: List of variables to be recorded in the ncdf file
+write_ts:
+  Type: bool
+  Units: dimless
+  Description: Flag to write time series data
+output_ts_file:
+  Type: str
+  Units: dimless
+  Description: Output ncdf time series data file

@@ -1,0 +1,24 @@
+input_file:
+  Type: str
+  Units: dimless
+  Description: NetCDF input data file
+crop:
+  Type: bool
+  Units: dimless
+  Description: Crop the data from NetCDF file with given top/down/left/right bounds
+xmin:
+  Type: float
+  Units: m
+  Description: X left coordinate for cropping the NetCDF data
+xmax:
+  Type: float
+  Units: m
+  Description: X right coordinate for cropping the NetCDF data
+ymin:
+  Type: float
+  Units: m
+  Description: Y bottom coordinate for cropping the NetCDF data
+ymax:
+  Type: float
+  Units: m
+  Description: Y top coordinate for cropping the NetCDF data

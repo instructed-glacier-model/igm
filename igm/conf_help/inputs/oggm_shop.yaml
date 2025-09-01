@@ -1,0 +1,56 @@
+RGI_ID:
+  Type: str
+  Description: "RGI ID of the selected glacier, G stands for individual Glacier, and C for glacier Complex for RGI7"
+  Units: dimless
+RGI_IDs:
+  Type: list
+  Description: "List of RGI IDs of the selected glaciers, G stands for individual Glacier, and C for glacier Complex for RGI7"
+  Units: dimless
+preprocess:
+  Type: bool
+  Description: "Use OGGM preprocessing if you are fine with given spatial resolution and border size"
+  Units: dimless
+dx:
+  Type: float
+  Description: "Spatial resolution (need preprocess false to change it)"
+  Units: m
+border:
+  Type: int
+  Description: "Safe border margin, number of pixels, (need preprocess false to change it)"
+  Units: dimless
+thk_source:
+  Type: str
+  Description: "Millan ice thickness (millan_ice_thickness) or consensus ice thickness (consensus_ice_thickness)"
+  Units: dimless
+vel_source:
+  Type: str
+  Description: "Source of the surface velocities (millan_ice_velocity or its_live)"
+  Units: dimless
+incl_glathida:
+  Type: bool
+  Description: "Set this to True for retrieving the GlaThiDa ice thickness profiles for the inversion."
+  Units: dimless
+path_glathida:
+  Type: str
+  Description: "Path where the Glathida Folder is stored, so that you don't need to redownload it at every use of the script, if empty it will be in the home directory (only relevant for RGI6.0)"
+  Units: dimless
+filename:
+  Type: str
+  Units: dimless
+  Description: "NetCDF input data file created by OGGM"
+remove_RGI_folder:
+  Type: bool
+  Description: "Remove RGI folder"
+  Units: dimless
+sub_entity_mask:
+  Type: bool
+  Description: "Ice mask shows individual RGI 7.0G entities within each larger RGI 7.0C complex"
+  Units: dimless
+smooth_obs_vel:
+  Type: bool
+  Description: "Smooth the observed velocities"
+  Units: dimless
+highres:
+  Type: bool
+  Description: "Use high resolution data"
+  Units: dimless

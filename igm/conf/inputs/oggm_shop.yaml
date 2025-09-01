@@ -1,0 +1,15 @@
+oggm_shop:
+  RGI_ID: "RGI60-11.01450"
+  RGI_IDs: ["RGI60-11.01450"]
+  preprocess: True
+  dx: 100
+  border: 30
+  thk_source: consensus_ice_thickness
+  vel_source: millan_ice_velocity
+  incl_glathida: False
+  path_glathida: ""
+  filename: input.nc
+  remove_RGI_folder: True
+  sub_entity_mask: False
+  smooth_obs_vel: True
+  highres: False

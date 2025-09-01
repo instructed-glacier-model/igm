@@ -1,0 +1,49 @@
+# @package _global_
+
+defaults:
+  - override /inputs:
+    - oggm_shop
+    - local
+  - override /processes:
+    - smb_simple
+    - iceflow
+    - time
+    - thk
+    - vert_flow
+    - particles
+  - override /outputs:
+    - local
+
+inputs:
+  oggm_shop:
+    RGI_ID: RGI60-11.01238
+    RGI_version: 6
+
+processes:
+  smb_simple:
+    array:
+    - - time
+      - gradabl
+      - gradacc
+      - ela
+      - accmax
+    - - 2000
+      - 0.009
+      - 0.005
+      - 2700
+      - 2.0
+    - - 2100
+      - 0.009
+      - 0.005
+      - 2600
+      - 2.0
+  iceflow:
+    physics:
+      new_friction_param: true
+      dim_arrhenius: 2
+      init_slidingco: 0.1
+  time:
+    start: 2000.0
+    end: 2100.0
+    save: 5.0
+ 

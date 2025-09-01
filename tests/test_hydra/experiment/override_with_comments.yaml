@@ -1,0 +1,14 @@
+# @package _global_
+# Random comments everything (and changed the True values to true)
+
+core:
+  logging: true
+  logging_level: 10
+  logging_file: "logging file directory" # comment to say its not a real directory
+  print_params: true
+  gpu_info: true 
+  gpu_id: 2
+  saved_params_filename: params_saved
+  url_data: ""
+  folder_data: data_folder
+  # gpu_id: -99999

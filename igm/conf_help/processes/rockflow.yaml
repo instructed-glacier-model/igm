@@ -1,0 +1,4 @@
+flow_speed:
+  Type: float
+  Description: "Speed of rock flow along the slope"
+  Units: m yr^{-1}

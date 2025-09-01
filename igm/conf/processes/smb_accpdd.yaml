@@ -1,0 +1,11 @@
+smb_accpdd:
+  update_freq: 1
+  refreeze_factor: 0.6
+  thr_temp_snow: 0.0
+  thr_temp_rain: 2.0
+  melt_factor_snow: 1.095726596343
+  melt_factor_ice:  2.921937590248
+  shift_hydro_year: 0.75
+  ice_density: 910.0
+  wat_density: 1000.0
+  smb_maximum_accumulation: 6.0

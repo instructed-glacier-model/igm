@@ -1,0 +1,20 @@
+format:
+  Type: string
+  Units: dimless
+  Description: "Format of the texture image (png, tif, or tiff)"
+model_path:
+  Type: file path
+  Units: dimless
+  Description: "Name of the folder for the texture model (tf format)"
+verbosity:
+  Type: integer
+  Units: dimless
+  Description: "Python Logger verbosity level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)"
+divide_by_density:
+  Type: boolean
+  Units: dimless
+  Description: "This parameter solves an incompatibility (this option will be removed in the future)"
+resolution:
+  Type: integer
+  Units: dimless
+  Description: "This parameter solves an incompatibility (this option will be removed in the future)"

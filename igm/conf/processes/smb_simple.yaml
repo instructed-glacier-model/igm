@@ -1,0 +1,4 @@
+smb_simple:
+  update_freq: 1.0
+  file: param.txt
+  array: []

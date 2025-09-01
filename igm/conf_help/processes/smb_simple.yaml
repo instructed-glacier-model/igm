@@ -1,0 +1,12 @@
+update_freq:
+  Type: float
+  Units: y
+  Description: "Update the mass balance each X years"
+file:
+  Type: string
+  Units: dimless
+  Description: "Name of the input file for the simple mass balance model (time, gradabl, gradacc, ela, accmax)"
+array:
+  Type: list
+  Units: dimless
+  Description: "Time dependent parameters for simple mass balance model (time, gradabl, gradacc, ela, accmax)"

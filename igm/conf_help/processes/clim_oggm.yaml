@@ -1,0 +1,20 @@
+update_freq:
+  Type: float
+  Units: y
+  Description: Update the climate each X years
+file:
+  Type: string
+  Units: dimless
+  Description: Name of the input file for the climate outside the given datetime frame (time, delta_temp, prec_scaling)
+clim_trend_array:
+  Type: list
+  Units: dimless
+  Description: Define climate trend outside available time window
+ref_period:
+  Type: list
+  Units: dimless
+  Description: Define the reference period to pick year outside available time window
+seed_par:
+  Type: integer
+  Units: dimless
+  Description: Seeding parameter to fix for picking randomly year in the ref period

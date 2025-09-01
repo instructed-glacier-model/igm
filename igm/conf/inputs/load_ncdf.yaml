@@ -1,0 +1,12 @@
+load_ncdf:
+  input_file: input.nc
+  method_coarsen: skipping
+  coarsen: 1
+  crop: False
+  xmin: -1.0e+20
+  xmax: 1.0e+20
+  ymin: -1.0e+20
+  ymax: 1.0e+20
+  icemask_include: False
+  icemask_shapefile: icemask.shp
+  icemask_invert: False

@@ -1,0 +1,28 @@
+update_freq:
+  Type: float
+  Units: y
+  Description: Frequency at which to update the climate module
+climate_0_file:
+  Type: str
+  Units: dimless
+  Description: Climate file for glacial index 0
+climate_1_file:
+  Type: str
+  Units: dimless
+  Description: Climate file for glacial index 1
+signal_file:
+  Type: str
+  Units: dimless
+  Description: Climate signal file for GI
+vertical_lapse_rate_0:
+  Type: float
+  Units: ^\circC km^{-1}
+  Description: Vertical lapse rate for glacier index 0
+vertical_lapse_rate_1:
+  Type: float
+  Units: ^\circC km^{-1}
+  Description: Vertical lapse rate for glacier index 1
+temporal_resampling:
+  Type: int
+  Units: y^{-1}
+  Description: Temporal resampling, number of time steps per year

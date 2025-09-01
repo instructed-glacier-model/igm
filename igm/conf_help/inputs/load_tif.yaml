@@ -1,0 +1,36 @@
+coarsen:
+  Type: int
+  Units: dimless
+  Description: Coarsen the data from NetCDF file by a certain (integer) number (2 would be twice coarser ignore data each 2 grid points)
+crop:
+  Type: bool
+  Units: dimless
+  Description: Crop the data from NetCDF file with given top/down/left/right bounds
+xmin:
+  Type: float
+  Units: m
+  Description: Crop the data from NetCDF file with the given minimum x bound
+xmax:
+  Type: m
+  Units: float
+  Description: Crop the data from NetCDF file with the given maximum x bound
+ymin:
+  Type: float
+  Units: m
+  Description: Crop the data from NetCDF file with the given minimum y bound
+ymax:
+  Type: float
+  Units: m
+  Description: Crop the data from NetCDF file with the given maximum y bound
+icemask_include:
+  Type: bool
+  Units: dimless
+  Description: Include ice mask in the NetCDF file
+icemask_shapefile:
+  Type: str
+  Units: dimless
+  Description: Shapefile for ice mask
+icemask_invert:
+  Type: bool
+  Units: dimless
+  Description: Invert the ice mask

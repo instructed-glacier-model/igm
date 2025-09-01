@@ -1,0 +1,4 @@
+output_file:
+  Type: str
+  Units: dimless
+  Description: Output ncdf data file (time series)

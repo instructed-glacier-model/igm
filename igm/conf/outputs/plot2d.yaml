@@ -1,0 +1,6 @@
+plot2d:
+  editor: vs
+  live: False
+  particles: True
+  var: "velbar_mag"
+  var_max: 1000

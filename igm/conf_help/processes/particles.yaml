@@ -1,0 +1,52 @@
+seeding:
+  method: 
+    Type: str
+    Units: dimless
+    Description: Method for seeding particles (accumulation or all)
+  frequency: 
+    Type: float
+    Units: y
+    Description: Frequency of seeding
+  density: 
+    Type: float
+    Units: dimless
+    Description: Density of seeding (1 means we seed all pixels, 0.2 means we seed each 5 grid cell, etc.)
+  tlast_init: 
+    Type: float
+    Units: y
+    Description: Initialize the date of last seeding. If default value, the seeding will start the first year of the simulation. Changing this value allows to defer it
+  height: 
+    Type: float
+    Units: dimless
+    Description: Height of the seeding layer in the method full
+tracking:
+  method: 
+    Type: str
+    Units: dimless
+    Description: Method for tracking particles (3d or simple)
+  library: 
+    Type: str
+    Units: dimless
+    Description: Library used for tracking (cuda, tensorflow, etc.)
+removal:
+  method: 
+    Type: str
+    Units: dimless
+    Description: Method for removing particles (ablation, etc.)
+output:
+  library: 
+    Type: str
+    Units: dimless
+    Description: Library used for outputting particles (numpy, pyvista, etc.)
+  add_topography: 
+    Type: boolean
+    Units: dimless
+    Description: Add topography when writing particles
+  format: 
+    Type: str
+    Units: dimless
+    Description: Type of output format for particles (csv, parquet)
+  add_fields:
+    Type: list
+    Units: dimless
+    Description: List of fields to write in the output file (englt, velbar, weight)

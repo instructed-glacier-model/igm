@@ -1,0 +1,15 @@
+local:
+  type: netcdf
+  filename: input.nc
+  coarsening:
+    boundary: trim
+    ratio: 1
+  crop:
+    xmin: null
+    xmax: null
+    ymin: null
+    ymax: null
+  icemask:
+    include: False
+    shapefile: icemask.shp 
+    invert: False

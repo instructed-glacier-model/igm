@@ -1,0 +1,9 @@
+damage:
+    B: 1.7e-9
+    r: 0.43
+    k: 2.0
+    epsilon: 0.001
+    alpha: 0.21
+    beta: 0.63
+    sigmabar: 0.33
+    lamb: 0.4
