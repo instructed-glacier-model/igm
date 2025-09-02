@@ -266,7 +266,7 @@ def split_fieldin_to_patches(cfg, fieldin, patching: OverlapPatching) -> tuple:
     X = _convert_fieldin_to_tensor(cfg, fieldin)
 
     # Apply input scaling
-    X = scale_inputs(cfg, X)
+    # X = scale_inputs(cfg, X)
 
     patches = patching.patch_tensor(X)
     return patches

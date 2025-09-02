@@ -29,13 +29,6 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
 
     state.iceflow.preparation_params = preparation_params
 
-    input_height = state.thk.shape[0]
-    input_width = state.thk.shape[1]
-
-    Ny, Nx, effective_batch_size = calculate_expected_dimensions(
-        input_height, input_width, preparation_params
-    )
-
     state.iceflow.patching = OverlapPatching(
         patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
     )

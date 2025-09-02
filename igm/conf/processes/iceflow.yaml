@@ -113,3 +113,7 @@ iceflow:
       dropout_rate: 0
       weight_initialization: glorot_uniform
       cnn3d_for_vertical: false
+      batch_norm: false
+      l2_reg: 0.0
+      separable: false
+      residual: true
