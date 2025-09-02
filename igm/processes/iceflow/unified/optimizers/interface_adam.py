@@ -40,6 +40,14 @@ class InterfaceAdam(InterfaceOptimizer):
 
         cfg_unified = cfg.processes.iceflow.unified
 
+        # only apply lr schedule if network mapping is used
+        if hasattr(optimizer.map, "network"):
+            lr_decay = cfg_unified.lr_decay
+            lr_decay_steps = cfg_unified.lr_decay_steps
+        else:
+            lr_decay = 1.0
+            lr_decay_steps = 1000000
+
         if status == Status.INIT:
             iter_max = cfg_unified.nbit_init
             lr = cfg_unified.lr_init
@@ -53,9 +61,6 @@ class InterfaceAdam(InterfaceOptimizer):
             return False
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
-
-        lr_decay = cfg_unified.lr_decay
-        lr_decay_steps = cfg_unified.lr_decay_steps
 
         optimizer.update_parameters(
             iter_max=iter_max, lr=lr, lr_decay=lr_decay, lr_decay_steps=lr_decay_steps
