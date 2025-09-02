@@ -68,6 +68,12 @@ iceflow:
     framesizemax: 750
     exclude_borders: 0
     pretrained: true
+    fieldin:
+    - thk
+    - usurf
+    - arrhenius
+    - slidingco
+    - dX
   emulator:
     fieldin:
     - thk

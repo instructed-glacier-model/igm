@@ -61,13 +61,13 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
 
     return {
         "overlap": 0.25,
-        "batch_size": 32,
-        "patch_size": 1000,
+        "batch_size": 16,
+        "patch_size": 64,
         "rotation_probability": 0.0,
         "flip_probability": 0.0,
-        "noise_type": "none",
+        "noise_type": "perlin",
         "noise_scale": 0.1,
-        "target_samples": 1,
+        "target_samples": 32,
         "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
         "noise_channels": _determine_noise_channels(cfg),
     }

@@ -113,7 +113,7 @@ class OptimizerLBFGS(Optimizer):
         n_batches = inputs.shape[0]
         if n_batches > 1:
             raise NotImplementedError(
-                "❌ The optimizer is only implemented for 1 batch for now; "
+                "❌ Multiple batches is not compatible with the LBFGS optimizer, check data preparation settings and ensure everything fits into one batch."
                 + f"n_batches = {n_batches}."
             )
         input = inputs[0, :, :, :, :]
