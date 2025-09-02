@@ -109,7 +109,6 @@ class OptimizerLBFGS(Optimizer):
     @tf.function(jit_compile=False)
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
 
-        # TO DO -- adapt this for multiple batches
         n_batches = inputs.shape[0]
         if n_batches > 1:
             raise NotImplementedError(

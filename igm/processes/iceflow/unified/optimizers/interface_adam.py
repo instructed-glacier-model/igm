@@ -54,6 +54,11 @@ class InterfaceAdam(InterfaceOptimizer):
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        optimizer.update_parameters(iter_max=iter_max, lr=lr)
+        lr_decay = cfg_unified.lr_decay
+        lr_decay_steps = cfg_unified.lr_decay_steps
+
+        optimizer.update_parameters(
+            iter_max=iter_max, lr=lr, lr_decay=lr_decay, lr_decay_steps=lr_decay_steps
+        )
 
         return True

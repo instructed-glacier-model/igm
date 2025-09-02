@@ -22,6 +22,8 @@ class OptimizerAdam(Optimizer):
         lr: float = 1e-3,
         iter_max: int = int(1e5),
         print_cost: bool = False,
+        lr_decay: float = 0.0,
+        lr_decay_steps: int = 1000,
     ):
         super().__init__(cost_fn, map)
         self.name = "adam"
@@ -33,12 +35,24 @@ class OptimizerAdam(Optimizer):
         else:
             module_optimizer = tf.keras.optimizers.legacy
 
-        self.iter_max = tf.Variable(iter_max)
-        self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr))
+        if lr_decay > 0.0:
+            schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                initial_learning_rate=lr,
+                decay_steps=lr_decay_steps,
+                decay_rate=lr_decay,
+            )
+            self.optim_adam = module_optimizer.Adam(learning_rate=schedule)
+        else:
+            self.iter_max = tf.Variable(iter_max)
+            self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr))
 
-    def update_parameters(self, iter_max: int, lr: float) -> None:
+    def update_parameters(
+        self, iter_max: int, lr: float, lr_decay: float, lr_decay_steps: int
+    ) -> None:
         self.iter_max.assign(iter_max)
         self.optim_adam.learning_rate.assign(lr)
+        self.lr_decay = lr_decay
+        self.lr_decay_steps = lr_decay_steps
 
     @tf.function(jit_compile=False)
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:

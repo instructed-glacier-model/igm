@@ -55,7 +55,8 @@ iceflow:
       architecture: cnn
     lr: 2.0e-05
     lr_init: 0.0001
-    lr_decay: 0.95
+    lr_decay: 1.0
+    lr_decay_steps: 1000
     warm_up_it: -10000000000.0
     nbit_init: 1
     nbit: 1
