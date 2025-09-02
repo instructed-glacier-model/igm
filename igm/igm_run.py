@@ -115,6 +115,11 @@ def main(cfg: DictConfig) -> None:
     if cfg.core.print_comp:
         print_comp(state)
 
+    # this serves to score an IGM to be used with hydra multirun optuna
+    if hasattr(state, "score"):
+        return state.score
+    else:
+        return 0.0
 
 if __name__ == "__main__":
     main()
