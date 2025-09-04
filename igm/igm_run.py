@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 import os
+
 # os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1' # testing iceflow as cudnn kernels are not fusing
 # # Disable cuDNN's algorithm selection to prevent Winograd usage
 # os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
@@ -10,8 +11,6 @@ import os
 
 # # Or more specifically, disable Winograd algorithms
 
-
-            
 
 # os.environ['ENABLE_NVTX_RANGES'] = '1'
 # os.environ['ENABLE_NVTX_RANGES_DETAILED'] = '1'
@@ -44,7 +43,38 @@ import hydra
 
 OmegaConf.register_new_resolver("get_cwd", lambda x: os.getcwd())
 from hydra.core.hydra_config import HydraConfig
+import numpy as np
+from datetime import datetime
 
+
+def calculate_objective_score(state, cfg):
+    """
+    Calculate the objective score to minimize.
+    Combines cost and runtime into a single metric.
+    """
+    if not hasattr(state, "cost") or len(state.cost) == 0:
+        return float("inf")  # Return worst possible score if no cost data
+
+    # Get final cost (average of last 50 iterations or all if less than 50)
+    cost_array = np.array(state.cost)
+    n_avg = min(50, len(cost_array))
+    final_cost = np.mean(cost_array[-n_avg:])
+
+    # Get runtime if available
+    runtime = 0.0
+    if hasattr(state, "runtime"):
+        runtime = state.runtime
+    elif hasattr(state, "start_time") and hasattr(state, "end_time"):
+        runtime = (state.end_time - state.start_time).total_seconds()
+
+    # Combine cost and runtime (you can adjust these weights)
+    # Normalize runtime to be on similar scale as cost
+    normalized_runtime = runtime / 3600.0  # Convert to hours
+
+    # Combined objective (adjust weights as needed)
+    objective = abs(final_cost) + 0.1 * normalized_runtime
+
+    return float(objective)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -56,83 +86,106 @@ def main(cfg: DictConfig) -> None:
     # os.environ['TF_DISABLE_CUDNN_TENSOR_OP_MATH'] = '1'
     # os.environ['TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH'] = '1'
     # os.environ['TF_DISABLE_CUBLAS_TENSOR_OP_MATH'] = '1'
-    
+
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
 
     state.saveresult = True
 
-    if cfg.core.check_compat_params:
-        check_incompatilities_in_parameters_file(cfg,state.original_cwd)
+    state.start_time = datetime.now()
 
-    if cfg.core.hardware.gpu_info:
-        # print([gpus[i] for i in cfg.core.hardware.visible_gpus])
-        print_gpu_info()
+    try:
 
-    gpus = tf.config.list_physical_devices("GPU")
-    for gpu_instance in gpus:
-        tf.config.experimental.set_memory_growth(gpu_instance, True)
-    
-    if gpus:
-        try:
-            selected_visible_gpus = [gpus[i] for i in cfg.core.hardware.visible_gpus]
-            tf.config.set_visible_devices(selected_visible_gpus, "GPU")
-            logical_gpus = tf.config.list_logical_devices("GPU")
-            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
-        except RuntimeError as e:
-            # Visible devices must be set before GPUs have been initialized
-            print(e)
+        if cfg.core.check_compat_params:
+            check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
-    if len(tf.config.list_logical_devices("GPU")) > 1:
-        raise NotImplementedError(
-            "Strategies for multiple GPUs are not yet implemented. Please make only one GPU visible."
-        )
-        # strategy = tf.distribute.MirroredStrategy()
-    else:
-        # if there is only one visible GPU, the id will be 0! Even when choosing a GPU that has index 4, it will only be 0 after configuring visible devices!
-        # However, apply_gradients is having issues... so we have to update that first!
-        # strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
-        strategy = tf.distribute.get_strategy()
+        if cfg.core.hardware.gpu_info:
+            # print([gpus[i] for i in cfg.core.hardware.visible_gpus])
+            print_gpu_info()
 
-    if cfg.core.logging:
-        add_logger(cfg=cfg, state=state)
-        tf.get_logger().setLevel(cfg.core.tf_logging_level)
+        gpus = tf.config.list_physical_devices("GPU")
+        for gpu_instance in gpus:
+            tf.config.experimental.set_memory_growth(gpu_instance, True)
 
-    if cfg.core.print_params:
-        print(OmegaConf.to_yaml(cfg))
+        if gpus:
+            try:
+                selected_visible_gpus = [
+                    gpus[i] for i in cfg.core.hardware.visible_gpus
+                ]
+                tf.config.set_visible_devices(selected_visible_gpus, "GPU")
+                logical_gpus = tf.config.list_logical_devices("GPU")
+                print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
+            except RuntimeError as e:
+                # Visible devices must be set before GPUs have been initialized
+                print(e)
 
-    # ! Needs to be before the inputs the way it is setup - otherwise, it will throw an error... (at least with local not loadncdf)
-    if not cfg.core.url_data == "":
-        folder_path = state.original_cwd.joinpath(cfg.core.folder_data)
-        download_unzip_and_store(cfg.core.url_data, folder_path)
-
-    imported_inputs_modules, imported_processes_modules, imported_outputs_modules = (
-        setup_igm_modules(cfg, state)
-    )
-
-#    input_methods = list(cfg.inputs.keys())
-#    if len(input_methods) > 1:
-#        raise ValueError("Only one inputs method is allowed.")
-#    imported_inputs_modules[0].run(cfg, state)
-    for input_method in imported_inputs_modules:
-        input_method.run(cfg, state)
-
-    for output_method in imported_outputs_modules:
-        # TODO: would be cleaner to have inside setup_igm_modules... 
-        if not hasattr(output_method, "initialize"):
-            raise ValueError(
-                "Output methods must have an 'initialize' method defined (in addition to a 'run' method)." 
+        if len(tf.config.list_logical_devices("GPU")) > 1:
+            raise NotImplementedError(
+                "Strategies for multiple GPUs are not yet implemented. Please make only one GPU visible."
             )
-        output_method.initialize(cfg, state)
+            # strategy = tf.distribute.MirroredStrategy()
+        else:
+            # if there is only one visible GPU, the id will be 0! Even when choosing a GPU that has index 4, it will only be 0 after configuring visible devices!
+            # However, apply_gradients is having issues... so we have to update that first!
+            # strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
+            strategy = tf.distribute.get_strategy()
 
-    with strategy.scope():
-        initialize_modules(imported_processes_modules, cfg, state)
-        update_modules(imported_processes_modules, imported_outputs_modules, cfg, state)
-        finalize_modules(imported_processes_modules, cfg, state)
+        if cfg.core.logging:
+            add_logger(cfg=cfg, state=state)
+            tf.get_logger().setLevel(cfg.core.tf_logging_level)
 
-    if cfg.core.print_comp:
-        print_comp(state)
+        if cfg.core.print_params:
+            print(OmegaConf.to_yaml(cfg))
+
+        # ! Needs to be before the inputs the way it is setup - otherwise, it will throw an error... (at least with local not loadncdf)
+        if not cfg.core.url_data == "":
+            folder_path = state.original_cwd.joinpath(cfg.core.folder_data)
+            download_unzip_and_store(cfg.core.url_data, folder_path)
+
+        (
+            imported_inputs_modules,
+            imported_processes_modules,
+            imported_outputs_modules,
+        ) = setup_igm_modules(cfg, state)
+
+        #    input_methods = list(cfg.inputs.keys())
+        #    if len(input_methods) > 1:
+        #        raise ValueError("Only one inputs method is allowed.")
+        #    imported_inputs_modules[0].run(cfg, state)
+        for input_method in imported_inputs_modules:
+            input_method.run(cfg, state)
+
+        for output_method in imported_outputs_modules:
+            # TODO: would be cleaner to have inside setup_igm_modules...
+            if not hasattr(output_method, "initialize"):
+                raise ValueError(
+                    "Output methods must have an 'initialize' method defined (in addition to a 'run' method)."
+                )
+            output_method.initialize(cfg, state)
+
+        with strategy.scope():
+            initialize_modules(imported_processes_modules, cfg, state)
+            update_modules(
+                imported_processes_modules, imported_outputs_modules, cfg, state
+            )
+            finalize_modules(imported_processes_modules, cfg, state)
+
+        if cfg.core.print_comp:
+            print_comp(state)
+
+        state.end_time = datetime.now()
+        state.runtime = (state.end_time - state.start_time).total_seconds()
+
+        # Calculate objective score
+        objective_score = calculate_objective_score(state, cfg)
+
+        return objective_score
+
+    except Exception as e:
+        print(f"Trial failed with error: {e}")
+        # Return a large penalty for failed trials
+        return float("inf")
 
 
 if __name__ == "__main__":
