@@ -48,26 +48,17 @@ def _determine_noise_channels(cfg) -> Tuple[str, ...]:
 
 def get_input_params_args(cfg) -> Dict[str, Any]:
 
-    # return {
-    #     "overlap": cfg_emulator.overlap,
-    #     "batch_size": cfg_emulator.batch_size,
-    #     "patch_size": cfg_emulator.patch_size,
-    #     "rotation_probability": cfg_emulator.rotation_probability,
-    #     "flip_probability": cfg_emulator.flip_probability,
-    #     "noise_type": cfg_emulator.noise_type,
-    #     "noise_scale": cfg_emulator.noise_scale,
-    #     "target_samples": cfg_emulator.target_samples,
-    # }
+    cfg_data_preparation = cfg.processes.iceflow.unified.data_preparation
 
     return {
-        "overlap": 0.25,
-        "batch_size": 16,
-        "patch_size": 64,
-        "rotation_probability": 0.0,
-        "flip_probability": 0.0,
-        "noise_type": "perlin",
-        "noise_scale": 0.1,
-        "target_samples": 32,
+        "overlap": cfg_data_preparation.overlap,
+        "batch_size": cfg_data_preparation.batch_size,
+        "patch_size": cfg_data_preparation.patch_size,
+        "rotation_probability": cfg_data_preparation.rotation_probability,
+        "flip_probability": cfg_data_preparation.flip_probability,
+        "noise_type": cfg_data_preparation.noise_type,
+        "noise_scale": cfg_data_preparation.noise_scale,
+        "target_samples": cfg_data_preparation.target_samples,
         "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
         "noise_channels": _determine_noise_channels(cfg),
     }

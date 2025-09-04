@@ -53,6 +53,16 @@ iceflow:
     network:
       output_scale: 1.0
       architecture: cnn
+    data_preparation:
+      patch_size: 1000
+      overlap: 0.0
+      batch_size: 32
+      rotation_probability: 0.0
+      flip_probability: 0.0
+      noise_type: none
+      noise_scale: 0.0
+      target_samples: 1
+    save_cost: ''
     lr: 2.0e-05
     lr_init: 0.0001
     lr_decay: 1.0
