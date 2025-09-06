@@ -60,21 +60,7 @@ def calculate_objective_score(state, cfg):
     n_avg = min(50, len(cost_array))
     final_cost = np.mean(cost_array[-n_avg:])
 
-    # Get runtime if available
-    runtime = 0.0
-    if hasattr(state, "runtime"):
-        runtime = state.runtime
-    elif hasattr(state, "start_time") and hasattr(state, "end_time"):
-        runtime = (state.end_time - state.start_time).total_seconds()
-
-    # Combine cost and runtime (you can adjust these weights)
-    # Normalize runtime to be on similar scale as cost
-    normalized_runtime = runtime / 3600.0  # Convert to hours
-
-    # Combined objective (adjust weights as needed)
-    objective = abs(final_cost) + 0.1 * normalized_runtime
-
-    return float(objective)
+    return float(final_cost)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
