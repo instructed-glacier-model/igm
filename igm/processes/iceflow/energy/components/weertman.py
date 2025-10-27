@@ -36,7 +36,7 @@ class SlidingWeertmanEnergyParams(tf.experimental.ExtensionType):
 def cost_sliding_weertman(U: tf.Tensor, V: tf.Tensor, fieldin: Dict, vert_disc: Tuple, staggered_grid: bool, sliding_weertman_params: SlidingWeertmanEnergyParams):
 
     thk, usurf, slidingco, dX = fieldin["thk"], fieldin["usurf"], fieldin["slidingco"], fieldin["dX"]
-    zeta, dzeta = vert_disc
+    zeta, dzeta, _, _ = vert_disc
 
     exp_weertman = sliding_weertman_params.exp_weertman
     regu_weertman = sliding_weertman_params.regu_weertman
