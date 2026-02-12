@@ -2,6 +2,13 @@ import tensorflow as tf
 from igm.utils.math.precision import normalize_precision
 
 
+def _complex_dtype_for(real_dtype):
+    """Return the matching complex dtype for a given real dtype."""
+    if real_dtype == tf.float64:
+        return tf.complex128
+    return tf.complex64
+
+
 class FNO(tf.keras.Model):
     """
     Simplified Fourier Neural Operator - operates in frequency domain for global information
@@ -12,6 +19,7 @@ class FNO(tf.keras.Model):
 
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = normalize_precision(precision)
+        self.complex_dtype = _complex_dtype_for(self.dtype_model)
 
         self.input_normalizer = input_normalizer
 
@@ -58,7 +66,7 @@ class FNO(tf.keras.Model):
             residual = x
 
             # FFT to frequency domain
-            x_freq = tf.signal.fft2d(tf.cast(x, tf.complex64))
+            x_freq = tf.signal.fft2d(tf.cast(x, self.complex_dtype))
 
             # Apply spectral convolution (simplified: using real part)
             x_freq_real = tf.cast(tf.math.real(x_freq), self.dtype_model)
@@ -68,7 +76,7 @@ class FNO(tf.keras.Model):
             x_freq_processed = fourier_layer(x_freq_real)
 
             # IFFT back to spatial domain
-            x_freq_complex = tf.cast(x_freq_processed, tf.complex64)
+            x_freq_complex = tf.cast(x_freq_processed, self.complex_dtype)
             x = tf.cast(
                 tf.math.real(tf.signal.ifft2d(x_freq_complex)), self.dtype_model
             )
@@ -95,12 +103,16 @@ class SpectralConv2D(tf.keras.layers.Layer):
     -> [B, C_out, H, W]
     """
 
-    def __init__(self, in_channels, out_channels, modes1, modes2, **kwargs):
+    def __init__(
+        self, in_channels, out_channels, modes1, modes2, real_dtype=tf.float32, **kwargs
+    ):
         super().__init__(**kwargs)
         self.in_channels = int(in_channels)
         self.out_channels = int(out_channels)
         self.modes1 = int(modes1)
         self.modes2 = int(modes2)
+        self.real_dtype = real_dtype
+        self.complex_dtype = _complex_dtype_for(real_dtype)
 
         # scale is as in Li's implementation
         self.scale = 1.0 / (self.in_channels * self.out_channels)
@@ -138,7 +150,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
                     f"modes2 must be <= W//2 + 1 for proper spectral truncation."
                 )
 
-        limit = tf.math.sqrt(tf.cast(self.scale, tf.float32))
+        limit = tf.math.sqrt(tf.cast(self.scale, self.real_dtype))
         init = tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
         # weights1: top modes [:modes1, :modes2]
@@ -146,12 +158,14 @@ class SpectralConv2D(tf.keras.layers.Layer):
             name="w1_real",
             shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
             initializer=init,
+            dtype=self.real_dtype,
             trainable=True,
         )
         self.w1_imag = self.add_weight(
             name="w1_imag",
             shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
             initializer=init,
+            dtype=self.real_dtype,
             trainable=True,
         )
 
@@ -160,12 +174,14 @@ class SpectralConv2D(tf.keras.layers.Layer):
             name="w2_real",
             shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
             initializer=init,
+            dtype=self.real_dtype,
             trainable=True,
         )
         self.w2_imag = self.add_weight(
             name="w2_imag",
             shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
             initializer=init,
+            dtype=self.real_dtype,
             trainable=True,
         )
 
@@ -185,8 +201,8 @@ class SpectralConv2D(tf.keras.layers.Layer):
         """
         x: [B, C_in, H, W], real
         """
-        if x.dtype != tf.float32:
-            x = tf.cast(x, tf.float32)
+        if x.dtype != self.real_dtype:
+            x = tf.cast(x, self.real_dtype)
 
         height = tf.shape(x)[2]
         width = tf.shape(x)[3]
@@ -240,11 +256,14 @@ class FNO2(tf.keras.Model):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
+        precision = cfg_numerics.precision
+        self.dtype_model = normalize_precision(precision)
+
         width = getattr(cfg_unified.network, "width", 32)
         modes1 = getattr(cfg_unified.network, "modes1", 8)
         modes2 = getattr(cfg_unified.network, "modes2", modes1)
-        padding = getattr(cfg_unified.network, "padding", 9)
-        use_grid = getattr(cfg_unified.network, "use_grid", True)
+        padding = getattr(cfg_unified.network, "padding", modes1 + 1)
+        use_grid = getattr(cfg_unified.network, "use_grid", False)
 
         Nz = cfg_numerics.Nz
 
@@ -259,36 +278,76 @@ class FNO2(tf.keras.Model):
         self.input_normalizer = input_normalizer
 
         # Lifting: linear map on last channel dimension
-        self.fc0 = tf.keras.layers.Dense(self.width, dtype=tf.float32)
+        self.fc0 = tf.keras.layers.Dense(self.width, dtype=self.dtype_model)
 
         # Fourier layers (channels-first)
-        self.conv0 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
+        self.conv0 = SpectralConv2D(
+            self.width,
+            self.width,
+            self.modes1,
+            self.modes2,
+            real_dtype=self.dtype_model,
+        )
+        self.conv1 = SpectralConv2D(
+            self.width,
+            self.width,
+            self.modes1,
+            self.modes2,
+            real_dtype=self.dtype_model,
+        )
+        self.conv2 = SpectralConv2D(
+            self.width,
+            self.width,
+            self.modes1,
+            self.modes2,
+            real_dtype=self.dtype_model,
+        )
+        self.conv3 = SpectralConv2D(
+            self.width,
+            self.width,
+            self.modes1,
+            self.modes2,
+            real_dtype=self.dtype_model,
+        )
 
         # 1x1 conv skips in channels-first format
         self.w0 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+            self.width,
+            kernel_size=1,
+            data_format="channels_first",
+            use_bias=True,
+            dtype=self.dtype_model,
         )
         self.w1 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+            self.width,
+            kernel_size=1,
+            data_format="channels_first",
+            use_bias=True,
+            dtype=self.dtype_model,
         )
         self.w2 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+            self.width,
+            kernel_size=1,
+            data_format="channels_first",
+            use_bias=True,
+            dtype=self.dtype_model,
         )
         self.w3 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+            self.width,
+            kernel_size=1,
+            data_format="channels_first",
+            use_bias=True,
+            dtype=self.dtype_model,
         )
 
         # Projection head
-        self.fc1 = tf.keras.layers.Dense(128, dtype=tf.float32)
-        self.fc2 = tf.keras.layers.Dense(self.output_channels, dtype=tf.float32)
+        self.fc1 = tf.keras.layers.Dense(128, dtype=self.dtype_model)
+        self.fc2 = tf.keras.layers.Dense(self.output_channels, dtype=self.dtype_model)
 
         # Dummy forward pass to build variables
         dummy_H = max(16, self.modes1 + 1)
         dummy_W = max(16, 2 * self.modes2 + 2)
-        dummy_input = tf.zeros((1, dummy_H, dummy_W, nb_inputs), dtype=tf.float32)
+        dummy_input = tf.zeros((1, dummy_H, dummy_W, nb_inputs), dtype=self.dtype_model)
         _ = self(dummy_input, training=False)
 
     def _get_grid(self, x):
@@ -301,11 +360,11 @@ class FNO2(tf.keras.Model):
         size_x = shape[1]
         size_y = shape[2]
 
-        gridx = tf.linspace(0.0, 1.0, size_x)
+        gridx = tf.cast(tf.linspace(0.0, 1.0, size_x), self.dtype_model)
         gridx = tf.reshape(gridx, [1, size_x, 1, 1])
         gridx = tf.tile(gridx, [batch_size, 1, size_y, 1])
 
-        gridy = tf.linspace(0.0, 1.0, size_y)
+        gridy = tf.cast(tf.linspace(0.0, 1.0, size_y), self.dtype_model)
         gridy = tf.reshape(gridy, [1, 1, size_y, 1])
         gridy = tf.tile(gridy, [batch_size, size_x, 1, 1])
 
@@ -318,8 +377,8 @@ class FNO2(tf.keras.Model):
         returns: [N, H, W, C_out]
         """
         x = inputs
-        if x.dtype != tf.float32:
-            x = tf.cast(x, tf.float32)
+        if x.dtype != self.dtype_model:
+            x = tf.cast(x, self.dtype_model)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x, training=training)

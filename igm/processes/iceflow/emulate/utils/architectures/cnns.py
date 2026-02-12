@@ -76,8 +76,9 @@ class CNN(tf.keras.Model):
         # Build layers
         self._build_layers(nb_inputs, nb_outputs)
 
-        # Call build to initialize weights
-        self.build(input_shape=[None, None, None, nb_inputs])
+        # Dummy forward pass to initialize weights with correct dtype
+        dummy = tf.zeros([1, 1, 1, nb_inputs], dtype=self.dtype_model)
+        self(dummy)
 
     def _build_layers(self, nb_inputs, nb_outputs):
         """Build all network layers."""
@@ -135,15 +136,12 @@ class CNN(tf.keras.Model):
             else:
                 self.batch_norm_layers.append(None)
 
-            # Activation
-            if self.activation_name.lower() == "leakyrelu":
-                activation = tf.keras.layers.LeakyReLU(
-                    alpha=0.01, name=f"leakyrelu_{i}"
-                )
-            else:
-                activation = tf.keras.layers.Activation(
-                    self.activation_name, name=f"{self.activation_name}_{i}"
-                )
+            # Activation (use DTypeActivation to preserve precision)
+            activation = DTypeActivation(
+                activation_name=self.activation_name,
+                name=f"{self.activation_name}_{i}",
+                dtype=self.dtype_model,
+            )
             self.activation_layers.append(activation)
 
             # Dropout
@@ -189,6 +187,8 @@ class CNN(tf.keras.Model):
         """Forward pass through the network."""
 
         x = inputs
+        if x.dtype != self.dtype_model:
+            x = tf.cast(x, self.dtype_model)
 
         # Apply input normalization if provided
         if self.input_normalizer is not None:
@@ -277,12 +277,12 @@ class CNNPatch(tf.keras.Model):
 
     def __init__(
         self, cfg, nb_inputs, nb_outputs, input_normalizer=None, use_skip=True
-    ):  # New parameter
+    ):
         super(CNNPatch, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = normalize_precision(precision)
         self.input_normalizer = input_normalizer
-        self.use_skip = use_skip  # Store flag
+        self.use_skip = use_skip
 
         # Build convolutional layers
         self.conv_layers = []
@@ -327,10 +327,14 @@ class CNNPatch(tf.keras.Model):
             dtype=self.dtype_model,
         )
 
-        self.build(input_shape=[None, None, None, nb_inputs])
+        # Dummy forward pass to initialize weights with correct dtype
+        dummy = tf.zeros([1, 1, 1, nb_inputs], dtype=self.dtype_model)
+        self(dummy)
 
     def call(self, inputs):
         x = inputs
+        if x.dtype != self.dtype_model:
+            x = tf.cast(x, self.dtype_model)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x)
@@ -368,7 +372,7 @@ class CNNPeriodic(tf.keras.Model):
         use_periodic_bc=True,
         num_frequencies=3,
         periodic_enforcement="fourier",
-    ):  # New parameter
+    ):
         super(CNNPeriodic, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = normalize_precision(precision)
@@ -419,14 +423,11 @@ class CNNPeriodic(tf.keras.Model):
             )
 
             # Custom activation layer that uses TF function as keras was overriding datatype
-            # Might be achievable with tf.keras.backend float64 or something
             activation = DTypeActivation(
                 activation_name=cfg.processes.iceflow.emulator.network.activation,
                 name=f"{cfg.processes.iceflow.emulator.network.activation}_{i}",
                 dtype=self.dtype_model,
             )
-            # activation.compute_dtype = self.dtype_model
-            # print(activation.compute_dtype)
 
             self.conv_layers.append(layer)
             self.activations.append(activation)
@@ -447,10 +448,14 @@ class CNNPeriodic(tf.keras.Model):
             dtype=self.dtype_model,
         )
 
-        self.build(input_shape=[None, None, None, nb_inputs])
+        # Dummy forward pass to initialize weights with correct dtype
+        dummy = tf.zeros([1, 1, 1, nb_inputs], dtype=self.dtype_model)
+        self(dummy)
 
     def call(self, inputs):
         x = inputs
+        if x.dtype != self.dtype_model:
+            x = tf.cast(x, self.dtype_model)
 
         # Apply normalization if specified
         if self.input_normalizer is not None:
@@ -486,12 +491,12 @@ class CNNSkip(tf.keras.Model):
     Simple convolutional neural network with optional skip connection.
     """
 
-    def __init__(self, cfg, nb_inputs, nb_outputs, use_skip=True):  # New parameter
+    def __init__(self, cfg, nb_inputs, nb_outputs, use_skip=True):
         super(CNNSkip, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = normalize_precision(precision)
         self.input_normalizer = None
-        self.use_skip = use_skip  # Store flag
+        self.use_skip = use_skip
 
         # Build convolutional layers
         self.conv_layers = []
@@ -536,10 +541,14 @@ class CNNSkip(tf.keras.Model):
             dtype=self.dtype_model,
         )
 
-        self.build(input_shape=[None, None, None, nb_inputs])
+        # Dummy forward pass to initialize weights with correct dtype
+        dummy = tf.zeros([1, 1, 1, nb_inputs], dtype=self.dtype_model)
+        self(dummy)
 
     def call(self, inputs):
         x = inputs
+        if x.dtype != self.dtype_model:
+            x = tf.cast(x, self.dtype_model)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x)
