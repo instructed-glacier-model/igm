@@ -61,6 +61,9 @@ class Mapping(ABC):
     def unflatten_theta(self, theta_flat: tf.Tensor) -> Any:
         pass
 
+    def update_normalizer(self, inputs: tf.Tensor) -> None:
+        pass
+
     def on_minimize_start(self, iter_max: int) -> None:
         pass
 

@@ -54,3 +54,7 @@ class MappingNetwork(Mapping):
     def unflatten_theta(self, theta_flat: tf.Tensor) -> list[tf.Tensor]:
         splits = tf.split(theta_flat, self.sizes)
         return [tf.reshape(t, s) for t, s in zip(splits, self.shapes)]
+
+    def update_normalizer(self, inputs: tf.Tensor) -> None:
+        means, variances = self.network.input_normalizer.compute_stats(inputs)
+        self.network.input_normalizer.set_stats(means, variances)
