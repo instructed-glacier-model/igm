@@ -6,6 +6,7 @@ from .lbfgs_bounds import OptimizerLBFGSBounds
 from .lbfgs_DA import OptimizerLBFGSDataAssimilation
 from .cg import OptimizerCG
 from .sequential import OptimizerSequential
+from .composite import OptimizerComposite
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -15,6 +16,7 @@ Optimizers = {
     "lbfgs_da": OptimizerLBFGSDataAssimilation,
     "cg": OptimizerCG,
     "sequential": OptimizerSequential,
+    "composite": OptimizerComposite,
 }
 
 from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status

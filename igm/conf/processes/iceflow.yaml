@@ -104,6 +104,33 @@ iceflow:
       stages: []
     line_search: hager-zhang
     inputs: [thk, usurf, arrhenius, slidingco, dX]
+    composite:
+      mask_gr:
+        method: flotation
+        smoothing: 100.0     
+      gr:
+        mapping: network
+        inputs: [thk, usurf, arrhenius, slidingco, dX]
+        normalization:
+          method: adaptive
+        network:
+          architecture: CNN
+          pretrained: false
+          output_scale: 1.0
+      fl:
+        mapping: network
+        inputs: [thk, usurf, arrhenius, slidingco, dX]
+        normalization:
+          method: adaptive
+        network:
+          architecture: FNO2
+          pretrained: false
+          output_scale: 1.0
+      stages:
+        - active: all
+          optimizer: adam
+          nbit_init: 3000
+          nbit: 100
     normalization:
       method: adaptive
       fixed:
@@ -131,7 +158,7 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     data_preparation:
-      patch_size: 1000
+      patch_size: 100000
       overlap: 0.0
       batch_size: 32
       rotation_probability: 0.0

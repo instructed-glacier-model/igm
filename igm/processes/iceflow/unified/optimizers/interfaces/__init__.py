@@ -3,6 +3,7 @@ from .adam import InterfaceAdam
 from .lbfgs import InterfaceLBFGS
 from .cg import InterfaceCG
 from .sequential import InterfaceSequential
+from .composite import InterfaceComposite
 
 InterfaceOptimizers = {
     "adam": InterfaceAdam,
@@ -12,4 +13,5 @@ InterfaceOptimizers = {
     "lbfgs_da": InterfaceLBFGS,
     "cg": InterfaceCG,
     "sequential": InterfaceSequential,
+    "composite": InterfaceComposite,
 }
