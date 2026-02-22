@@ -6,7 +6,7 @@
 import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent
+from ..sliding import SlidingComponent, mask_gr
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
@@ -18,6 +18,7 @@ class CoulombParams(tf.experimental.ExtensionType):
     regu: float
     exponent: float
     mu: float
+    rho_ratio: float
 
 
 class Coulomb(SlidingComponent):
@@ -61,8 +62,9 @@ def cost_coulomb(
     m = tf.cast(coulomb_params.exponent, dtype)
     u_regu = tf.cast(coulomb_params.regu, dtype)
     μ = tf.cast(coulomb_params.mu, dtype)
+    rho_ratio = tf.cast(coulomb_params.rho_ratio, dtype)
 
-    return _cost(U, V, h, s, C, dx, m, μ, u_regu, discr_h, V_b)
+    return _cost(U, V, h, s, C, dx, m, μ, u_regu, rho_ratio, discr_h, V_b)
 
 
 @tf.function()
@@ -76,6 +78,7 @@ def _cost(
     m: tf.Tensor,
     μ: tf.Tensor,
     u_regu: tf.Tensor,
+    rho_ratio: tf.Tensor,
     discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:
@@ -105,6 +108,8 @@ def _cost(
         Till coefficient (-)
     u_regu : tf.Tensor
         Regularization parameter for velocity magnitude (m/year)
+    rho_ratio : tf.Tensor
+        Water density / ice density ratio (-)
     discr_h: HorizontalDiscr
         Horizontal discretization class (-)
     V_b : tf.Tensor
@@ -115,6 +120,11 @@ def _cost(
     tf.Tensor
         Coulomb sliding cost in MPa m/year
     """
+
+    # Apply grounding mask to sliding coefficient
+    topg = s - h
+    gr = mask_gr(h, topg, rho_ratio)
+    C = C * gr
 
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
