@@ -2,4 +2,9 @@ thk:
   slope_type: superbee
   ratio_density: 0.910
   default_sealevel: 0.0
-
+  flux_mode_h: zero
+  flux_mode_u: symmetric
+  time_scheme: explicit
+  omega: 1.0
+  tol: 1.0e-4
+  max_iter: 20
