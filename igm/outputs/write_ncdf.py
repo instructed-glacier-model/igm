@@ -16,7 +16,8 @@ def initialize(cfg, state):
     # give information on variables for output ncdf, TODO: IMPROVE
     state.var_info_ncdf_ex = {}
     state.var_info_ncdf_ex["topg"] = ["Basal Topography", "m"]
-    state.var_info_ncdf_ex["usurf"] = ["Surface Topography", "m"]
+    state.var_info_ncdf_ex["usurf"] = ["Upper Surface Topography", "m"]
+    state.var_info_ncdf_ex["lsurf"] = ["Lower Surface Topography", "m"]
     state.var_info_ncdf_ex["thk"] = ["Ice Thickness", "m"]
     state.var_info_ncdf_ex["icemask"] = ["Ice mask", "NO UNIT"]
     state.var_info_ncdf_ex["smb"] = ["Surface Mass Balance", "m/y ice eq"]
