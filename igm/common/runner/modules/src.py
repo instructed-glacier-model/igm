@@ -9,6 +9,7 @@ from ..modules.loader import load_modules
 
 import igm
 from itertools import cycle
+
 colors = cycle(["blue", "green", "yellow", "red", "magenta", "cyan", "white"])
 
 
@@ -18,7 +19,7 @@ def initialize_modules(processes: List, cfg: Any, state: State) -> None:
             state.logger.info(f"Initializing module: {module.__name__.split('.')[-1]}")
         module.initialize(cfg, state)
 
-          
+
 def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> None:
 
     state.it = 0
@@ -32,11 +33,11 @@ def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> No
             m = module.__name__.split(".")[-1]
             if cfg.core.print_comp:
                 state.tcomp[m].append(time.time())
-                
-            rng = igm.utils.profiling.srange(f"{m}", next(colors))
+
+            # rng = igm.utils.profiling.srange(f"{m}", next(colors))
             module.update(cfg, state)
-            igm.utils.profiling.erange(rng)
-            
+            # igm.utils.profiling.erange(rng)
+
             if cfg.core.print_comp:
                 state.tcomp[m][-1] -= time.time()
                 state.tcomp[m][-1] *= -1
