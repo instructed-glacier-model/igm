@@ -18,6 +18,9 @@ def pad_x(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
     elif mode == "extrapolate":
         X_l = 2.0 * X[..., :, 0:1] - 1.0 * X[..., :, 1:2]
         X_r = 2.0 * X[..., :, -1:] - 1.0 * X[..., :, -2:-1]
+    elif mode == "zero":
+        X_l = tf.zeros_like(X[..., :, 0:1])
+        X_r = tf.zeros_like(X[..., :, -1:])
     else:
         X_l = X[..., :, 0:1]
         X_r = X[..., :, -1:]
@@ -33,6 +36,9 @@ def pad_y(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
     elif mode == "extrapolate":
         X_l = 2.0 * X[..., 0:1, :] - 1.0 * X[..., 1:2, :]
         X_r = 2.0 * X[..., -1:, :] - 1.0 * X[..., -2:-1, :]
+    elif mode == "zero":
+        X_l = tf.zeros_like(X[..., 0:1, :])
+        X_r = tf.zeros_like(X[..., -1:, :])
     else:
         X_l = X[..., 0:1, :]
         X_r = X[..., -1:, :]
@@ -48,6 +54,9 @@ def pad_z(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
     elif mode == "extrapolate":
         X_l = 2.0 * X[..., 0:1, :, :] - 1.0 * X[..., 1:2, :, :]
         X_r = 2.0 * X[..., -1:, :, :] - 1.0 * X[..., -2:-1, :, :]
+    elif mode == "zero":
+        X_l = tf.zeros_like(X[..., 0:1, :, :])
+        X_r = tf.zeros_like(X[..., -1:, :, :])
     else:
         X_l = X[..., 0:1, :, :]
         X_r = X[..., -1:, :, :]
