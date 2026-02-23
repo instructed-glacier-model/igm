@@ -7,11 +7,11 @@ import numpy as np
 import tensorflow as tf 
 import matplotlib.pyplot as plt
 from igm.utils.math.getmag import getmag
-from igm.utils.gradient.compute_divflux import compute_divflux
+from igm.utils.grad.compute_divflux import compute_divflux
 from scipy import stats 
 from igm.processes.time.time import compute_dt_from_cfl
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
-from igm.utils.gradient.compute_divflux_slope_limiter import compute_divflux_slope_limiter
+from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
+from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
 
 def compute_rms_std_optimization(state, i):
     I = state.icemaskobs > 0.5

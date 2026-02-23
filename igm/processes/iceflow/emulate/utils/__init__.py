@@ -18,3 +18,5 @@ NormalizationsDict = {
     "automatic": StandardizationLayer,
     "none": IdentityTransformation,
 }
+
+from .networks import cnn, unet

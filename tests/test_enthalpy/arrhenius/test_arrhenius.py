@@ -9,10 +9,8 @@ import pytest
 import numpy as np
 import tensorflow as tf
 
-from igm.processes.enthalpy.arrhenius.utils import (
-    compute_T_pa_tf,
-    compute_arrhenius_3d_tf,
-)
+from igm.processes.enthalpy.temperature.utils import compute_pa_tf
+from igm.processes.enthalpy.arrhenius.utils import compute_arrhenius_3d_tf
 
 # Data type
 dtype = tf.float32
@@ -36,7 +34,7 @@ def test_T_pa_surface() -> None:
     T = tf.constant([[[260.0]]], dtype=dtype)
     depth_ice = tf.constant([[[0.0]]], dtype=dtype)
 
-    T_pa = compute_T_pa_tf(T, beta, rho_ice, g, depth_ice)
+    T_pa = compute_pa_tf(T, beta, rho_ice, g, depth_ice)
 
     np.testing.assert_allclose(T_pa.numpy(), T.numpy(), rtol=1e-6)
 
@@ -55,7 +53,7 @@ def test_T_pa_depth(depth: float, delta_expected: float) -> None:
     T = tf.constant([[[260.0]]], dtype=dtype)
     depth_ice = tf.constant([[[depth]]], dtype=dtype)
 
-    T_pa = compute_T_pa_tf(T, beta, rho_ice, g, depth_ice)
+    T_pa = compute_pa_tf(T, beta, rho_ice, g, depth_ice)
 
     np.testing.assert_allclose(
         T_pa.numpy()[0, 0, 0] - T.numpy()[0, 0, 0],

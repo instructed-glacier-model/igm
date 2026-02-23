@@ -7,65 +7,26 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+from ..temperature import compute_pa
 
 
-def compute_T_pa(cfg: DictConfig, state: State) -> tf.Tensor:
-    """
-    Compute the pressure-adjusted temperature field.
-
-    Adjusts the temperature field for the pressure-melting point depression
-    using the Clausius-Clapeyron relation.
-
-    Returns:
-        Pressure-adjusted temperature (K).
-    """
-    cfg_physics = cfg.processes.iceflow.physics
-    cfg_thermal = cfg.processes.enthalpy.thermal
-
-    rho_ice = cfg_physics.ice_density
-    g = cfg_physics.gravity_cst
-    beta = cfg_thermal.beta
-
-    depth_ice = state.iceflow.discr_v.enthalpy.depth * state.thk[None, ...]
-
-    return compute_T_pa_tf(state.T, beta, rho_ice, g, depth_ice)
-
-
-@tf.function()
-def compute_T_pa_tf(
-    T: tf.Tensor,
-    beta: tf.Tensor,
-    rho_ice: tf.Tensor,
-    g: tf.Tensor,
-    depth_ice: tf.Tensor,
+def compute_arrhenius_3d(
+    cfg: DictConfig, state: State, T: tf.Tensor, omega: tf.Tensor
 ) -> tf.Tensor:
-    """
-    TensorFlow function to compute pressure-adjusted temperature.
-
-    Args:
-        T: Temperature field (K).
-        beta: Clausius-Clapeyron constant (K Pa^-1).
-        rho_ice: Ice density (kg m^-3).
-        g: Gravitational acceleration (m s^-2).
-        depth_ice: Depth below ice surface (m).
-
-    Returns:
-        Pressure-adjusted temperature (K).
-    """
-    return T + beta * rho_ice * g * depth_ice
-
-
-def compute_arrhenius_3d(cfg: DictConfig, state: State) -> tf.Tensor:
     """
     Compute the 3D Arrhenius factor field for ice viscosity.
 
     Uses a two-regime Arrhenius law (cold/warm ice) with water content enhancement
     to compute the rate factor throughout the ice column.
 
+    Args:
+        T: Temperature field (K).
+        omega: Water content fraction (-).
+
     Returns:
         3D Arrhenius factor field (MPa^-n yr^-1).
     """
-    T_pa = compute_T_pa(cfg, state)
+    T_pa = compute_pa(cfg, state, T)
 
     cfg_arrhenius = cfg.processes.enthalpy.arrhenius
 
@@ -79,7 +40,7 @@ def compute_arrhenius_3d(cfg: DictConfig, state: State) -> tf.Tensor:
     R = cfg_arrhenius.R
 
     return compute_arrhenius_3d_tf(
-        state.omega,
+        omega,
         T_pa,
         T_threshold,
         A_cold,

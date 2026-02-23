@@ -189,20 +189,8 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-        first_batch = self.sampler(inputs)  # [M, B, H, W, C]
-        n_batches = first_batch.shape[0]
-        if n_batches != 1:
-            raise NotImplementedError("❌ L-BFGS requires a single batch.")
-
-        if getattr(self.sampler, "dynamic_augmentation", False):
-            static_batches = None
-            dynamic_augmentation = True
-        else:
-            # Sampler does not change data between calls → build once and reuse.
-            static_batches = first_batch
-            dynamic_augmentation = False
-
-        input = first_batch[0, :, :, :, :]  # Define before loop for AutoGraph
+        # inputs: [N, H, W, C] — used as a single full batch (LBFGS is full-batch)
+        input = inputs  # Define before loop for AutoGraph
 
         # State variables
         theta_flat = self.map.flatten_theta(self.map.get_theta())
@@ -224,13 +212,7 @@ class OptimizerLBFGS(Optimizer):
 
         for iter in tf.range(self.iter_max):
 
-            # Sample fresh augmented batch for this iteration
-            if dynamic_augmentation:
-                next_batch = self.sampler(inputs)  # [M, B, H, W, C]
-            else:
-                next_batch = static_batches  # [M, B, H, W, C]
-
-            input = next_batch[0, :, :, :, :]
+            input = inputs
 
             theta_prev = theta_flat
             grad_theta_prev = grad_theta_flat

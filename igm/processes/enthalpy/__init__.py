@@ -1,5 +1,9 @@
 from .enthalpy import (
     initialize,
     finalize,
-    update
+    update,
+)
+from .utils import (
+    compute_variables_enthalpy_state,
+    compute_variables_enthalpy_np,
 )

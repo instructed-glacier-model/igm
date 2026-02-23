@@ -56,21 +56,20 @@ def test_T_pmp_surface() -> None:
 
 
 @pytest.mark.parametrize(
-    "E,E_pmp,T_pmp,T_expected",
+    "E,E_pmp,T_expected",
     [
-        (-50000.0, 0.0, 273.15, 198.26),
-        (1000.0, 0.0, 273.15, 273.15),
-        (0.0, 0.0, 273.15, 273.15),
-        (-100000.0, 0.0, 273.15, 173.37),
+        (-50000.0, 0.0, 198.26),
+        (1000.0, 0.0, 223.15),
+        (0.0, 0.0, 223.15),
+        (-100000.0, 0.0, 173.37),
     ],
 )
-def test_compute_T(E: float, E_pmp: float, T_pmp: float, T_expected: float) -> None:
+def test_compute_T(E: float, E_pmp: float, T_expected: float) -> None:
     """Test temperature computation from enthalpy."""
     E_tf = tf.constant([[E]], dtype=dtype)
     E_pmp_tf = tf.constant([[E_pmp]], dtype=dtype)
-    T_pmp_tf = tf.constant([[T_pmp]], dtype=dtype)
 
-    T = compute_T_tf(E_tf, E_pmp_tf, T_pmp_tf, T_ref, c_ice)
+    T = compute_T_tf(E_tf, E_pmp_tf, T_ref, c_ice)
 
     np.testing.assert_allclose(T.numpy(), T_expected, rtol=1e-3)
 
@@ -79,9 +78,9 @@ def test_T_cold_ice() -> None:
     """Test cold ice temperature is less than PMP."""
     E = tf.constant([[-50000.0]], dtype=dtype)
     E_pmp = tf.constant([[0.0]], dtype=dtype)
-    T_pmp = tf.constant([[273.15]], dtype=dtype)
+    T_pmp = tf.constant([[223.15]], dtype=dtype)
 
-    T = compute_T_tf(E, E_pmp, T_pmp, T_ref, c_ice)
+    T = compute_T_tf(E, E_pmp, T_ref, c_ice)
 
     assert T.numpy()[0, 0] < T_pmp.numpy()[0, 0]
 
@@ -90,9 +89,9 @@ def test_T_temperate_ice() -> None:
     """Test temperate ice temperature equals PMP."""
     E = tf.constant([[10000.0]], dtype=dtype)
     E_pmp = tf.constant([[0.0]], dtype=dtype)
-    T_pmp = tf.constant([[273.15]], dtype=dtype)
+    T_pmp = tf.constant([[223.15]], dtype=dtype)
 
-    T = compute_T_tf(E, E_pmp, T_pmp, T_ref, c_ice)
+    T = compute_T_tf(E, E_pmp, T_ref, c_ice)
 
     np.testing.assert_allclose(T.numpy(), T_pmp.numpy(), rtol=1e-6)
 
@@ -150,7 +149,7 @@ def test_consistency_cold() -> None:
     T_pmp = tf.constant([[273.15]], dtype=dtype)
 
     # E -> T
-    T = compute_T_tf(E_original, E_pmp, T_pmp, T_ref, c_ice)
+    T = compute_T_tf(E_original, E_pmp, T_ref, c_ice)
     # T -> E
     E_final = compute_E_cold_tf(T, T_pmp, T_ref, c_ice)
 
@@ -162,9 +161,8 @@ def test_T_omega_shapes() -> None:
     nz, ny, nx = 5, 3, 4
     E = tf.ones((nz, ny, nx), dtype=dtype) * -30000.0
     E_pmp = tf.zeros((nz, ny, nx), dtype=dtype)
-    T_pmp = tf.ones((nz, ny, nx), dtype=dtype) * 273.15
 
-    T = compute_T_tf(E, E_pmp, T_pmp, T_ref, c_ice)
+    T = compute_T_tf(E, E_pmp, T_ref, c_ice)
     omega = compute_omega_tf(E, E_pmp, L_ice)
 
     assert T.shape == (nz, ny, nx)

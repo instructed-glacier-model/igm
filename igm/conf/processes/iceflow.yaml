@@ -52,7 +52,7 @@ iceflow:
     warm_up_it: -10000000000.0
     nbit_init: 1
     nbit: 1
-    framesizemax: 750
+    framesizemax: 1000
     split_patch_method: sequential
     pretrained: true
     name: ''
@@ -158,14 +158,8 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     data_preparation:
-      patch_size: 100000
-      overlap: 0.0
-      batch_size: 32
-      rotation_probability: 0.0
-      flip_probability: 0.0
-      noise_type: none
-      noise_scale: 0.0
-      target_samples: 1
+      framesizemax: 1000
+      patches_per_batch: 1
     halt:
       freq: 1
       success: []

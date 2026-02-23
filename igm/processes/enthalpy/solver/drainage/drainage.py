@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
@@ -10,13 +11,16 @@ from igm.common import State
 from .utils import compute_fraction_drained
 
 
-def update_drainage(cfg: DictConfig, state: State) -> None:
+def update_drainage(cfg: DictConfig, state: State, E_pmp: tf.Tensor) -> None:
     """
     Update enthalpy field by draining excess water from the ice column.
 
     Removes water content exceeding threshold values and adds the drained
     water to the basal melt rate. Skips drainage if dt is zero or drainage
     is disabled in configuration.
+
+    Args:
+        E_pmp: Pressure melting point enthalpy (J kg^-1).
 
     Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
     """
@@ -43,7 +47,7 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
 
     fraction_drained, h_drained = compute_fraction_drained(
         state.E,
-        state.E_pmp,
+        E_pmp,
         L_ice,
         omega_target,
         omega_threshold_1,

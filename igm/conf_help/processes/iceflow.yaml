@@ -75,10 +75,6 @@ physics:
     Type: float
     Description: "Glen's flow law exponent."
     Units: dimless
-  exp_weertman:
-    Type: float
-    Description: "Weertman's law exponent."
-    Units: dimless
   regu_glen:
     Type: float
     Description: "Regularization parameter for Glen's flow law."
@@ -179,7 +175,7 @@ emulator:
     Description: "Decay learning-rate parameter for the training of the emulator."
     Units: dimless
   warm_up_it:
-    Type: integer
+    Type: float
     Description: "Number of iterations for a warm-up period, allowing intense initial training."
     Units: dimless
   nbit_init:
@@ -318,7 +314,7 @@ unified:
     Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we."
     Units: dimless
   optimizer:
-    Type: list
+    Type: string
     Description: "Type of optimizer used to solve the ice flow."
     Units: dimless
   nbit:
@@ -380,55 +376,79 @@ unified:
     Type: list
     Description: "Input fields of the mapping for the ice flow."
     Units: dimless
-  scaling:
+  normalization:
     method:
       Type: string
-      Description: "Type of method used for the scaling of the inputs."
+      Description: "Type of method used for the normalization of the inputs: adaptive, fixed."
       Units: dimless
-    manual:
-      inputs_scales:
+    fixed:
+      inputs_offsets:
         thk:
           Type: float
-          Description: "Manual scale of the input thk."
+          Description: "Fixed offset for the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual scale of the input usurf."
+          Description: "Fixed offset for the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual scale of the input arrhenius."
+          Description: "Fixed offset for the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual scale of the input slidingco."
+          Description: "Fixed offset for the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual scale of the input dX."
+          Description: "Fixed offset for the input dX."
+          Units: m
+        X:
+          Type: float
+          Description: "Fixed offset for the input X."
+          Units: m
+        Y:
+          Type: float
+          Description: "Fixed offset for the input Y."
           Units: m
       inputs_variances:
         thk:
           Type: float
-          Description: "Manual variance of the input thk."
+          Description: "Fixed variance for the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual variance of the input usurf."
+          Description: "Fixed variance for the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual variance of the input arrhenius."
+          Description: "Fixed variance for the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual variance of the input slidingco."
+          Description: "Fixed variance for the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual variance of the input dX."
+          Description: "Fixed variance for the input dX."
+          Units: m
+        X:
+          Type: float
+          Description: "Fixed variance for the input X."
+          Units: m
+        Y:
+          Type: float
+          Description: "Fixed variance for the input Y."
           Units: m
   network:
+    debug_mode:
+      Type: boolean
+      Description: "Enable debug mode for the optimizer."
+      Units: dimless
+    debug_freq:
+      Type: integer
+      Description: "Frequency of debug output."
+      Units: dimless
     pretrained:
       Type: boolean
       Description: "Use a pretrained network instead of starting from scratch."
@@ -446,37 +466,13 @@ unified:
       Description: "Type of network."
       Units: dimless
   data_preparation:
-    patch_size:
+    framesizemax:
       Type: integer
-      Description: "Size of a patch."
+      Description: "Maximum patch size; the domain is split into non-overlapping patches no larger than this value to avoid GPU memory overload."
       Units: dimless
-    overlap:
-      Type: float
-      Description: "Fraction of overlap between the patches."
-      Units: dimless
-    batch_size:
+    patches_per_batch:
       Type: integer
-      Description: "Size of batch."
-      Units: dimless
-    rotation_probability:
-      Type: float
-      Description: "Probability of rotation."
-      Units: dimless
-    flip_probability:
-      Type: float
-      Description: "Probability of flip."
-      Units: dimless
-    noise_type:
-      Type: string
-      Description: "Type of noise."
-      Units: dimless
-    noise_scale:
-      Type: float
-      Description: "Scale of the noise."
-      Units: dimless
-    target_samples:
-      Type: integer
-      Description: "Target for the number of samples."
+      Description: "Number of patches processed per mini-batch during optimization."
       Units: dimless
   halt:
     freq:

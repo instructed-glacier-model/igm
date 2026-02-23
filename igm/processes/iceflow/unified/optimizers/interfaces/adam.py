@@ -50,6 +50,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "clip_norm": cfg_unified.adam.optimizer_clipnorm,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            "batch_size": cfg_unified.data_preparation.patches_per_batch,
         }
 
     @staticmethod

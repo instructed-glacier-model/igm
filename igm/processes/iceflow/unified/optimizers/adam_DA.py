@@ -53,6 +53,7 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
         iter_max: int = int(1e5),
         lr_decay: float = 0.0,
         lr_decay_steps: int = 1000,
+        batch_size: int = 1,
         **kwargs: Any,
     ):
         super().__init__(
@@ -65,6 +66,7 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
             iter_max=iter_max,
             lr_decay=lr_decay,
             lr_decay_steps=lr_decay_steps,
+            batch_size=batch_size,
         )
 
         self.name = "ADAM_Data_Assimilation"

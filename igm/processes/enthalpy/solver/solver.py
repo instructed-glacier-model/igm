@@ -13,12 +13,25 @@ from .vertical import update_vertical
 from .drainage import update_drainage
 
 
-def update_enthalpy(cfg: DictConfig, state: State) -> None:
+def update_enthalpy(
+    cfg: DictConfig,
+    state: State,
+    strain_heat: tf.Tensor,
+    friction_heat: tf.Tensor,
+    E_pmp: tf.Tensor,
+    E_s: tf.Tensor,
+) -> None:
     """
     Update the enthalpy field over a time step.
 
     Performs the complete enthalpy evolution including horizontal advection
     (explicit), vertical advection-diffusion (implicit), and water drainage.
+
+    Args:
+        strain_heat: Volumetric strain heating rate (W m^-3).
+        friction_heat: Areal frictional heating rate at the bed (W m^-2).
+        E_pmp: Pressure melting point enthalpy (J kg^-1).
+        E_s: Surface enthalpy boundary condition (J kg^-1).
 
     Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
     """
@@ -26,10 +39,10 @@ def update_enthalpy(cfg: DictConfig, state: State) -> None:
     update_horizontal(cfg, state)
 
     # Vertical advection-diffusion (implicit)
-    update_vertical(cfg, state)
+    update_vertical(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
 
     # Drainage
-    update_drainage(cfg, state)
+    update_drainage(cfg, state, E_pmp)
 
     # Prevent refreezing if needed
     allow_basal_refreezing = cfg.processes.enthalpy.solver.allow_basal_refreezing
