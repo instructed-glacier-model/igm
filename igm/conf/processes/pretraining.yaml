@@ -7,3 +7,5 @@ pretraining:
   learning_rate: 0.0001
   out_dir: "/path/to/save/models/"
   resume: false
+  make_plots: false 
+  save_model: true # if false do not save the model -OR- any checkpoints (useful for hyperparameter tuning)
