@@ -56,23 +56,21 @@ def make_datasets(
     val_seed: int = 1234,
 ) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
-    # --- TRAIN (infinite stream): repeat -> shuffle (no seed) -> parse -> batch -> prefetch
-    train_ds = tf.data.TFRecordDataset(
-        train_files,
-        compression_type=compression,
-        num_parallel_reads=tf.data.AUTOTUNE,
-    )
-    train_ds = train_ds.repeat()
-    train_ds = train_ds.shuffle(
-        buffer_size=shuffle_buffer,
-        reshuffle_each_iteration=True,  # mostly irrelevant with a persistent iterator, harmless
-    )
-    train_ds = train_ds.map(
-        lambda s: parse_example(s, H, W, Nz),
+    files = tf.data.Dataset.from_tensor_slices(train_files)
+    files = files.shuffle(len(train_files), reshuffle_each_iteration=True).repeat()
+
+    train_ds = files.interleave(
+        lambda f: tf.data.TFRecordDataset(f, compression_type=compression),
+        cycle_length=16,
+        block_length=4,
         num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=False,
     )
-    train_ds = train_ds.batch(batch_size, drop_remainder=True)
-    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
+
+    train_ds = train_ds.shuffle(buffer_size=shuffle_buffer, reshuffle_each_iteration=True)
+    train_ds = train_ds.map(lambda s: parse_example(s, H, W, Nz),
+                            num_parallel_calls=tf.data.AUTOTUNE)
+    train_ds = train_ds.batch(batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
 
     # --- VAL (finite each epoch): shuffle (seeded) -> parse -> batch -> prefetch
     val_ds = tf.data.TFRecordDataset(
