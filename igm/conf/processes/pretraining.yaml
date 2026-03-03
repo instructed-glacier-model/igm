@@ -1,6 +1,7 @@
 pretraining:
   data_dir: "/path/to/tfrecords/"
-  batch_size: 1
+  batch_size: 8 # the batch size is the number of training images you want to process before updating the model weights. 
+  micro_batch_size: 8 # here a micro batch is the amount of training images you want to process simultaneously on the GPU. If your GPU memory is not large enough to process the full batch size, you can set this to a smaller number and the training loop will automatically accumulate gradients until it has processed the full batch size before updating the model weights. Note that the batch size must be divisible by the micro batch size.
   epochs: 1000
   experiment_name: "name_of_model"
   loss_type: "huber"

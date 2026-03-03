@@ -35,11 +35,6 @@ def update(cfg, state):
 def finalize(cfg, state):
     pass
 
-
-# ----------------------------
-# Dataclasses to reduce argument sprawl
-# ----------------------------
-
 @dataclass
 class MetricsBundle:
     train_total: tf.keras.metrics.Metric
@@ -78,6 +73,7 @@ class LoopContext:
     out_dir: Path
     make_plots: bool
     save_model: bool
+    accum_steps: int 
 
 
 def _prepare_run_dirs(out_dir: Path, resume: bool) -> Tuple[Path, Path]:
@@ -177,30 +173,30 @@ def _append_epoch(history: HistoryBundle, metrics: MetricsBundle) -> Tuple[float
 
 
 def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: HistoryBundle) -> None:
-    """
-    Non-TF orchestration: epoch loop, metric resets, history appends, printing,
-    optional plotting, optional checkpointing, and optional history.yaml persistence.
-    """
-    TRAIN_STEPS = 1000
-    VAL_STEPS   = 20
+    
+    TRAIN_UPDATES = 1000 # optimizer updates per epoch
+    VAL_STEPS     = 50
+
+    # We must feed micro-batches to train_step; one optimizer update happens every ctx.accum_steps micro-batches
+    TRAIN_MICRO_STEPS = TRAIN_UPDATES * int(ctx.accum_steps)
 
     train_it = iter(ctx.train_ds)  # infinite because of .repeat()
 
     for epoch in range(ctx.start_epoch, ctx.n_epochs):
 
         _reset_metrics(metrics)
+
         # --- train ---
-        for _ in range(TRAIN_STEPS):
+        for _ in range(TRAIN_MICRO_STEPS):
             x_b, y_b = next(train_it)
             ctx.train_step(x_b, y_b)
 
-        # --- validate (new iterator each epoch => new shuffle order) ---
+        # --- validate ---
         val_it = iter(ctx.val_ds)
         for _ in range(VAL_STEPS):
             x_b, y_b = next(val_it)
             ctx.val_step(x_b, y_b)
 
-        # --- append histories ---
         tt, td, tp, lam = _append_epoch(history, metrics)
 
         print(
@@ -212,7 +208,6 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
             f"val_total={history.val_total[-1]:.6e}"
         )
 
-        # --- plots + comparisons (optional) ---
         if ctx.make_plots:
             save_loss_plot(
                 history.train_total, history.val_total,
@@ -231,7 +226,6 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
                 ctx.fig_dir / f"speed_compare_epoch{epoch+1:04d}.png",
             )
 
-        # --- persistence (optional) ---
         if ctx.save_model:
             if ctx.ckpt_mgr is not None:
                 ctx.ckpt_mgr.save()
@@ -246,7 +240,6 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
                 val_phys_hist=history.val_phys,
                 lambda_hist=history.lambda_phys,
             )
-
 
 def initialize(cfg, state):
     tf.config.optimizer.set_jit(False)
@@ -266,7 +259,7 @@ def initialize(cfg, state):
 
     out_dir = Path(cfg_pretraining.out_dir) / cfg_pretraining.experiment_name
 
-    # If save_model=False, we force resume off (your requirement: no resume/manifest/checkpoints).
+    # If save_model=False, we force resume off to avoid collisions and confusion
     resume = bool(getattr(cfg_pretraining, "resume", False)) if save_model else False
 
     # Only create the run directory if we will actually write something (plots or model artifacts).
@@ -295,20 +288,39 @@ def initialize(cfg, state):
             fig_dir.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------
-    # D) Datasets
+    # D) Datasets + gradient accumulation sizes
     # ----------------------------
+    effective_bs = int(cfg_pretraining.batch_size)
+    micro_bs = int(getattr(cfg_pretraining, "micro_batch_size", effective_bs))
+
+    if micro_bs <= 0 or effective_bs <= 0:
+        raise ValueError(f"batch_size and micro_batch_size must be > 0, got batch_size={effective_bs}, micro_batch_size={micro_bs}")
+
+    if micro_bs > effective_bs:
+        raise ValueError(f"micro_batch_size ({micro_bs}) cannot exceed batch_size ({effective_bs})")
+
+    if effective_bs % micro_bs != 0:
+        raise ValueError(
+            f"batch_size ({effective_bs}) must be divisible by micro_batch_size ({micro_bs}) "
+            f"for clean accumulation, but {effective_bs} % {micro_bs} != 0"
+        )
+
+    accum_steps_py = effective_bs // micro_bs
+    print(f"[grad-accum] effective_bs={effective_bs} micro_bs={micro_bs} accum_steps={accum_steps_py}")
+
     train_files = list_shards(tfrecord_root, Nz, split="train")
     val_files   = list_shards(tfrecord_root, Nz, split="val")
 
     rng = random.Random(getattr(cfg_pretraining, "split_seed", 0))
-    rng.shuffle(train_files)  # shuffle train only; val can stay deterministic
+    rng.shuffle(train_files)
 
+    # use micro_bs in the dataset pipeline
     train_ds, val_ds = make_datasets(
         train_files=train_files,
         val_files=val_files,
         H=H, W=W, Nz=Nz,
         compression="GZIP",
-        batch_size=cfg_pretraining.batch_size,
+        batch_size=micro_bs,
     )
 
     # ----------------------------
@@ -319,13 +331,40 @@ def initialize(cfg, state):
     state.iceflow.mapping = mapping
 
     # ----------------------------
-    # E2) Compute normalization stats ONCE (Keras), then attach FixedChannelStandardization (forward pass)
-    #     Manifest interactions are optional (save_model flag).
+    # E2) Normalization + single build (vars created after normalizer is attached)
     # ----------------------------
     manifest_path = out_dir / "manifest.yaml"
     desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
-    if not resume:
+    dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
+    dummy0  = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
+
+    if resume:
+        # For resume, normalization comes from manifest (single source of truth) BEFORE building/restoring
+        if not manifest_path.exists():
+            raise FileNotFoundError(
+                f"resume=True but {manifest_path} not found. "
+                "You chose manifest as source of truth; it must exist."
+            )
+
+        raw = yaml.safe_load(manifest_path.read_text())
+        p = raw["normalization"]["params"]
+        mean_1d = np.asarray(p["mean_1d"], dtype=np.float64)
+        var_1d  = np.asarray(p["var_1d"],  dtype=np.float64)
+        eps = float(p.get("epsilon", p.get("variance_epsilon", 1e-7)))
+
+        norm2 = FixedChannelStandardization(
+            mean_1d=mean_1d,
+            var_1d=var_1d,
+            epsilon=eps,
+            dtype=desired_dtype,
+            name="input_norm",
+        )
+        _ = norm2(dummy0)  # build the normalizer variables (if any)
+        state.iceflow_model.input_normalizer = norm2
+        print("[norm] resume=True: attached fixed normalizer from manifest before restore")
+    else:
+        # Fresh run: compute stats, then attach FixedChannelStandardization BEFORE building model vars
         tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float64)
         tmp.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000))
 
@@ -335,7 +374,6 @@ def initialize(cfg, state):
         mean_1d = tmp.mean.numpy().reshape(-1).astype(np.float64)
         var_1d  = tmp.variance.numpy().reshape(-1).astype(np.float64)
         eps = 1e-7
-
         print(f"[norm-stats] computed once: mean={mean_1d} var={var_1d}")
 
         state.iceflow_model.input_normalizer = FixedChannelStandardization(
@@ -345,31 +383,32 @@ def initialize(cfg, state):
             dtype=desired_dtype,
             name="input_norm",
         )
-        _ = state.iceflow_model.input_normalizer(tf.zeros((1, H, W, Cx), dtype=desired_dtype))
+        _ = state.iceflow_model.input_normalizer(dummy0)
 
-        # Write schema v3 manifest immediately (optional)
-        if save_model:
-            if not manifest_path.exists():
-                dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
-                y0 = state.iceflow_model(dummy_x, training=False)
-                nb_outputs = int(y0.shape[-1])
+    # Proper model build (creates model variables using the FINAL normalizer wiring)
+    y0 = state.iceflow_model(dummy_x, training=False)
+    nb_outputs = int(y0.shape[-1])
 
-                manifest_v3 = build_manifest_v3(
-                    cfg=cfg,
-                    model=state.iceflow_model,
-                    inputs=list(inputs),
-                    nb_outputs=nb_outputs,
-                )
-                manifest_path.write_text(yaml.safe_dump(manifest_v3.to_dict(), sort_keys=False))
-                print(f"[manifest] wrote schema v3 {manifest_path}")
-            else:
-                print(f"[manifest] exists, not overwriting: {manifest_path}")
-
-    else:
-        # This block is only reachable if save_model=True (resume forced off otherwise).
-        print("[norm] resume=True: will attach FixedChannelStandardization from manifest after checkpoint restore")
+    # Write manifest only on fresh runs (optional)
+    if (not resume) and save_model:
+        if not manifest_path.exists():
+            manifest_v3 = build_manifest_v3(
+                cfg=cfg,
+                model=state.iceflow_model,
+                inputs=list(inputs),
+                nb_outputs=nb_outputs,
+            )
+            manifest_path.write_text(yaml.safe_dump(manifest_v3.to_dict(), sort_keys=False))
+            print(f"[manifest] wrote schema v3 {manifest_path}")
+        else:
+            print(f"[manifest] exists, not overwriting: {manifest_path}")
 
     opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
+
+    # If resuming and restoring optimizer state, ensure slots exist before restore:
+    if save_model and resume and hasattr(opt, "build"):
+        opt.build(state.iceflow_model.trainable_variables)
+
     physics_cost_fn = get_cost_fn(cfg, state)
 
     lt = cfg_pretraining.loss_type.lower()
@@ -396,16 +435,36 @@ def initialize(cfg, state):
         )
         return data_loss, phys_loss
 
-    def safe_global_norm(grads):
-        gs = [g for g in grads if g is not None]
-        return tf.linalg.global_norm(gs) if gs else tf.constant(0.0, tf.float32)
-
     EMA          = tf.constant(0.99, tf.float32)
     UPDATE_EVERY = tf.constant(100, tf.int64)
     LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(1e3, tf.float32)
+    LAM_MAX      = tf.constant(1e2, tf.float32)
     EPS          = tf.constant(1e-6, tf.float32)
-    WARMUP_STEPS = tf.constant(100000, tf.int64)
+    WARMUP_STEPS = tf.constant(10000, tf.int64)
+    ACCUM_STEPS = tf.constant(accum_steps_py, tf.int64)
+    ACCUM_STEPS_F = tf.cast(ACCUM_STEPS, tf.float32)
+
+    accum_count = tf.Variable(0, trainable=False, dtype=tf.int64, name="accum_count")
+
+    # Two gradient buffers:
+    #   - accum_g: holds either total grads (normal cycles) OR data grads (lambda-update cycles)
+    #   - accum_g_phys: holds phys grads only during lambda-update cycles (else remains zero)
+    vars_ = state.iceflow_model.trainable_variables
+    accum_g      = [tf.Variable(tf.zeros_like(v, dtype=tf.float32), trainable=False, name=f"accum_g_{i}")      for i, v in enumerate(vars_)]
+    accum_g_phys = [tf.Variable(tf.zeros_like(v, dtype=tf.float32), trainable=False, name=f"accum_gp_{i}")     for i, v in enumerate(vars_)]
+
+    # Loss accumulators (so metrics reflect the effective batch)
+    accum_data_loss = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="accum_data_loss")
+    accum_phys_loss = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="accum_phys_loss")
+
+    def _zero_accumulators():
+        for ag in accum_g:
+            ag.assign(tf.zeros_like(ag))
+        for ap in accum_g_phys:
+            ap.assign(tf.zeros_like(ap))
+        accum_data_loss.assign(0.0)
+        accum_phys_loss.assign(0.0)
+        accum_count.assign(0)
 
     step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
     lambda_phys = tf.Variable(0.1, trainable=False, dtype=tf.float32, name="lambda_phys")
@@ -426,77 +485,145 @@ def initialize(cfg, state):
     # ----------------------------
     # G) Train/val steps
     # ----------------------------
+    def _global_norm_vars(var_list):
+        # var_list are tf.Variables (tensors), never None here
+        return tf.linalg.global_norm([tf.convert_to_tensor(v) for v in var_list])
+
     @tf.function(reduce_retracing=True, jit_compile=False)
     def train_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
-        vars_ = state.iceflow_model.trainable_variables
-        step.assign_add(1)
-
-        in_warmup = step <= WARMUP_STEPS
-        do_update = tf.equal(step % UPDATE_EVERY, 0)
+        # step counts OPTIMIZER UPDATES (effective batches)
+        next_step = step + 1
+        cycle_in_warmup = next_step <= WARMUP_STEPS
+        cycle_do_update = tf.logical_and(
+            tf.logical_not(cycle_in_warmup),
+            tf.equal(next_step % UPDATE_EVERY, 0),
+        )
 
         tf.debugging.assert_all_finite(x_batch, "train: x_batch has NaN/Inf")
         tf.debugging.assert_all_finite(y_batch, "train: y_batch has NaN/Inf")
 
-        def update_branch():
-            with tf.GradientTape(persistent=True) as tape:
-                data_loss, phys_loss = compute_losses(x_batch, y_batch, in_warmup)
+        # there are two accum methods, one for warmup+normal cycles where we just accumulate total grads, and one for lambda-update cycles where we accumulate data and phys grads separately for the lambda update
+        # this saves compute by not doing extra forward/backward passes during warmup and normal cycles, in these cases the total gradient can be calculated without a persistent tape because we don't need separate data vs phys grads for the lambda update
+        # however for the lambda update cycles we do need separate data vs phys grads, because the weighting of the two is based on their relative magnitudes, so they have to be calculated independently and stored separately in accum_g and accum_g_phys
 
-            g_data = tape.gradient(data_loss, vars_)
-            g_phys = tape.gradient(phys_loss, vars_)
+        def _accum_warmup_or_normal():
+            with tf.GradientTape() as tape:
+                dl, pl = compute_losses(x_batch, y_batch, in_warmup=cycle_in_warmup)
+                total = tf.cond(
+                    cycle_in_warmup,
+                    lambda: dl,
+                    lambda: dl + tf.cast(lambda_phys, dl.dtype) * tf.cast(pl, dl.dtype),
+                )
+            grads = tape.gradient(total, vars_)
+
+            for ag, g in zip(accum_g, grads):
+                if g is not None:
+                    ag.assign_add(tf.cast(g, tf.float32))
+
+            accum_data_loss.assign_add(tf.cast(dl, tf.float32))
+            accum_phys_loss.assign_add(tf.cast(pl, tf.float32))
+            return tf.constant(0)
+
+        def _accum_for_lambda_update():
+            # only called when cycle_do_update=True (so not warmup)
+            with tf.GradientTape(persistent=True) as tape:
+                dl, pl = compute_losses(x_batch, y_batch, in_warmup=tf.constant(False))
+            g_data = tape.gradient(dl, vars_)
+            g_phys = tape.gradient(pl, vars_)
             del tape
 
-            norm_data = safe_global_norm(g_data)
-            norm_phys = safe_global_norm(g_phys)
+            for ag, gd in zip(accum_g, g_data):
+                if gd is not None:
+                    ag.assign_add(tf.cast(gd, tf.float32))
 
-            lam_hat = norm_data / (norm_phys + EPS)
+            for ap, gp in zip(accum_g_phys, g_phys):
+                if gp is not None:
+                    ap.assign_add(tf.cast(gp, tf.float32))
 
-            MAX_UP   = tf.constant(2.0, tf.float32)
-            MAX_DOWN = tf.constant(2.0, tf.float32)
-            lam_hat = tf.clip_by_value(lam_hat, lambda_phys / MAX_DOWN, lambda_phys * MAX_UP)
+            accum_data_loss.assign_add(tf.cast(dl, tf.float32))
+            accum_phys_loss.assign_add(tf.cast(pl, tf.float32))
+            return tf.constant(0)
 
-            lam_new = EMA * lambda_phys + (1.0 - EMA) * tf.stop_gradient(lam_hat)
-            lam_new = tf.clip_by_value(lam_new, LAM_MIN, LAM_MAX)
-            lambda_phys.assign(lam_new)
-
-            grads = []
-            for gd, gp in zip(g_data, g_phys):
-                if gd is None and gp is None:
-                    grads.append(None)
-                elif gd is None:
-                    grads.append(lam_new * gp)
-                elif gp is None:
-                    grads.append(gd)
-                else:
-                    grads.append(gd + lam_new * gp)
-
-            opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
-            total_loss = data_loss + tf.cast(lam_new, data_loss.dtype) * tf.cast(phys_loss, data_loss.dtype)
-            return data_loss, phys_loss, total_loss, lam_new
-
-        def normal_branch():
-            with tf.GradientTape() as tape:
-                data_loss, phys_loss = compute_losses(x_batch, y_batch, in_warmup)
-                total_loss = tf.cond(
-                    in_warmup,
-                    lambda: data_loss,
-                    lambda: data_loss + tf.cast(lambda_phys, data_loss.dtype) * tf.cast(phys_loss, data_loss.dtype),
-                )
-                lam = tf.where(in_warmup, tf.constant(0.0, tf.float32), lambda_phys)
-
-            grads = tape.gradient(total_loss, vars_)
-            opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
-            return data_loss, phys_loss, total_loss, lam
-
-        data_loss, phys_loss, total_loss, lam = tf.cond(
-            in_warmup,
-            normal_branch,
-            lambda: tf.cond(do_update, update_branch, normal_branch),
+        tf.cond(
+            cycle_do_update,
+            _accum_for_lambda_update,
+            _accum_warmup_or_normal,
         )
 
-        metrics.train_data.update_state(data_loss)
-        metrics.train_phys.update_state(phys_loss)
-        metrics.train_total.update_state(total_loss)
-        metrics.train_lam.update_state(lam)
+        accum_count.assign_add(1)
+
+        def _apply_if_ready():
+            def _apply_warmup():
+                grads_avg = [ag / ACCUM_STEPS_F for ag in accum_g]
+                opt.apply_gradients([(tf.cast(g, v.dtype), v) for g, v in zip(grads_avg, vars_)])
+
+                d_avg = accum_data_loss / ACCUM_STEPS_F
+                p_avg = accum_phys_loss / ACCUM_STEPS_F
+                t_avg = d_avg
+
+                metrics.train_data.update_state(d_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_phys.update_state(p_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_total.update_state(t_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_lam.update_state(0.0, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+
+                step.assign_add(1)
+                _zero_accumulators()
+                return tf.constant(0)
+
+            def _apply_normal_no_lambda_update():
+                grads_avg = [ag / ACCUM_STEPS_F for ag in accum_g]
+                opt.apply_gradients([(tf.cast(g, v.dtype), v) for g, v in zip(grads_avg, vars_)])
+
+                d_avg = accum_data_loss / ACCUM_STEPS_F
+                p_avg = accum_phys_loss / ACCUM_STEPS_F
+                lam_used = lambda_phys
+                t_avg = d_avg + tf.cast(lam_used, tf.float32) * p_avg
+
+                metrics.train_data.update_state(d_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_phys.update_state(p_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_total.update_state(t_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_lam.update_state(lam_used, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+
+                step.assign_add(1)
+                _zero_accumulators()
+                return tf.constant(0)
+
+            def _apply_with_lambda_update():
+                norm_data = _global_norm_vars(accum_g)
+                norm_phys = _global_norm_vars(accum_g_phys)
+
+                lam_hat = norm_data / (norm_phys + EPS)
+                MAX_UP   = tf.constant(2.0, tf.float32)
+                MAX_DOWN = tf.constant(2.0, tf.float32)
+                lam_hat = tf.clip_by_value(lam_hat, lambda_phys / MAX_DOWN, lambda_phys * MAX_UP)
+
+                lam_new = EMA * lambda_phys + (1.0 - EMA) * tf.stop_gradient(lam_hat)
+                lam_new = tf.clip_by_value(lam_new, LAM_MIN, LAM_MAX)
+                lambda_phys.assign(lam_new)
+
+                grads_avg = [(ag + lam_new * ap) / ACCUM_STEPS_F for ag, ap in zip(accum_g, accum_g_phys)]
+                opt.apply_gradients([(tf.cast(g, v.dtype), v) for g, v in zip(grads_avg, vars_)])
+
+                d_avg = accum_data_loss / ACCUM_STEPS_F
+                p_avg = accum_phys_loss / ACCUM_STEPS_F
+                t_avg = d_avg + tf.cast(lam_new, tf.float32) * p_avg
+
+                metrics.train_data.update_state(d_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_phys.update_state(p_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_total.update_state(t_avg, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+                metrics.train_lam.update_state(lam_new, sample_weight=tf.cast(ACCUM_STEPS, tf.float32))
+
+                step.assign_add(1)
+                _zero_accumulators()
+                return tf.constant(0)
+
+            return tf.cond(
+                cycle_in_warmup,
+                _apply_warmup,
+                lambda: tf.cond(cycle_do_update, _apply_with_lambda_update, _apply_normal_no_lambda_update),
+            )
+
+        tf.cond(tf.equal(accum_count, ACCUM_STEPS), _apply_if_ready, lambda: tf.constant(0))
 
     @tf.function(reduce_retracing=True, jit_compile=False)
     def val_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
@@ -524,41 +651,8 @@ def initialize(cfg, state):
             if not latest:
                 raise FileNotFoundError(f"resume=True but no checkpoints found in {ckpt_dir}")
 
-            desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
-            dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
-            _ = state.iceflow_model(dummy_x, training=False)
-            if hasattr(opt, "build"):
-                opt.build(state.iceflow_model.trainable_variables)
-
             status = ckpt.restore(latest)
             status.assert_existing_objects_matched()
-
-            if not manifest_path.exists():
-                raise FileNotFoundError(
-                    f"resume=True but {manifest_path} not found. "
-                    "You chose manifest as source of truth; it must exist."
-                )
-
-            raw = yaml.safe_load(manifest_path.read_text())
-            p = raw["normalization"]["params"]
-            mean_1d = np.asarray(p["mean_1d"], dtype=np.float64)
-            var_1d  = np.asarray(p["var_1d"],  dtype=np.float64)
-            eps = float(p.get("epsilon", p.get("variance_epsilon", 1e-7)))
-
-            desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
-            norm2 = FixedChannelStandardization(
-                mean_1d=mean_1d,
-                var_1d=var_1d,
-                epsilon=eps,
-                dtype=desired_dtype,
-                name="input_norm",
-            )
-            _ = norm2(tf.zeros((1, H, W, Cx), dtype=desired_dtype))
-
-            state.iceflow_model.input_normalizer = norm2
-            print("[norm] reapplied fixed normalizer from manifest")
-            print("[norm] reapplied from manifest mean=", mean_1d)
-            print("[norm] reapplied from manifest var= ", var_1d)
 
             (
                 start_epoch,
@@ -596,7 +690,7 @@ def initialize(cfg, state):
         val_vis_ds = (
             val_ds.unbatch()
             .shuffle(4096, reshuffle_each_iteration=True)
-            .batch(cfg_pretraining.batch_size, drop_remainder=True)
+            .batch(micro_bs, drop_remainder=True)
         )
         val_vis_it = iter(val_vis_ds.repeat())
         fig_dir.mkdir(parents=True, exist_ok=True)
@@ -621,6 +715,7 @@ def initialize(cfg, state):
         out_dir=out_dir,
         make_plots=make_plots,
         save_model=save_model,
+        accum_steps=accum_steps_py,
     )
 
     _run_training_loop(ctx=ctx, metrics=metrics, history=history)
