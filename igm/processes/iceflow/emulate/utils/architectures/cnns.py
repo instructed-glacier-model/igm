@@ -196,7 +196,7 @@ class CNN(tf.keras.Model):
 
         # Store skip connection from normalized input
         if self.use_skip:
-            skip = self.skip_proj(x)
+            skip = tf.cast(self.skip_proj(x), self.dtype_model)
 
         # Main convolutional path
         for i in range(self.n_layers):
@@ -223,11 +223,11 @@ class CNN(tf.keras.Model):
                 and i % 2 == 1
                 and x.shape[-1] == residual_in.shape[-1]
             ):
-                x = tf.keras.layers.Add()([x, residual_in])
+                x = tf.cast(x, self.dtype_model) + tf.cast(residual_in, self.dtype_model)
 
         # Add skip connection from input to pre-output
         if self.use_skip:
-            x = x + skip
+            x = tf.cast(x, self.dtype_model) + skip
 
         # 3D convolution for vertical extension
         if self.use_3d:
@@ -341,7 +341,7 @@ class CNNPatch(tf.keras.Model):
 
         # Store skip connection if enabled
         if self.use_skip:
-            skip = self.skip_proj(x)
+            skip = tf.cast(self.skip_proj(x), self.dtype_model)
 
         # Main path through convolutional layers
         for conv, activation in zip(self.conv_layers, self.activations):
@@ -350,7 +350,7 @@ class CNNPatch(tf.keras.Model):
 
         # Add skip connection if enabled
         if self.use_skip:
-            x = x + skip
+            x = tf.cast(x, self.dtype_model) + skip
 
         # Output layer
         outputs = self.output_layer(x)
@@ -466,7 +466,7 @@ class CNNPeriodic(tf.keras.Model):
             x = self.periodic_layer(x)
 
         # Store skip connection
-        skip = self.skip_proj(x)
+        skip = tf.cast(self.skip_proj(x), self.dtype_model)
 
         # Main path through convolutional layers
         for conv, activation in zip(self.conv_layers, self.activations):
@@ -474,7 +474,7 @@ class CNNPeriodic(tf.keras.Model):
             x = activation(x)
 
         # Add skip connection
-        x = x + skip
+        x = tf.cast(x, self.dtype_model) + skip
 
         # Output layer
         outputs = self.output_layer(x)
@@ -555,7 +555,7 @@ class CNNSkip(tf.keras.Model):
 
         # Store skip connection if enabled
         if self.use_skip:
-            skip = self.skip_proj(x)
+            skip = tf.cast(self.skip_proj(x), self.dtype_model)
 
         # Main path through convolutional layers
         for conv, activation in zip(self.conv_layers, self.activations):
@@ -564,7 +564,7 @@ class CNNSkip(tf.keras.Model):
 
         # Add skip connection if enabled
         if self.use_skip:
-            x = x + skip
+            x = tf.cast(x, self.dtype_model) + skip
 
         # Output layer
         outputs = self.output_layer(x)

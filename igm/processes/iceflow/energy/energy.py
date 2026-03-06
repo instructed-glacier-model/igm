@@ -72,6 +72,7 @@ def iceflow_energy_UV(
     energy_components: List[EnergyComponent],
 ) -> tf.TensorArray:
 
+    inputs = tf.cast(inputs, U.dtype)
     fieldin = X_to_fieldin(X=inputs, fieldin_names=inputs_names)
 
     Ny = inputs.shape[1]

@@ -15,6 +15,7 @@ from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
 )
+from igm.utils.math.precision import normalize_precision
 from .interface import InterfaceMapping
 from igm.processes.iceflow.emulate import Architectures, NormalizationsDict
 
@@ -28,19 +29,21 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
 
+        dtype = normalize_precision(cfg_numerics.precision).name
+
         normalizing_method = cfg_unified.normalization.method
         normalizing_class = NormalizationsDict[normalizing_method]
         if normalizing_method == "adaptive":
             nb_channels = len(cfg.processes.iceflow.unified.inputs)
-            normalizing_layer = normalizing_class(nb_channels)
+            normalizing_layer = normalizing_class(nb_channels, dtype=dtype)
         elif normalizing_method == "fixed":
             offsets = cfg_unified.normalization.fixed.inputs_offsets
             variances = cfg_unified.normalization.fixed.inputs_variances
-            normalizing_layer = normalizing_class(offsets, variances)
+            normalizing_layer = normalizing_class(offsets, variances, dtype=dtype)
         elif normalizing_method == "automatic":
-            normalizing_layer = normalizing_class()
+            normalizing_layer = normalizing_class(dtype=dtype)
         elif normalizing_method == "none":
-            normalizing_layer = normalizing_class()
+            normalizing_layer = normalizing_class(dtype=dtype)
         else:
             raise ValueError(f"Unknown normalizing method: {normalizing_method}")
 
