@@ -250,9 +250,6 @@ def update(cfg: DictConfig, state: State) -> None:
 
         state.smb = _get_smb(cfg, state)
 
-        state.dt = 10.0
-        tf.print(state.dt)
-
         time_scheme = cfg.processes.thk.time_scheme
         if time_scheme == "explicit":
             _update_explicit(cfg, state)
