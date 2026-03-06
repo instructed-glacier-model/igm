@@ -549,3 +549,24 @@ unified:
       Type: integer
       Description: "Frequency of printing the cost during the ice-flow optimization."
       Units: dimless
+  save:
+    enabled:
+      Type: boolean
+      Description: "Enable saving of cost and/or relative velocity error at each optimizer iteration."
+      Units: dimless
+    cost_file:
+      Type: string
+      Description: "Path to the file where the cost at each optimizer iteration is appended (one value per line). Empty string disables saving."
+      Units: dimless
+    vel_ref_file:
+      Type: string
+      Description: "Path to the NetCDF file containing the reference full 3D velocity fields used to compute the relative velocity error. Empty string disables error tracking."
+      Units: dimless
+    vel_ref_name:
+      Type: string
+      Description: "Name of the 2D velocity magnitude variable (e.g. velsurf_mag) in the reference NetCDF file."
+      Units: dimless
+    vel_error_file:
+      Type: string
+      Description: "Path to the file where the relative velocity L2 error ||u - u_ref|| / ||u_ref|| at each optimizer iteration is appended (one value per line). Empty string disables saving."
+      Units: dimless

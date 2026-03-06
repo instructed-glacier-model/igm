@@ -1,7 +1,7 @@
 # interface_cg.py
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -12,7 +12,8 @@ class InterfaceCG(InterfaceOptimizer):
     @staticmethod
     def get_optimizer_args(cfg: DictConfig,
                            cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
-                           map: Mapping) -> Dict[str, Any]:
+                           map: Mapping,
+                           save_args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         u = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
 

@@ -52,9 +52,10 @@ def run_experiment_test(
     # Validate results
     is_valid, error = validate_results(x_ref, v_ref, x_igm, v_igm, experiment)
 
-    # Create plot
+    # Create plot and save raw data
     title, filename = _get_plot_info(experiment, length, method, mapping, optimizer)
     plot_comparison(x_ref, v_ref, x_igm, v_igm, title, filename)
+    _save_data(x_ref, v_ref, x_igm, v_igm, filename)
 
     # Display error in terminal
     if error is not None:
@@ -128,6 +129,21 @@ def _load_reference(experiment: str, length: Optional[int] = None) -> tuple:
         raise ValueError(f"Unknown experiment: {experiment}")
 
     return x_ref, v_ref
+
+
+def _save_data(
+    x_ref: np.ndarray,
+    v_ref: np.ndarray,
+    x_igm: np.ndarray,
+    v_igm: np.ndarray,
+    plot_filename: str,
+) -> None:
+    """Save reference and IGM data as CSV files (one file each)."""
+    base = plot_filename.replace(".pdf", "")
+    np.savetxt(f"{base}_ref.csv", np.column_stack([x_ref, v_ref]),
+               delimiter=",", header="x,v", comments="")
+    np.savetxt(f"{base}_igm.csv", np.column_stack([x_igm, v_igm]),
+               delimiter=",", header="x,v", comments="")
 
 
 def _get_plot_info(

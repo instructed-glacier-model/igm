@@ -1,4 +1,4 @@
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, get_save_args
 from .adam import InterfaceAdam
 from .lbfgs import InterfaceLBFGS
 from .cg import InterfaceCG

@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -35,6 +35,7 @@ class InterfaceComposite(InterfaceOptimizer):
         cfg: DictConfig,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        save_args: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -42,7 +43,7 @@ class InterfaceComposite(InterfaceOptimizer):
         cfg_numerics = cfg.processes.iceflow.numerics
 
         stages = [
-            InterfaceComposite._build_stage(cfg, cost_fn, map, cfg_stage)
+            InterfaceComposite._build_stage(cfg, cost_fn, map, cfg_stage, save_args)
             for cfg_stage in cfg_composite.stages
         ]
 
@@ -63,6 +64,7 @@ class InterfaceComposite(InterfaceOptimizer):
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
         cfg_stage: DictConfig,
+        save_args: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Optimizer]:
         """Build a (active_mode, optimizer) pair for one stage."""
 
@@ -75,7 +77,7 @@ class InterfaceComposite(InterfaceOptimizer):
         opt_name = cfg_stage.optimizer
         cfg_merged = InterfaceComposite._merge_cfg_stage(cfg, cfg_stage)
         opt_args = InterfaceOptimizers[opt_name].get_optimizer_args(
-            cfg_merged, cost_fn, map
+            cfg_merged, cost_fn, map, save_args
         )
 
         active = cfg_stage.get("active", "all")

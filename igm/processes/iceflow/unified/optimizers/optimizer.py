@@ -34,6 +34,10 @@ class Optimizer(ABC):
         ord_grad_theta: str = "l2_weighted",
         debug_mode: bool = False,
         debug_freq: int = 100,
+        save_cost_file: str = "",
+        vel_ref: Optional[tf.Tensor] = None,
+        v_s: Optional[tf.Tensor] = None,
+        save_vel_error_file: str = "",
     ):
         self.name = ""
         self.cost_fn = cost_fn
@@ -47,6 +51,12 @@ class Optimizer(ABC):
         self.ord_grad_theta = ord_grad_theta
         self.debug_mode = debug_mode
         self.debug_freq = debug_freq
+        self.save_cost_file = save_cost_file
+        self.vel_ref = vel_ref
+        self.v_s = v_s
+        self.save_vel_error_file = save_vel_error_file
+        self.cost_file = None
+        self.error_file = None
         if self.debug_mode:
             self._init_debug_display()
 
@@ -67,8 +77,58 @@ class Optimizer(ABC):
         criterion_names = self.halt.criterion_names if self.halt else []
         self.display.start(int(self.iter_max), criterion_names)
         self.map.on_minimize_start(int(self.iter_max))
+        self._open_save_files()
         costs = self.minimize_impl(inputs)
+        self._close_save_files()
         return costs
+
+    def _open_save_files(self) -> None:
+        self.cost_file = open(self.save_cost_file, "a") if self.save_cost_file else None
+        self.error_file = (
+            open(self.save_vel_error_file, "a")
+            if (self.save_vel_error_file and self.vel_ref is not None and self.v_s is not None)
+            else None
+        )
+
+    def _close_save_files(self) -> None:
+        if self.cost_file is not None:
+            self.cost_file.close()
+            self.cost_file = None
+        if self.error_file is not None:
+            self.error_file.close()
+            self.error_file = None
+
+    def _save_iteration(self, iter: tf.Tensor, cost: tf.Tensor) -> None:
+        """Save cost and/or relative velocity error at each optimizer iteration.
+
+        Surface velocity magnitude is pre-computed inside the TF graph via einsum
+        with v_s and passed as an explicit argument to tf.py_function to avoid
+        out-of-scope tensor errors.
+        """
+
+        # Pre-compute surface velocity magnitude inside the TF graph.
+        # u[0][0]: [Nz, ny, nx] (first patch), v_s: [Nz] → einsum gives [ny, nx]
+        if self.v_s is not None:
+            U_surf = tf.einsum("j,jkl->kl", self.v_s, self.step_state.u[0][0])
+            V_surf = tf.einsum("j,jkl->kl", self.v_s, self.step_state.u[1][0])
+            vel_surf_mag = tf.sqrt(tf.square(U_surf) + tf.square(V_surf))
+        else:
+            vel_surf_mag = tf.zeros([1], dtype=self.precision)
+
+        def _do_save(iter_val, cost_val, vel_mag_val):
+            if self.cost_file is not None:
+                self.cost_file.write(f"{float(cost_val.numpy())}\n")
+                self.cost_file.flush()
+            if self.error_file is not None:
+                vel_ref = tf.cast(self.vel_ref, vel_mag_val.dtype)
+                diff_norm = tf.norm(vel_mag_val - vel_ref)
+                ref_norm = tf.norm(vel_ref)
+                rel_error = diff_norm / (ref_norm + 1e-12)
+                self.error_file.write(f"{float(rel_error.numpy())}\n")
+                self.error_file.flush()
+            return 0
+
+        tf.py_function(_do_save, [iter, cost, vel_surf_mag], tf.int32)
 
     @abstractmethod
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:

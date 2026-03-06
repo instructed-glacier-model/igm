@@ -263,6 +263,7 @@ class OptimizerLBFGS(Optimizer):
             self._update_step_state(
                 iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm
             )
+            self._save_iteration(iter, cost)
             halt_status = self._check_stopping()
             self._update_display()
 

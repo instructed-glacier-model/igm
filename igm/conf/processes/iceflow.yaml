@@ -184,3 +184,9 @@ iceflow:
     display:
       print_cost: false
       print_cost_freq: 1
+    save:
+      enabled: false
+      cost_file: ""
+      vel_ref_file: ""
+      vel_ref_name: "velsurf_mag"
+      vel_error_file: ""
