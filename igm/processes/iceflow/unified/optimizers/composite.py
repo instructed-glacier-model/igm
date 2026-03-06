@@ -105,7 +105,9 @@ class OptimizerComposite(Optimizer):
             self._print_stage_header(idx, active, optimizer.name)
             self.composite_map.active = active
 
-            optimizer.sampler = self.sampler
+            if hasattr(self, "sampler"):
+                optimizer.sampler = self.sampler
+
             cost = optimizer.minimize(inputs)
 
             n = cost.shape[0]
