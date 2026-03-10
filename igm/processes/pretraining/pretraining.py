@@ -440,7 +440,7 @@ def initialize(cfg, state):
     LAM_MIN      = tf.constant(1e-3, tf.float32)
     LAM_MAX      = tf.constant(1e2, tf.float32)
     EPS          = tf.constant(1e-6, tf.float32)
-    WARMUP_STEPS = tf.constant(10000, tf.int64)
+    WARMUP_STEPS = tf.constant(100000, tf.int64)
     ACCUM_STEPS = tf.constant(accum_steps_py, tf.int64)
     ACCUM_STEPS_F = tf.cast(ACCUM_STEPS, tf.float32)
 

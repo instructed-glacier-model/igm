@@ -33,5 +33,6 @@ class LineSearchHagerZhang(LineSearch):
         result = self.tfp.optimizer.linesearch.hager_zhang(
             value_and_grad_fn,
             initial_step_size=tf.constant(self.step_size_initial, dtype=w.dtype),
+            max_iterations=20,
         )
         return result.left.x
