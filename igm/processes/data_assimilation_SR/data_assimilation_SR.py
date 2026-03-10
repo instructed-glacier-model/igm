@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import tensorflow as tf
 
 from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
@@ -146,7 +145,8 @@ def _retrain_network_with_current_thickness(cfg, state, da: DataAssimilation):
     opt_train = Optimizers["adam"](**optimizer_args)
     opt_train.sampler = state.iceflow.optimizer.sampler
 
-    opt_train.update_parameters(500, 1e-5, 0.98, 50)
+    # TO DO: make these values not hard-coded
+    opt_train.update_parameters(500, cfg.processes.data_assimilation_SR.optimization.retrain_lr, 0.98, 50)
     opt_train.minimize(inputs)
 
 def data_assimilation_initialize(cfg, state):
@@ -164,14 +164,12 @@ def data_assimilation_initialize(cfg, state):
         dx=state.dX[0, 0],
         dy=state.dX[0, 0],
     )
-    slidingco0 = np.zeros_like(thk0) + 0.21
-    arrhenius0 = np.zeros_like(thk0) + 78.0
 
+    state.slidingco = tf.ones_like(thk0, dtype=dtype) * cfg.processes.iceflow.physics.init_slidingco
+    state.arrhenius = tf.ones_like(thk0, dtype=dtype) * cfg.processes.iceflow.physics.init_arrhenius
     state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
     state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
     state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
-    state.slidingco = tf.convert_to_tensor(slidingco0, dtype=dtype)
-    state.arrhenius = tf.convert_to_tensor(arrhenius0, dtype=dtype)
     state.usurf = tf.cast(state.usurf, dtype=dtype)
     state.dX = tf.cast(state.dX, dtype=dtype)
 
@@ -180,6 +178,7 @@ def data_assimilation_initialize(cfg, state):
 
     da.cost_fn, da.objective = get_cost_and_obj(cfg, state, da.map)
 
+    # setup halt class for the DA minimizer: stop when the cost has not improved for some time
     patience_metric = Metrics["cost"]()
     patience_halt_crit = Criteria["patience"](
         metric=patience_metric,
