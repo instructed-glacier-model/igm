@@ -1,6 +1,12 @@
 data_assimilation_SR:
   optimization:
+    minimizer_patience: 50
+    retrain_iter: 5 # number of times we iterate between DA minimize and network retraining
     nbitmax: 100 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
+    grad_precond_lambda: 0.0 # Lambda for gradient preconditioning (0.0 means no preconditioning)
+    grad_precond_p: 0 # Exponent for gradient preconditioning (1 means L1, 2 means L2)
+    grad_precond_cg_max_iter: 50 # Max CG iterations for gradient preconditioning
+    grad_precond_cg_tol: 1e-6 # CG tolerance for gradient preconditioning
   output:
     freq: 200 # Callback + NetCDF write cadence in iterations (iteration 0 is always written)
     vars_to_save: [usurf,thk,icemask,velbase_mag,velsurf_mag,velsurfobs_mag] # 2D fields saved each write; *_mag and sliding_ratio are computed in update_ncdf_optimize when requested
