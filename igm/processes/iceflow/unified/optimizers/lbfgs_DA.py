@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import tensorflow as tf
-from typing import Tuple
+from typing import Tuple, Optional
+from ..halt import HaltStatus
 
 from .lbfgs_bounds import OptimizerLBFGSBounds
 from .line_searches import ValueAndGradient  # NEW
@@ -166,6 +167,155 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             r = r + s_i * (tf.cast(alpha_i, r.dtype) - tf.cast(beta, r.dtype))
 
         return -r
+    
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _search_grad(
+        self,
+        grad_base_flat: tf.Tensor,
+        mask_base: Optional[tf.Tensor],
+    ) -> tf.Tensor:
+        """
+        Gradient used for:
+        - the L-BFGS search direction
+        - curvature pairs
+
+        In the data assimilation mapping we then optionally apply a preconditioner to this gradient
+        Line search and descent checks still use the true gradient.
+        """
+        g = self.map.precondition_direction_grad_flat(grad_base_flat)
+
+        if mask_base is not None:
+            g = tf.where(mask_base, g, tf.zeros_like(g))
+
+        return g
+    
+    def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
+        first_batch = self.sampler(inputs)  # [M, B, H, W, C]
+        n_batches = first_batch.shape[0]
+        if n_batches != 1:
+            raise NotImplementedError("❌ L-BFGS requires a single batch.")
+
+        if getattr(self.sampler, "dynamic_augmentation", False):
+            static_batches = None
+            dynamic_augmentation = True
+        else:
+            static_batches = first_batch
+            dynamic_augmentation = False
+
+        input = first_batch[0, :, :, :, :]
+
+        # State variables
+        theta_flat = self.map.flatten_theta(self.map.get_theta())
+        cost, grad_u, grad_theta = self._get_grad(input)
+        grad_theta_flat = self.map.flatten_theta(grad_theta)
+        U, V = self.map.get_UV(input)
+        self._init_step_state(U, V, theta_flat)
+
+        # Memory variables
+        w_dim = tf.shape(theta_flat)[0]
+        idx_memory = tf.constant(0, dtype=tf.int32)
+        s_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
+        y_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
+
+        # Accessory variables
+        halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
+        iter_last = tf.constant(-1, dtype=tf.int32)
+        costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+
+        for iter in tf.range(self.iter_max):
+
+            # Sample fresh augmented batch for this iteration
+            if dynamic_augmentation:
+                next_batch = self.sampler(inputs)
+            else:
+                next_batch = static_batches
+
+            input = next_batch[0, :, :, :, :]
+
+            theta_prev = theta_flat
+
+            # Tempering
+            tau = self._compute_tau(iter)
+
+            # choose base point / gradient for the step (bounded subclass overrides this)
+            theta_base, grad_base_flat, mask_base = self._step_base_point(
+                theta_flat, grad_theta_flat, input
+            )
+
+            # Gradient used by the inverse-Hessian model (optionally preconditioned).
+            grad_search_prev = self._search_grad(grad_base_flat, mask_base)
+
+            # Restrict memory to the active subspace if needed.
+            s_list = s_flat_mem[:idx_memory]
+            y_list = y_flat_mem[:idx_memory]
+            s_list, y_list = self._mask_memory_for_subspace(s_list, y_list, mask_base)
+
+            # Search direction is built from the quasi-Newton model gradient.
+            p_flat = self._compute_direction(
+                grad_search_prev,
+                s_list,
+                y_list,
+                idx_memory,
+                tau,
+            )
+
+            # Force descent uses TRUE base gradient
+            p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
+
+            # Line search uses TRUE gradients internally (DA overrides _line_search/_get_grad_trial)
+            alpha = self._line_search(theta_base, p_flat, input)
+            alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
+            alpha = self._clip_alpha(alpha, theta_base, p_flat)
+
+            theta_flat, theta_trial = self._apply_step(theta_base, alpha, p_flat)
+
+            # New weights, cost, and TRUE grads
+            self.map.set_theta(self.map.unflatten_theta(theta_flat))
+            cost, grad_u, grad_theta = self._get_grad(input)
+            grad_theta_flat = self.map.flatten_theta(grad_theta)
+
+            # Curvature pair is built from the same search-gradient representation.
+            _, grad_base_new, mask_base_new = self._step_base_point(
+                theta_flat, grad_theta_flat, input
+            )
+            grad_search_new = self._search_grad(grad_base_new, mask_base_new)
+
+            s = theta_flat - theta_prev
+            y = grad_search_new - grad_search_prev
+
+            s, y = self._constrain_pair(
+                s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat
+            )
+
+            # Update memory (DA override handles rho spike clamping etc.)
+            s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
+                s_flat_mem, y_flat_mem, idx_memory, s, y
+            )
+
+            # this is needed e.g. for data assimilation logging
+            self.map.on_step_end(iter)
+
+            costs = costs.write(iter, cost)
+
+            U, V = self.map.get_UV(input)
+            grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
+            self._update_step_state(
+                iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm
+            )
+            halt_status = self._check_stopping()
+            self._update_display()
+
+            if self.debug_mode and iter % self.debug_freq == 0:
+                self._update_debug_state(iter, cost, grad_u, grad_theta)
+                self._debug_display()
+
+            iter_last = iter
+
+            if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
+                break
+
+        self._finalize_display(halt_status)
+        return costs.stack()[: iter_last + 1]
 
     @tf.function(reduce_retracing=True)
     def _get_grad_trial(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
