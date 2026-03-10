@@ -2,7 +2,7 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
-from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ...mappings import Mapping, MappingDataAssimilation
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
 from ..cg import OptimizerCG
@@ -16,7 +16,7 @@ class InterfaceCG(InterfaceOptimizer):
         u = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
 
-        if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
+        if isinstance(map, MappingDataAssimilation):
             nbit = cfg.processes.data_assimilation_SR.optimization.nbitmax
         else:
             nbit = u.nbit
