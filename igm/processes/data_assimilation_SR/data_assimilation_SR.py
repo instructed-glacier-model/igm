@@ -44,6 +44,9 @@ class DataAssimilation:
         self.result_stage2 = None
         self.results_da = []
         self._ncdf_next_iter = 0
+        self.opt_train = None
+        self.cost_fn_train = None
+        self._train_sampler = None
 
 def get_cost_and_obj(cfg, state, da_map):
     objective = build_objective_from_cfg(cfg, state, da_map)
@@ -137,17 +140,9 @@ def _retrain_network_with_current_thickness(cfg, state, da: DataAssimilation):
     X = fieldin_state_to_X(cfg, state)
     inputs = state.iceflow.patching.generate_patches(X)
 
-    optimizer_args = InterfaceOptimizers["adam"].get_optimizer_args(
-        cfg=cfg,
-        cost_fn=get_cost_fn(cfg, state),
-        map=state.iceflow.mapping,
-    )
-    opt_train = Optimizers["adam"](**optimizer_args)
-    opt_train.sampler = state.iceflow.optimizer.sampler
-
     # TO DO: make these values not hard-coded
-    opt_train.update_parameters(500, cfg.processes.data_assimilation_SR.optimization.retrain_lr, 0.98, 50)
-    opt_train.minimize(inputs)
+    da.opt_train.update_parameters(500, cfg.processes.data_assimilation_SR.optimization.retrain_lr, 0.98, 50)
+    da.opt_train.minimize(inputs)
 
 def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.data_assimilation_SR
@@ -206,6 +201,17 @@ def data_assimilation_initialize(cfg, state):
         num_patches=num_patches,
     )
     da.opt.sampler = sampler
+
+    da.cost_fn_train = get_cost_fn(cfg, state)
+
+    optimizer_args_train = InterfaceOptimizers["adam"].get_optimizer_args(
+        cfg=cfg,
+        cost_fn=da.cost_fn_train,
+        map=state.iceflow.mapping,
+    )
+    da.opt_train = Optimizers["adam"](**optimizer_args_train)
+    da._train_sampler = state.iceflow.optimizer.sampler
+    da.opt_train.sampler = da._train_sampler
 
     da.maxiter = int(cfg_da.optimization.nbitmax)
     da.out_freq = int(cfg_da.output.freq)

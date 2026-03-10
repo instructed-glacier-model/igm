@@ -1,9 +1,9 @@
 data_assimilation_SR:
   optimization:
-    minimizer_patience: 50
+    minimizer_patience: 20
     retrain_lr: 1e-5 # Learning rate for network retraining steps
-    retrain_iter: 5 # number of times we iterate between DA minimize and network retraining
-    nbitmax: 100 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
+    retrain_iter: 10 # number of times we iterate between DA minimize and network retraining
+    nbitmax: 1000 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
     grad_precond_lambda: 0.0 # Lambda for gradient preconditioning (0.0 means no preconditioning)
     grad_precond_p: 0 # Exponent for gradient preconditioning (1 means L1, 2 means L2)
     grad_precond_cg_max_iter: 50 # Max CG iterations for gradient preconditioning
