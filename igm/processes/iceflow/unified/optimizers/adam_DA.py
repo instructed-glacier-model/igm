@@ -7,20 +7,9 @@ import tensorflow as tf
 from typing import Any, Callable, Tuple
 
 from ..mappings import Mapping
-from .adam import OptimizerAdam  # base Adam
-
-# ---- pretty progress (same theme as your LBFGS DA) ----
+from .adam import OptimizerAdam
+from .da_progress_optimizer import _DAProgressOptimizer
 from rich.theme import Theme
-from rich.console import Console
-from rich.progress import (
-    Progress,
-    BarColumn,
-    MofNCompleteColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    TextColumn,
-)
-
 progress_theme = Theme(
     {
         "label": "bold #e5e7eb",
@@ -38,8 +27,8 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
     Adam specialization for data assimilation.
 
     Adds:
-      - storage & display of data/physics cost components
-      - rich progress bar with the same look/feel as your LBFGS DA
+      - storage & display of total/data/reg costs
+      - DA-specific progress display matching LBFGS DA
     """
 
     def __init__(
@@ -65,25 +54,92 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
             iter_max=iter_max,
             lr_decay=lr_decay,
             lr_decay_steps=lr_decay_steps,
+            **kwargs,
         )
 
         self.name = "ADAM_Data_Assimilation"
 
-    # identical shape/signature as your LBFGS-DA version
+        dtype = getattr(self.map, "precision", tf.float32)
+
+        self.last_total = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_data = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_reg = tf.Variable(0.0, trainable=False, dtype=dtype)
+
+        # Use the same DA display as LBFGS DA
+        self.display = _DAProgressOptimizer(
+            enabled=self.display.enabled,
+            freq=self.display.freq,
+        )
+
+    def _update_display(self) -> None:
+        if not getattr(self.display, "enabled", False):
+            return
+
+        def update_display(iter_val, total_val, data_val, reg_val, *crit_data):
+            if crit_data:
+                n = len(crit_data) // 2
+                values = [float(crit_data[i].numpy()) for i in range(n)]
+                satisfied = [bool(crit_data[n + i].numpy()) for i in range(n)]
+            else:
+                values = None
+                satisfied = None
+
+            self.display.update(
+                int(iter_val.numpy()),
+                float(total_val.numpy()),
+                float(data_val.numpy()),
+                float(reg_val.numpy()),
+                values,
+                satisfied,
+            )
+            return 1.0
+
+        should_update = self.display.should_update(self.step_state.iter)
+
+        py_func_args = [
+            self.step_state.iter,
+            self.last_total.read_value(),
+            self.last_data.read_value(),
+            self.last_reg.read_value(),
+        ]
+
+        if self.halt_state.criterion_values and self.halt_state.criterion_satisfied:
+            py_func_args.extend(self.halt_state.criterion_values)
+            py_func_args.extend(self.halt_state.criterion_satisfied)
+
+        tf.cond(
+            should_update,
+            lambda: tf.py_function(update_display, py_func_args, tf.float32),
+            lambda: tf.constant(0.0, dtype=tf.float32),
+        )
+
     @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
-        w = self.map.get_theta()
-        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-            for wi in w:
-                tape.watch(wi)
-            U, V = self.map.get_UV(inputs)
-            processed_inputs = self.map.synchronize_inputs(inputs)
-            # expect cost_fn to return (total, data, physics)
-            cost, data_cost, reg_cost = self.cost_fn(U, V, processed_inputs)
+        theta = self.map.get_theta()
 
-        grad_u = tape.gradient(cost, [U, V])
-        grad_theta = tape.gradient(cost, w)
+        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
+
+            U, V = self.map.get_UV(inputs)
+
+            # Prefer the synchronized inputs already held by the DA mapping if available
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+
+            total, data, reg = self.cost_fn(U, V, inputs_used)
+
+        grad_u = tape.gradient(total, [U, V])
+        grad_theta = tape.gradient(total, theta)
         del tape
-        return cost, grad_u, grad_theta
+
+        # Robust against disconnected variables
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+
+        # Store the DA cost breakdown for display / diagnostics
+        self.last_total.assign(tf.stop_gradient(total))
+        self.last_data.assign(tf.stop_gradient(data))
+        self.last_reg.assign(tf.stop_gradient(reg))
+
+        return total, grad_u, grad_theta
