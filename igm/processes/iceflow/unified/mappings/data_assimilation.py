@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import tensorflow as tf
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 from .mapping import Mapping
 from .transforms import TRANSFORMS, ParameterTransform
@@ -19,28 +19,22 @@ class VariableSpec:
     Which state field we invert and which parameterization we use (in PHYSICAL space).
     Bounds are specified in PHYSICAL space, e.g., meters or Pa·s^n.
 
-    If ``mask`` is provided it must resolve to a tensor in ``state`` with the same
-    shape as the target field. Only entries where ``mask`` is ``True`` (or non-zero)
-    are exposed to the optimizer; the complement keeps its initial values.
+    Only entries where the resolved mask is True (or non-zero) are exposed to the
+    optimizer; the complement keeps its initial physical values.
     """
 
     name: str  # e.g. "thk", "slidingco"
     transform: str = (
-        "identity"  # key in TRANSFORMS (e.g., "identity", "log10", ...) [default + case-insensitive]
+        "identity"  # key in TRANSFORMS
     )
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
-    mask: Optional[str] = None  # dotted path on ``state`` resolving to a tensor mask
+    mask: Optional[str] = None  # e.g. inverse_mask would use state.inverse_mask
 
 
 class MappingDataAssimilation(Mapping):
-    """
-    Exposes selected state fields as trainable θ, converts θ→physical via a registered
-    ``ParameterTransform`` and runs the shared neural network emulator directly.
 
-    - Bounds are given in PHYSICAL space and converted once into θ-space.
-    - ``apply_theta_to_inputs`` patches selected channels of the BHWC inputs on-the-fly.
-    """
+    _DEFAULT_MASK_PATH = "icemask"
 
     def __init__(
         self,
@@ -77,16 +71,18 @@ class MappingDataAssimilation(Mapping):
         self.grad_precond_cg_tol = float(grad_precond_cg_tol)
 
         if self.grad_precond_p not in (1, 2):
-            raise ValueError(f"❌ precondition_grad_theta expects p in {{1, 2}}, got {self.grad_precond_p}.")
+            raise ValueError(
+                f"❌ precondition_grad_theta expects p in {{1, 2}}, got {self.grad_precond_p}."
+            )
 
         # Scalar grid spacing for Laplacian-based gradient preconditioning
         dx0 = tf.reshape(tf.convert_to_tensor(state.dX), [-1])[0]
         self._dx = tf.cast(dx0, self.precision)
         self.cg_debug = tf.Variable(False, trainable=False, dtype=tf.bool)
-        self.cg_warn  = tf.Variable(True,  trainable=False, dtype=tf.bool)
+        self.cg_warn = tf.Variable(True, trainable=False, dtype=tf.bool)
 
         self._da_step_callback = None  # python callable
-        self._da_out_freq = 0          # python int
+        self._da_out_freq = 0  # python int
 
         for v in self.network.trainable_variables:
             if v.dtype != self.precision:
@@ -124,9 +120,9 @@ class MappingDataAssimilation(Mapping):
         self._sizes: List[tf.Tensor] = []
         self._sizes_int: List[Optional[int]] = []
         self._full_shapes: List[tf.TensorShape] = []
-        self._mask_bool: List[Optional[tf.Tensor]] = []
-        self._mask_flat_idx: List[Optional[tf.Tensor]] = []
-        self._background_phys_flat: List[Optional[tf.Tensor]] = []
+        self._mask_bool: List[tf.Tensor] = []
+        self._mask_flat_idx: List[tf.Tensor] = []
+        self._background_phys_flat: List[tf.Tensor] = []
 
         # Map variable name -> index in self.vars / self._theta / etc.
         self._varname_to_idx: Dict[str, int] = {}
@@ -141,54 +137,44 @@ class MappingDataAssimilation(Mapping):
                 raise ValueError(
                     f"❌ Unknown transform '{spec.transform}' for '{spec.name}'."
                 )
-            tform = TRANSFORMS[tname]()  # instance
+            tform = TRANSFORMS[tname]()
             self.transforms.append(tform)
 
             x0_var = self._field_refs[spec.name]
             x0 = tf.cast(tf.convert_to_tensor(x0_var), self.precision)
 
-            # Build theta0_full in compute precision (important for numerical consistency)
             theta0_full = tform.to_theta(x0, eps=self.eps)
             full_shape_static = theta0_full.shape
             self._full_shapes.append(full_shape_static)
 
-            if full_shape_static.rank != 2:
+            if self.grad_precond_enable and full_shape_static.rank != 2:
                 raise ValueError(
                     f"❌ Gradient preconditioner currently supports only 2D fields, "
                     f"but '{spec.name}' has shape {full_shape_static}."
                 )
 
-            mask_bool = None
-            flat_idx = None
-            background_phys_flat = None
+            mask_path = spec.mask or self._DEFAULT_MASK_PATH
+            mask_tensor = self._resolve_mask(state, mask_path)
+            mask_bool = tf.cast(mask_tensor, tf.bool)
 
-            if spec.mask is not None:
-                mask_tensor = self._resolve_mask(state, spec.mask)
-                mask_bool = tf.cast(mask_tensor, tf.bool)
+            if mask_bool.shape != x0.shape:
+                raise ValueError(
+                    f"❌ Mask '{mask_path}' shape {mask_bool.shape} does not match "
+                    f"field '{spec.name}' shape {x0.shape}."
+                )
 
-                if mask_bool.shape != x0.shape:
-                    raise ValueError(
-                        f"❌ Mask '{spec.mask}' shape {mask_bool.shape} does not match field '{spec.name}' shape {x0.shape}."
-                    )
+            flat_mask = tf.reshape(mask_bool, [-1])
+            flat_idx = tf.where(flat_mask)[:, 0]
+            flat_idx = tf.cast(flat_idx, tf.int32)
+            flat_idx = tf.sort(flat_idx)  # deterministic ordering
 
-                flat_mask = tf.reshape(mask_bool, [-1])
-                flat_idx = tf.where(flat_mask)[:, 0]
-                flat_idx = tf.cast(flat_idx, tf.int32)
-                flat_idx = tf.sort(flat_idx)  # make ordering explicit and deterministic
+            if int(tf.size(flat_idx).numpy()) == 0:
+                raise ValueError(
+                    f"❌ Mask '{mask_path}' for '{spec.name}' has no active elements."
+                )
 
-                # robust emptiness check (works regardless of tracing/eager)
-                if int(tf.size(flat_idx).numpy()) == 0:
-                    raise ValueError(
-                        f"❌ Mask '{spec.mask}' for '{spec.name}' has no active elements."
-                    )
-
-                theta0_full_flat = tf.reshape(theta0_full, [-1])
-                theta0 = tf.gather(theta0_full_flat, flat_idx)
-
-                # physical background outside mask should remain at initial physical values
-                background_phys_flat = tf.reshape(x0, [-1])
-            else:
-                theta0 = theta0_full  # unmasked: keep full field shape
+            theta0 = tf.gather(tf.reshape(theta0_full, [-1]), flat_idx)
+            background_phys_flat = tf.reshape(x0, [-1])
 
             theta = tf.Variable(
                 tf.cast(theta0, self.precision),
@@ -199,15 +185,15 @@ class MappingDataAssimilation(Mapping):
 
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
-            self._sizes_int.append(theta.shape.num_elements() if theta.shape.num_elements() is not None else None)
+            self._sizes_int.append(
+                theta.shape.num_elements() if theta.shape.num_elements() is not None else None
+            )
 
             self._mask_bool.append(mask_bool)
             self._mask_flat_idx.append(flat_idx)
             self._background_phys_flat.append(background_phys_flat)
 
         # Warm-start cache for the gradient preconditioner.
-        # We keep one cached full-field solution per variable and per stage.
-        # p is restricted elsewhere to 1 or 2 so we only need two stages.
         self._pcg_warm: List[List[tf.Variable]] = []
         for spec, full_shape in zip(self.vars, self._full_shapes):
             self._pcg_warm.append(
@@ -225,7 +211,6 @@ class MappingDataAssimilation(Mapping):
                 ]
             )
 
-
         # Precompute θ-space bounds for optimizer consumption.
         self._L_list: List[tf.Tensor] = []
         self._U_list: List[tf.Tensor] = []
@@ -235,8 +220,6 @@ class MappingDataAssimilation(Mapping):
             )
             self._L_list.append(tf.fill(theta.shape, Ls))
             self._U_list.append(tf.fill(theta.shape, Us))
-
-    # ------- Forward plumbing -------------------------------------------------
 
     @staticmethod
     def _resolve_mask(state, path: str) -> tf.Tensor:
@@ -250,24 +233,18 @@ class MappingDataAssimilation(Mapping):
         return tf.convert_to_tensor(obj)
 
     @tf.function(reduce_retracing=True, jit_compile=False)
-    def _theta_to_field(self, idx: int) -> tf.Tensor:
-        mask_bool = self._mask_bool[idx]
-        tform = self.transforms[idx]
-        theta = self._theta[idx]
-        full_shape_static = self._full_shapes[idx]
-
-        if mask_bool is None:
-            val = tform.to_physical(theta)
-            val.set_shape(full_shape_static)
-            return val
-
+    def _active_to_full_field(
+        self,
+        idx: int,
+        active_values: tf.Tensor,
+        background_flat: tf.Tensor,
+    ) -> tf.Tensor:
+        """
+        Scatter an active-subspace vector back to the full 2D field.
+        """
         flat_idx = self._mask_flat_idx[idx]
-        background_flat = self._background_phys_flat[idx]
+        updates = tf.reshape(active_values, [-1])
 
-        updates = tform.to_physical(theta)
-        updates = tf.reshape(updates, [-1])
-
-        # sanity: updates length must match number of active indices
         tf.debugging.assert_equal(tf.shape(updates)[0], tf.shape(flat_idx)[0])
 
         field_flat = tf.tensor_scatter_nd_update(
@@ -276,13 +253,31 @@ class MappingDataAssimilation(Mapping):
             updates,
         )
 
-        # reshape using runtime shape of the actual state field (robust)
         name = self.vars[idx].name
         shape_dyn = tf.shape(self._field_refs[name])
         field = tf.reshape(field_flat, shape_dyn)
-        field.set_shape(full_shape_static)
+        field.set_shape(self._full_shapes[idx])
         return field
 
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _full_field_to_active(self, idx: int, field: tf.Tensor) -> tf.Tensor:
+        """
+        Gather a full field back to the active-subspace θ layout.
+        """
+        vec = tf.gather(tf.reshape(field, [-1]), self._mask_flat_idx[idx])
+        vec = tf.reshape(vec, self._shapes[idx])
+        return vec
+
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _theta_to_field(self, idx: int) -> tf.Tensor:
+        tform = self.transforms[idx]
+        theta = self._theta[idx]
+        updates = tform.to_physical(theta)
+        return self._active_to_full_field(
+            idx,
+            updates,
+            self._background_phys_flat[idx],
+        )
 
     @tf.function(reduce_retracing=True)
     def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -302,24 +297,14 @@ class MappingDataAssimilation(Mapping):
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
-
         return U, V
-    
+
     def set_step_callback(self, callback, out_freq: int) -> None:
-        """
-        Register a python callback to be run every out_freq accepted iterations.
-        The callback will be invoked via tf.py_function from on_step_end().
-        """
         self._da_step_callback = callback
         self._da_out_freq = int(out_freq)
 
     @tf.function(reduce_retracing=True)
     def on_step_end(self, it: tf.Tensor) -> tf.Tensor:
-        """
-        Called by the optimizer once per accepted iteration.
-        Runs a python callback periodically .
-        """
-        # Always return a dummy tensor so this can sit inside tf.function control flow if needed.
         if self._da_step_callback is None or self._da_out_freq <= 0:
             return tf.constant(0, dtype=tf.int32)
 
@@ -395,7 +380,7 @@ class MappingDataAssimilation(Mapping):
     def on_minimize_start(self, iter_max: int) -> None:
         self.reset_preconditioner_cache()
 
-    # ------- Input channel patching --------------------------------
+    # ------- Input channel patching ------------------------------------------
 
     @tf.function(reduce_retracing=True, jit_compile=False)
     def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -417,11 +402,11 @@ class MappingDataAssimilation(Mapping):
             right = updated[:, :, :, ch + 1 :]
             updated = tf.concat([left, phys_b, right], axis=-1)
         return updated
-        
+
     def get_physical_field(self, name: str) -> tf.Tensor:
         """
         Differentiable physical field derived from current theta.
-        Safe to call inside tf.function
+        Safe to call inside tf.function.
         """
         if name not in self._varname_to_idx:
             raise ValueError(
@@ -429,51 +414,13 @@ class MappingDataAssimilation(Mapping):
             )
         idx = self._varname_to_idx[name]
         return tf.cast(self._theta_to_field(idx), self.precision)
-    
+
     # ------- Gradient preconditioning (Sobolev / inverse-Laplacian) ----------
 
     @tf.function(reduce_retracing=True)
     def _dot2(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         acc = tf.reduce_sum(tf.cast(a, tf.float64) * tf.cast(b, tf.float64))
         return tf.cast(acc, a.dtype)
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def _scatter_masked_vec(self, idx: int, vec: tf.Tensor) -> tf.Tensor:
-        """
-        Scatter a masked θ-shaped vector (N_active,) into a full 2D field (H,W),
-        filling outside-mask with zeros.
-        """
-        flat_idx = self._mask_flat_idx[idx]
-        if flat_idx is None:
-            raise ValueError("_scatter_masked_vec called for unmasked variable.")
-
-        name = self.vars[idx].name
-        shape_dyn = tf.shape(self._field_refs[name])
-
-        zeros_flat = tf.zeros_like(self._background_phys_flat[idx], dtype=vec.dtype)
-        updates = tf.reshape(vec, [-1])
-
-        field_flat = tf.tensor_scatter_nd_update(
-            zeros_flat,
-            flat_idx[:, None],
-            updates,
-        )
-        field = tf.reshape(field_flat, shape_dyn)
-        field.set_shape(self._full_shapes[idx])
-        return field
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def _gather_masked_vec(self, idx: int, field: tf.Tensor) -> tf.Tensor:
-        """
-        Gather a full 2D field (H,W) back to a masked θ-shaped vector (N_active,).
-        """
-        flat_idx = self._mask_flat_idx[idx]
-        if flat_idx is None:
-            raise ValueError("_gather_masked_vec called for unmasked variable.")
-
-        vec = tf.gather(tf.reshape(field, [-1]), flat_idx)
-        vec = tf.reshape(vec, self._shapes[idx])
-        return vec
 
     @tf.function(reduce_retracing=True, jit_compile=False)
     def _apply_A(self, v: tf.Tensor, mask: tf.Tensor, lam: tf.Tensor) -> tf.Tensor:
@@ -494,14 +441,14 @@ class MappingDataAssimilation(Mapping):
         c = vpad[1:-1, 1:-1]
 
         mu = mpad[0:-2, 1:-1]
-        md = mpad[2:,   1:-1]
+        md = mpad[2:, 1:-1]
         ml = mpad[1:-1, 0:-2]
-        mr = mpad[1:-1, 2:  ]
+        mr = mpad[1:-1, 2:]
 
         fu = vpad[0:-2, 1:-1]
-        fd = vpad[2:,   1:-1]
+        fd = vpad[2:, 1:-1]
         fl = vpad[1:-1, 0:-2]
-        fr = vpad[1:-1, 2:  ]
+        fr = vpad[1:-1, 2:]
 
         neigh = mu * fu + md * fd + ml * fl + mr * fr
         deg = mu + md + ml + mr
@@ -522,9 +469,9 @@ class MappingDataAssimilation(Mapping):
 
         deg = (
             mpad[0:-2, 1:-1]
-            + mpad[2:,   1:-1]
+            + mpad[2:, 1:-1]
             + mpad[1:-1, 0:-2]
-            + mpad[1:-1, 2:  ]
+            + mpad[1:-1, 2:]
         )
         return tf.where(mask, deg, tf.zeros_like(deg))
 
@@ -560,7 +507,6 @@ class MappingDataAssimilation(Mapping):
             tf.ones_like(b),
         )
 
-        # Warm start if provided; otherwise one Jacobi step
         if x0 is None:
             x = tf.where(mask, b / diagA, tf.zeros_like(b))
         else:
@@ -575,7 +521,6 @@ class MappingDataAssimilation(Mapping):
         rr0 = rr
         bs = self._dot2(b, b)
 
-        # Mixed relative + absolute stopping criterion.
         b_inf = tf.cast(tf.reduce_max(tf.abs(b)), tf.float64)
         n_active = tf.reduce_sum(tf.cast(mask, tf.float64))
         eps_mach = tf.constant(
@@ -681,9 +626,9 @@ class MappingDataAssimilation(Mapping):
         cg_tol: float = 1e-4,
     ) -> list[tf.Tensor]:
         """
-        Apply (I + lam * L)^(-p) to each variable's gradient, respecting the variable mask.
-
-        Warm starts are kept separately for stage 1 and stage 2, so p=2 also benefits.
+        Apply (I + lam * L)^(-p) to each variable's gradient, respecting the
+        variable mask. Warm starts are kept separately for stage 1 and stage 2,
+        so p=2 also benefits.
         """
         lam = tf.cast(lam, self.precision)
 
@@ -691,15 +636,13 @@ class MappingDataAssimilation(Mapping):
         for i, g in enumerate(grad_theta):
             g_dtype = g.dtype
             g = tf.cast(g, self.precision)
+            mask = self._mask_bool[i]
 
-            mask_bool = self._mask_bool[i]
-            if mask_bool is None:
-                rhs = g
-                mask = tf.ones_like(rhs, dtype=tf.bool)
-            else:
-                rhs = self._scatter_masked_vec(i, g)
-                mask = mask_bool
-
+            rhs = self._active_to_full_field(
+                i,
+                g,
+                tf.zeros_like(self._background_phys_flat[i], dtype=self.precision),
+            )
             rhs = tf.where(mask, rhs, tf.zeros_like(rhs))
 
             x = rhs
@@ -714,10 +657,7 @@ class MappingDataAssimilation(Mapping):
                 )
                 self._pcg_warm[i][stage].assign(x)
 
-            if mask_bool is None:
-                out.append(tf.cast(x, g_dtype))
-            else:
-                out.append(tf.cast(self._gather_masked_vec(i, x), g_dtype))
+            out.append(tf.cast(self._full_field_to_active(i, x), g_dtype))
 
         return out
 
@@ -743,7 +683,7 @@ class MappingDataAssimilation(Mapping):
             cg_tol=cg_tol,
         )
         return self.flatten_theta(grads_p)
-    
+
     @tf.function(reduce_retracing=True, jit_compile=False)
     def precondition_direction_grad_flat(self, grad_flat: tf.Tensor) -> tf.Tensor:
         """
