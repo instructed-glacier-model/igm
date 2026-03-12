@@ -16,4 +16,14 @@ class InterfaceNoInflow(InterfaceBoundaryCondition):
     @staticmethod
     def get_bc_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
         """Return empty arguments for no-inflow boundary condition."""
+        basis_vertical = cfg.processes.iceflow.numerics.basis_vertical.lower()
+        allowed_bases = ["lagrange", "molho", "ssa"]
+
+        if basis_vertical not in allowed_bases:
+            raise ValueError(
+                f"No-inflow boundary condition is incompatible with basis_vertical='{basis_vertical}'. "
+                f"Supported vertical bases are: {', '.join(allowed_bases)}. "
+                f"This boundary condition may cause numerical issues with other discretizations."
+            )
+
         return {}

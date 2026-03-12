@@ -8,12 +8,12 @@ from typing import Optional, Sequence
 import tensorflow as tf
 
 from .context import DAEvaluationContext
-from .penalties import PENALTY_REGISTRY
+from .penalties import PenaltyRegistry
 from .utils import masked_integral
 
 
-MISFIT = "misfit"
-REGULARIZATION = "regularization"
+Misfit = "misfit"
+Regularization = "regularization"
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class CostTerm(ABC):
 
 
 class GaussianMisfitTerm(CostTerm):
-    group = MISFIT
+    group = Misfit
 
     def __init__(self, spec: MisfitSpec) -> None:
         self.spec = spec
@@ -80,7 +80,7 @@ class GaussianMisfitTerm(CostTerm):
 
 
 class HuberMisfitTerm(CostTerm):
-    group = MISFIT
+    group = Misfit
 
     def __init__(self, spec: MisfitSpec) -> None:
         self.spec = spec
@@ -112,11 +112,11 @@ class HuberMisfitTerm(CostTerm):
 
 
 class FieldPenaltyTerm(CostTerm):
-    group = REGULARIZATION
+    group = Regularization
 
     def __init__(self, spec: FieldPenaltySpec) -> None:
-        if spec.penalty not in PENALTY_REGISTRY:
-            raise ValueError(f"Unknown penalty '{spec.penalty}'. Available: {list(PENALTY_REGISTRY.keys())}")
+        if spec.penalty not in PenaltyRegistry:
+            raise ValueError(f"Unknown penalty '{spec.penalty}'. Available: {list(PenaltyRegistry.keys())}")
         self.spec = spec
         self.name = f"reg:{spec.name}:{spec.penalty}"
 
@@ -131,7 +131,7 @@ class FieldPenaltyTerm(CostTerm):
         if self.spec.ref is not None:
             ref_tensor = ctx.state_field(self.spec.ref)
 
-        fn = PENALTY_REGISTRY[self.spec.penalty]
+        fn = PenaltyRegistry[self.spec.penalty]
         return fn(
             field=field,
             dx=ctx.dx,
@@ -143,7 +143,7 @@ class FieldPenaltyTerm(CostTerm):
         )
 
 
-MISFIT_REGISTRY = {
+MisfitRegistry = {
     "gaussian": GaussianMisfitTerm,
     "huber": HuberMisfitTerm,
 }

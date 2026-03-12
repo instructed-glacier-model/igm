@@ -83,7 +83,7 @@ def penalty_l2(
     return tf.cast(0.5, dtype) * lam * integral / denom
 
 
-PENALTY_REGISTRY = {
+PenaltyRegistry = {
     "squared_laplacian": lap_sq,
     "l2": penalty_l2,
 }

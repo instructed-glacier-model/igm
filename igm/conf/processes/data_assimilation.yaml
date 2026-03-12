@@ -26,6 +26,7 @@ data_assimilation:
     optimizer_epsilon: 1.0e-07
     pertubate: False
     nb_relaxation_steps: 0
+    patience: 0
   regularization:
     thk: 10.0
     thk_version: 1

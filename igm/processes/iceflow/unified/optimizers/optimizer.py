@@ -97,14 +97,16 @@ class Optimizer(ABC):
         self, inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
         theta = self.map.get_theta()
-        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
             for theta_i in theta:
                 tape.watch(theta_i)
             U, V = self.map.get_UV(inputs)
             cost = self.cost_fn(U, V, inputs)
-        grad_u = tape.gradient(cost, [U, V])
-        grad_theta = tape.gradient(cost, theta)
-        del tape
+
+        grads = tape.gradient(cost, [U, V] + theta)
+        grad_u = tuple(grads[:2])
+        grad_theta = grads[2:]
+        
         return cost, grad_u, grad_theta
 
     def _init_step_state(

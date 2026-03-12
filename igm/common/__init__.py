@@ -12,6 +12,8 @@ from .runner import (
 
 from .utilities import (
     add_logger,
+    get_igm_version,
+    write_igm_version,
     download_unzip_and_store,
     print_comp,
     print_gpu_info,

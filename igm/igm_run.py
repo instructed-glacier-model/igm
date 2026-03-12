@@ -4,24 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 import os
 
-# os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1' # testing iceflow as cudnn kernels are not fusing
-# # Disable cuDNN's algorithm selection to prevent Winograd usage
-# os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-# os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
-
-# # Or more specifically, disable Winograd algorithms
-
-
-# os.environ['ENABLE_NVTX_RANGES'] = '1'
-# os.environ['ENABLE_NVTX_RANGES_DETAILED'] = '1'
-# os.environ['TF_XLA_FLAGS'] = '--tf_xla_print_cluster_outputs'
-
 import tensorflow as tf
-import igm
-from igm import (
-    inputs,
-    outputs,
-)
 
 from igm.common import (
     State,
@@ -31,6 +14,7 @@ from igm.common import (
     setup_igm_modules,
     print_gpu_info,
     add_logger,
+    write_igm_version,
     download_unzip_and_store,
     print_comp,
     check_incompatilities_in_parameters_file,
@@ -40,10 +24,9 @@ from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
 from hydra.utils import get_original_cwd  # , to_absolute_path
 import hydra
+import json
 
 OmegaConf.register_new_resolver("get_cwd", lambda x: os.getcwd())
-from hydra.core.hydra_config import HydraConfig
-import numpy as np
 from datetime import datetime
 
 
@@ -53,11 +36,11 @@ def main(cfg: DictConfig) -> None:
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
-
     state.saveresult = True
-
     state.start_time = datetime.now()
 
+    write_igm_version(Path(os.getcwd()))
+    
     if cfg.core.check_compat_params:
         check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
@@ -94,11 +77,10 @@ def main(cfg: DictConfig) -> None:
     if cfg.core.logging:
         add_logger(cfg=cfg, state=state)
         tf.get_logger().setLevel(cfg.core.tf_logging_level)
-
+    
     if cfg.core.print_params:
         print(OmegaConf.to_yaml(cfg))
 
-    # ! Needs to be before the inputs the way it is setup - otherwise, it will throw an error... (at least with local not loadncdf)
     if not cfg.core.url_data == "":
         folder_path = state.original_cwd.joinpath(cfg.core.folder_data)
         download_unzip_and_store(cfg.core.url_data, folder_path)
@@ -109,10 +91,6 @@ def main(cfg: DictConfig) -> None:
         imported_outputs_modules,
     ) = setup_igm_modules(cfg, state)
 
-    #    input_methods = list(cfg.inputs.keys())
-    #    if len(input_methods) > 1:
-    #        raise ValueError("Only one inputs method is allowed.")
-    #    imported_inputs_modules[0].run(cfg, state)
     for input_method in imported_inputs_modules:
         input_method.run(cfg, state)
 
@@ -136,9 +114,13 @@ def main(cfg: DictConfig) -> None:
     state.runtime = (state.end_time - state.start_time).total_seconds()
 
     if hasattr(state, "score"):
-        return state.score
+        score = state.score
+        with open("_igm_score.json", "w") as f:
+            json.dump(score, f)
     else:
-        return float("inf")
+        score = float("inf")
+
+    return score
 
 
 if __name__ == "__main__":

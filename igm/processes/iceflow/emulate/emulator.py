@@ -228,10 +228,9 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
         nb_inputs = len(cfg_emulator.fieldin)
         nb_outputs = 2 * cfg_numerics.Nz
 
-        state.iceflow_model = getattr(
-            igm.processes.iceflow.emulate.utils.networks,
-            cfg_emulator.network.architecture,
-        )(cfg, nb_inputs, nb_outputs)
+        from igm.processes.iceflow.emulate.utils.architectures import Architectures
+        arch_name = cfg_emulator.network.architecture.upper()
+        state.iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
 
     @tf.function(jit_compile=True)
     def fast_inference(x):

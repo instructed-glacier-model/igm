@@ -105,16 +105,20 @@ class OptimizerNewton(Optimizer):
 
         theta = self.map.get_theta()
 
-        with tf.GradientTape() as outer_tape:
-            with tf.GradientTape(persistent=True) as inner_tape:
+        with tf.GradientTape(watch_accessed_variables=False) as outer_tape:
+            for theta_i in theta:
+                outer_tape.watch(theta_i)
+            with tf.GradientTape(watch_accessed_variables=False) as inner_tape:
+                for theta_i in theta:
+                    inner_tape.watch(theta_i)
                 U, V = self.map.get_UV(inputs)
                 cost = self.cost_fn(U, V, inputs)
 
             # First derivatives
-            grad_theta = inner_tape.gradient(cost, theta)
-            grad_u = inner_tape.gradient(cost, [U, V])
-            del inner_tape
-
+            grads = inner_tape.gradient(cost, [U, V] + theta)
+            grad_u = tuple(grads[:2])
+            grad_theta = grads[2:]
+            
             # ! Flattening here (on network mapping) causes an incredibly complex graph and memory leaks... (despite it being the cleanest...)
             grad_theta_flat = tf.concat(
                 [tf.reshape(g, (-1,)) for g in grad_theta], axis=0

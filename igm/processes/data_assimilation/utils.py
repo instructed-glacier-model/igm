@@ -10,7 +10,7 @@ from igm.utils.math.getmag import getmag
 from igm.utils.grad.compute_divflux import compute_divflux
 from scipy import stats 
 from igm.processes.time.time import compute_dt_from_cfl
-from igm.processes.iceflow.emulate.emulator import update_iceflow_emulated
+from .iceflow_dispatch import iceflow_evaluate
 from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
 
 def compute_rms_std_optimization(state, i):
@@ -215,7 +215,7 @@ def apply_relaxation(cfg, state):
 
         # update_iceflow_emulator(cfg, state, ll, pertubate=False)
 
-        update_iceflow_emulated(cfg, state)
+        iceflow_evaluate(cfg, state)
 
         cfl = 0.1 ; step_max = 1
 

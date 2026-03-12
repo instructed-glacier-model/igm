@@ -19,7 +19,7 @@ class NoiseAugmentation(Augmentation):
 
 
 # Noise function registry
-NOISE_FUNCTIONS = {
+NoiseFunctions = {
     "gaussian": lambda x, scale: add_gaussian_noise(x, scale),
     "perlin": lambda x, scale: add_perlin_noise(x, scale),
     "intensity": lambda x, scale: add_intensity_noise(x, scale),

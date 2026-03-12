@@ -35,9 +35,13 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
+            "line_search_method": cfg_unified.line_search,
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            "cg_max_iter": cfg_unified.cg_newton.cg_max_iter,
+            "cg_tol": cfg_unified.cg_newton.cg_tol,
+            "truncated": cfg_unified.cg_newton.truncated,
         }
 
     @staticmethod

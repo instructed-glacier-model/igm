@@ -52,4 +52,7 @@ setup(
         "typeguard",
         "rich",
     ],
+    extras_require={
+        "optuna": ["optuna>=3.0"],
+    },
 )

@@ -59,7 +59,7 @@ class InterfaceTrustRegion(InterfaceOptimizer):
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        damping = cfg_unified.hessian.damping
+        damping = tf.constant(cfg_unified.hessian.damping, dtype=tf.float32)
         optimizer.update_parameters(iter_max=iter_max, damping=damping)
 
         return True

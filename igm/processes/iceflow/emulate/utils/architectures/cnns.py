@@ -136,19 +136,20 @@ class CNN(tf.keras.Model):
                 self.batch_norm_layers.append(None)
 
             # Activation
-            if self.activation_name.lower() == "leakyrelu":
+            activation_name = self.activation_name.lower()
+            if activation_name == "leakyrelu":
                 activation = tf.keras.layers.LeakyReLU(
                     alpha=0.01,
                     dtype=self.dtype_model,      
                     name=f"leakyrelu_{i}",
                 )
-            elif self.activation_name.lower() in ("swish", "silu"):
+            elif activation_name in ("swish", "silu"):
                 activation = tf.keras.layers.Activation(
                     tf.nn.swish,
                     dtype=self.dtype_model,       
                     name=f"swish_{i}",
                 )
-            elif self.activation_name.lower() == "gelu":
+            elif activation_name == "gelu":
                 activation = tf.keras.layers.Activation(
                     tf.nn.gelu,
                     dtype=self.dtype_model,           

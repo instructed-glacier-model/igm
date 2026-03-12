@@ -13,8 +13,7 @@ from ..cost_terms.total_cost import total_cost
 # from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model
 # from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
 
-from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
+from ..iceflow_dispatch import iceflow_evaluate
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
@@ -57,7 +56,7 @@ def optimize_update(cfg, state, cost, i):
             else:
                 vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
 
-        update_iceflow_emulated(cfg, state)
+        iceflow_evaluate(cfg, state)
 
         if (
             not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor

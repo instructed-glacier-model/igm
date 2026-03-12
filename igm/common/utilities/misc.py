@@ -1,5 +1,10 @@
 import logging
-
+import importlib.metadata
+import importlib.util
+import subprocess
+from pathlib import Path
+import sys
+from typing import Tuple
 
 def download_unzip_and_store(url, folder_path) -> None:
     """
@@ -35,22 +40,78 @@ def download_unzip_and_store(url, folder_path) -> None:
     else:
         logging.info(f"The data already exists at '{folder_path}'")
 
+class TeeStream:
+    """Tees a stream to both terminal and a file, with no formatting overhead."""
+    def __init__(self, original_stream, file_path, mode="w"):
+        self.original_stream = original_stream
+        self.file = open(file_path, mode, encoding="utf-8", buffering=1)  # line-buffered
+
+    def write(self, message):
+        self.original_stream.write(message)
+        self.file.write(message)
+
+    def flush(self):
+        self.original_stream.flush()
+        self.file.flush()
+
+    def isatty(self):
+        return False
+
+    def close(self):
+        self.file.close()
 
 def add_logger(cfg, state) -> None:
+    
+    logger = logging.getLogger("igm")
+    logger.setLevel(cfg.core.igm_logging_level)
 
-    # ! Ignore logging file for now...
-    # if cfg.logging_file == "":
-    #     pathf = ""
-    # else:
-    #     pathf = cfg.logging_file
+    # Prevent messages from propagating to Hydra's root logger (avoids duplicates)
+    logger.propagate = False
 
-    logging.basicConfig(
-        # filename=pathf,
-        encoding="utf-8",
-        filemode="w",
-        level=cfg.core.igm_logging_level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-    logging.root.setLevel(cfg.core.igm_logging_level)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
-    state.logger = logging.getLogger("igm")
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(cfg.core.igm_logging_level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler — Hydra already set cwd to the output dir, so this lands there
+    file_handler = logging.FileHandler("igm.log", mode="w", encoding="utf-8")
+    file_handler.setLevel(cfg.core.igm_logging_level)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    state.logger = logger
+    
+    # Tee stdout/stderr directly to file - no logger overhead
+    sys.stdout = TeeStream(sys.__stdout__, "terminal.log")
+    sys.stderr = TeeStream(sys.__stderr__, "terminal.log", mode="a")  # append so both go to same file
+
+def get_igm_version() -> Tuple[str, str]:
+    try:
+        version = importlib.metadata.version("igm")
+        source = 'PyPi'
+        return (source, version)
+    except importlib.metadata.PackageNotFoundError:
+        pass
+
+    try:
+        igm_root = Path(__file__).resolve().parent
+        hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=igm_root,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        source = 'git'
+        return (source, hash)
+    except Exception:
+        pass
+
+    return ("unknown", "unknown")
+
+def write_igm_version(output_dir: Path) -> None:
+    source, version = get_igm_version()
+    with open(output_dir / "version.txt", "a", encoding="utf-8") as f:
+        f.write(f"source: {source}\n")
+        f.write(f"version: {version}\n")

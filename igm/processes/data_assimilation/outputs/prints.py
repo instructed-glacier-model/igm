@@ -16,7 +16,7 @@ def print_costs(cfg, state, cost, i):
     f = open('costs.dat','a')
 
     def bound(x):
-        return min(x, 9999999)
+        return min(float(x), 9999999)
 
     keys = list(cost.keys()) 
     if i == 0:
@@ -53,7 +53,7 @@ def print_info_data_assimilation(cfg, state, cost, i):
         }
         for key in cost:
             value = cost[key].numpy()
-            dic_postfix[key] = f"{min(value, 9999999):06.3f}"
+            dic_postfix[key] = f"{min(float(value), 9999999):06.3f}"
         
         state.pbar_costs.set_postfix(dic_postfix)
         state.pbar_costs.update(1)

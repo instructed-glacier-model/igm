@@ -29,7 +29,7 @@ class Mapping(ABC):
     def get_UV_impl(self) -> Tuple[TV, TV]:
         pass
 
-    @tf.function(jit_compile=True)
+    @tf.function(jit_compile=False)
     def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
         self.set_inputs(inputs)
         U, V = self.get_UV_impl()

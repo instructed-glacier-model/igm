@@ -27,6 +27,8 @@ class OptimizerLBFGS(Optimizer):
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
+        gamma_min: float = 1e-6,
+        gamma_max: float = 1e6,
         **kwargs
     ):
         super().__init__(
@@ -46,6 +48,8 @@ class OptimizerLBFGS(Optimizer):
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
         self.alpha_min = tf.Variable(alpha_min, dtype=self.precision)
         self.memory = memory
+        self.gamma_min = tf.constant(gamma_min, dtype=self.precision)
+        self.gamma_max = tf.constant(gamma_max, dtype=self.precision)
         if self.precision == tf.float32:
             self.eps = tf.constant(1e-12, self.precision)
         else:
@@ -99,7 +103,7 @@ class OptimizerLBFGS(Optimizer):
 
         # basic safety checks
         gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
-        gamma = tf.clip_by_value(gamma, tf.constant(1e-6, gamma.dtype), tf.constant(1e6, gamma.dtype))
+        gamma = tf.clip_by_value(gamma, self.gamma_min, self.gamma_max)
         gamma = tf.cast(gamma, q.dtype)
 
         # Tempering
@@ -252,7 +256,7 @@ class OptimizerLBFGS(Optimizer):
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
         iter_last = tf.constant(-1, dtype=tf.int32)
-        costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        costs = tf.TensorArray(dtype=cost.dtype, size=int(self.iter_max))
 
         for iter in tf.range(self.iter_max):
 

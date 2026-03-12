@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-
-# Copyright (C) 2021-2025 IGM authors
-# Published under the GNU GPL (Version 3), check at the LICENSE file
-
 import numpy as np
-import os, sys, shutil
 import tensorflow as tf
 from igm.utils.math.interp1d_tf import interp1d_tf
 import xarray as xr
@@ -135,15 +129,15 @@ def produce_climate_data(cfg, state):
     # Precompute the required constants based on user-defined parameters
     # seconds_per_year = 365.25 * 24 * 3600  # Convert mm/yr to kg m^-2 s^-1
 
-    # Create the climate data fields based on topg and user parameters
+    # Create the climate data fields based on usurf and user parameters
 
     # Compute the mean annual air temperature field using input topography
-    diff_elev_temp = cfg.processes.clim_station.zero_degree_isotherm - state.topg
+    diff_elev_temp = cfg.processes.clim_station.zero_degree_isotherm - state.usurf
     air_temp = 0.0 + (cfg.processes.clim_station.adiabatic_lapse_rate * diff_elev_temp)
 
     # Compute the mean annual precipitation field using input topography
     diff_elev_precip = (
-        state.topg - cfg.processes.clim_station.reference_precipitation_elevation
+        state.usurf - cfg.processes.clim_station.reference_precipitation_elevation
     ) / 100
     precip_change = diff_elev_precip * state.precip_ref_change
     precipitation = state.reference_precip_ice + precip_change

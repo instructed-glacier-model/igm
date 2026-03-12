@@ -9,7 +9,7 @@ from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
 
-DESIRED_INPUTS = ("thk", "usurf", "arrhenius", "slidingco", "dX")
+DesiredInputs = ("thk", "usurf", "arrhenius", "slidingco", "dX")
 
 """
 This is a temporary replacement for the default energy cost since that does not currently support certain fields missing from the inputs cfg 
@@ -59,7 +59,7 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
             return ones1 * tf.cast(val, input_net.dtype)
 
         chans = []
-        for nm in DESIRED_INPUTS:
+        for nm in DesiredInputs:
             key = nm.lower()
             if key in net_idx:
                 i = net_idx[key]
@@ -80,7 +80,7 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
         input_energy = build_energy_inputs(input_net)
 
         energy = iceflow_energy_UV(
-            inputs_names=list(DESIRED_INPUTS),
+            inputs_names=list(DesiredInputs),
             inputs=input_energy,
             U=U,
             V=V,

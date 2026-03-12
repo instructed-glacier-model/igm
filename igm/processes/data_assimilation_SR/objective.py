@@ -11,11 +11,11 @@ from .utils import _as_list
 from .terms import (
     CostTerm,
     MisfitSpec,
-    MISFIT_REGISTRY,
+    MisfitRegistry,
     FieldPenaltySpec,
     FieldPenaltyTerm,
-    MISFIT,
-    REGULARIZATION
+    Misfit,
+    Regularization
 )
 
 
@@ -28,8 +28,8 @@ class DAObjective:
         self.terms: List[CostTerm] = list(terms)
 
         self.term_names = [t.name for t in self.terms]
-        self._misfit_idx = [i for i, t in enumerate(self.terms) if t.group == MISFIT]
-        self._reg_idx = [i for i, t in enumerate(self.terms) if t.group == REGULARIZATION]
+        self._misfit_idx = [i for i, t in enumerate(self.terms) if t.group == Misfit]
+        self._reg_idx = [i for i, t in enumerate(self.terms) if t.group == Regularization]
 
     def __call__(self, U: tf.Tensor, V: tf.Tensor, inputs) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         dtype = normalize_precision(self.cfg.processes.iceflow.numerics.precision)
@@ -83,7 +83,7 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
             eps=float(d.get("eps", 1e-12)),
         )
 
-        TermCls = MISFIT_REGISTRY[kind]
+        TermCls = MisfitRegistry[kind]
         terms.append(TermCls(spec))
 
     # ---- REGULARIZATION ----

@@ -9,8 +9,6 @@ from typing import Dict
 from ..sliding import SlidingComponent
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.grad.grad import grad_xy
-from igm.utils.stag.stag import stag4h
 
 
 class WeertmanParams(tf.experimental.ExtensionType):
@@ -19,6 +17,7 @@ class WeertmanParams(tf.experimental.ExtensionType):
     regu: float
     exponent: float
     u_ref: float  # (m/yr)
+
 
 class Weertman(SlidingComponent):
     """Sliding component implementing Weertman's sliding law."""

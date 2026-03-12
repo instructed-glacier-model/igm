@@ -8,6 +8,7 @@ from typing import Tuple
 
 from .bc import BoundaryCondition, TV
 
+
 class NoInflow(BoundaryCondition):
     """Open boundary: outflow allowed, inflow suppressed (normal component only)."""
 

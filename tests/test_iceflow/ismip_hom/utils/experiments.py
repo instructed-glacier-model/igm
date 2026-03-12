@@ -166,7 +166,9 @@ class ExperimentCInversion(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": tf.Variable(tf.ones_like(h, dtype=tf.float32), trainable=True, name="slidingco"),
+            "slidingco": tf.Variable(
+                tf.ones_like(h, dtype=tf.float32), trainable=True, name="slidingco"
+            ),
             "arrhenius": A,
         }
 
