@@ -106,6 +106,49 @@ def _sync_state_costs_and_outputs(cfg, state, da: DataAssimilation, iteration: i
     evaluate_iceflow(cfg, state)
     update_ncdf_optimize(cfg, state, int(iteration))
 
+def _get_inverted_field_names(cfg) -> set[str]:
+    return {
+        str(item["name"])
+        for item in getattr(cfg.processes.data_assimilation_SR, "variables", [])
+    }
+
+def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
+    """
+    Only initialize fields that are actually inverted for.
+    Non-inverted fields are left unchanged.
+    """
+    inverted = _get_inverted_field_names(cfg)
+
+    # These are not inversion variables, just cast once for consistency.
+    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
+    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
+    state.usurf = tf.cast(state.usurf, dtype=dtype)
+    state.dX = tf.cast(state.dX, dtype=dtype)
+
+    if "thk" in inverted:
+        thk0 = initial_thickness(
+            s=state.usurf,
+            u=state.uvelsurfobs,
+            v=state.vvelsurfobs,
+            mask=state.icemask,
+            dx=state.dX[0, 0],
+            dy=state.dX[0, 0],
+        )
+        state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
+
+    if "slidingco" in inverted:
+        state.slidingco = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_slidingco, dtype)
+        )
+
+    if "arrhenius" in inverted:
+        state.arrhenius = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
+        )
+
+    return inverted
 
 def _configure_da_step_callback(cfg, state, da: DataAssimilation, iter_offset: int) -> None:
     def _step_callback(it_tf):
@@ -422,22 +465,7 @@ def data_assimilation_initialize(cfg, state):
 
     da = DataAssimilation()
 
-    thk0 = initial_thickness(
-        s=state.usurf,
-        u=state.uvelsurfobs,
-        v=state.vvelsurfobs,
-        mask=state.icemask,
-        dx=state.dX[0, 0],
-        dy=state.dX[0, 0],
-    )
-
-    state.slidingco = tf.ones_like(thk0, dtype=dtype) * cfg.processes.iceflow.physics.init_slidingco
-    state.arrhenius = tf.ones_like(thk0, dtype=dtype) * cfg.processes.iceflow.physics.init_arrhenius
-    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
-    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
-    state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
-    state.usurf = tf.cast(state.usurf, dtype=dtype)
-    state.dX = tf.cast(state.dX, dtype=dtype)
+    _initialize_inverted_fields(cfg, state, dtype)
 
     mapping_args = InterfaceDataAssimilation.get_mapping_args(cfg, state)
     da.map = MappingDataAssimilation(**mapping_args)
