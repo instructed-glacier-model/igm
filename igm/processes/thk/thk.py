@@ -244,7 +244,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 
 def update(cfg: DictConfig, state: State) -> None:
-    if state.it >= 0:
+    if state.it > 0:
         if hasattr(state, "logger"):
             state.logger.info(f"Ice thickness equation at time: {state.t.numpy()}")
 
