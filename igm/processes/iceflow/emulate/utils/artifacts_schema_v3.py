@@ -9,34 +9,24 @@ from typing import Any, Dict, List
 
 import numpy as np
 import tensorflow as tf
+import yaml
 
-from omegaconf import open_dict
+from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 from rich.console import Console, Group
-from rich.theme import Theme
-from rich.table import Table
 from rich.panel import Panel
-
-from igm.utils.math.precision import normalize_precision
-
-""" 
-
-    Defines the schema for emulator artifacts (manifest.json) version 3, and provides parsing + validation utilities.
-    This schema version is the current standard for all new artifacts.
-
-"""
+from rich.table import Table
+from rich.theme import Theme
 
 
-# -----------------------------------------------------------------------------
-# Rich printing
-# -----------------------------------------------------------------------------
+SUPPORTED_SCHEMA_VERSION = 3
+
 
 _theme = Theme(
     {
         "label": "bold #e5e7eb",
         "value": "#06b6d4",
         "path": "#a78bfa",
-        "warn": "bold #f59e0b",
         "err": "bold #ef4444",
         "muted": "italic #64748b",
     }
@@ -44,34 +34,28 @@ _theme = Theme(
 _console = Console(theme=_theme)
 
 
-# -----------------------------------------------------------------------------
-# Manifest dataclasses
-# -----------------------------------------------------------------------------
-
 @dataclass
 class ArchitectureSpec:
     name: str
     params: Dict[str, Any]
+
 
 @dataclass
 class NormalizationSpec:
     method: str
     params: Dict[str, Any]
 
+
 @dataclass
 class EmulatorManifestV3:
-    schema_version: int  # must be 3
-
-    # Required numerics + semantics
+    schema_version: int
     Nz: int
     basis_vertical: str
     basis_horizontal: str
     inputs: List[str]
-
     nb_inputs: int
     nb_outputs: int
     output_scale: float
-
     architecture: ArchitectureSpec
     normalization: NormalizationSpec
 
@@ -79,76 +63,217 @@ class EmulatorManifestV3:
         return asdict(self)
 
 
-# -----------------------------------------------------------------------------
-# v3 parsing / writing
-# -----------------------------------------------------------------------------
-
 def parse_manifest_v3(raw: Dict[str, Any]) -> EmulatorManifestV3:
-    if int(raw.get("schema_version", -1)) != 3:
-        raise ValueError(f"parse_manifest_v3 expects schema_version=3, got {raw.get('schema_version')!r}")
-
-    # Required keys (fail fast on corrupt v3 manifests)
-    for k in ("Nz", "basis_vertical", "basis_horizontal", "inputs", "nb_inputs", "nb_outputs", "output_scale", "architecture", "normalization"):
-        if k not in raw:
-            raise ValueError(f"Schema v3 manifest missing required field {k!r}")
-
-    arch = raw["architecture"]
-    norm = raw["normalization"]
-
-    m = str(norm.get("method", ""))
-    if m != "fixed_channel_standardization":
+    schema = int(raw.get("schema_version", -1))
+    if schema != SUPPORTED_SCHEMA_VERSION:
         raise ValueError(
-            f"Schema v3 requires normalization.method='fixed_channel_standardization', got {m!r}"
+            f"Unsupported schema_version={schema!r}. "
+            f"Expected {SUPPORTED_SCHEMA_VERSION}."
         )
 
-    return EmulatorManifestV3(
-        schema_version=3,
+    required = {
+        "Nz",
+        "basis_vertical",
+        "basis_horizontal",
+        "inputs",
+        "nb_inputs",
+        "nb_outputs",
+        "output_scale",
+        "architecture",
+        "normalization",
+    }
+    missing = sorted(required - set(raw.keys()))
+    if missing:
+        raise ValueError(
+            f"Manifest schema v{SUPPORTED_SCHEMA_VERSION} is missing required fields: {missing}"
+        )
+
+    arch = dict(raw["architecture"])
+    norm = dict(raw["normalization"])
+
+    if str(norm.get("method", "")) != "fixed_channel_standardization":
+        raise ValueError(
+            "Only normalization.method='fixed_channel_standardization' is supported."
+        )
+
+    manifest = EmulatorManifestV3(
+        schema_version=SUPPORTED_SCHEMA_VERSION,
         Nz=int(raw["Nz"]),
         basis_vertical=str(raw["basis_vertical"]),
         basis_horizontal=str(raw["basis_horizontal"]),
-        inputs=list(raw["inputs"]),
+        inputs=[str(x) for x in raw["inputs"]],
         nb_inputs=int(raw["nb_inputs"]),
         nb_outputs=int(raw["nb_outputs"]),
         output_scale=float(raw["output_scale"]),
-        architecture=ArchitectureSpec(name=str(arch["name"]), params=dict(arch.get("params", {}))),
-        normalization=NormalizationSpec(method=str(norm["method"]), params=dict(norm.get("params", {}))),
+        architecture=ArchitectureSpec(
+            name=str(arch["name"]),
+            params=dict(arch.get("params", {})),
+        ),
+        normalization=NormalizationSpec(
+            method=str(norm["method"]),
+            params=dict(norm.get("params", {})),
+        ),
+    )
+
+    _validate_internal_manifest_consistency(manifest)
+    return manifest
+
+
+def _validate_internal_manifest_consistency(manifest: EmulatorManifestV3) -> None:
+    if manifest.nb_inputs != len(manifest.inputs):
+        raise ValueError(
+            f"Manifest is inconsistent: nb_inputs={manifest.nb_inputs} but "
+            f"len(inputs)={len(manifest.inputs)}."
+        )
+
+    params = dict(manifest.architecture.params)
+    required = {"input_names", "Nz", "network_params", "dx_const"}
+    missing = sorted(required - set(params.keys()))
+    if missing:
+        raise ValueError(
+            f"Manifest architecture.params is missing required constructor keys: {missing}"
+        )
+
+    input_names = [str(x) for x in params["input_names"]]
+    if input_names != manifest.inputs:
+        raise ValueError(
+            "Manifest is inconsistent: architecture.params['input_names'] does not match top-level inputs."
+        )
+
+    if int(params["Nz"]) != int(manifest.Nz):
+        raise ValueError(
+            "Manifest is inconsistent: architecture.params['Nz'] does not match top-level Nz."
+        )
+
+    net_params = params["network_params"]
+    if not isinstance(net_params, dict):
+        raise ValueError("architecture.params['network_params'] must be a dict.")
+
+    norm_params = dict(manifest.normalization.params)
+    for key in ("mean_1d", "var_1d", "epsilon"):
+        if key not in norm_params:
+            raise ValueError(
+                f"Manifest normalization.params is missing required key {key!r}."
+            )
+
+    mean = np.asarray(norm_params["mean_1d"], dtype=np.float64).reshape(-1)
+    var = np.asarray(norm_params["var_1d"], dtype=np.float64).reshape(-1)
+    eps = float(norm_params["epsilon"])
+
+    if mean.shape[0] != manifest.nb_inputs or var.shape[0] != manifest.nb_inputs:
+        raise ValueError(
+            "Normalization statistics length does not match manifest.nb_inputs."
+        )
+    if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(var)):
+        raise ValueError("Normalization statistics contain NaN/Inf.")
+    if np.any(var < 0.0):
+        raise ValueError("Normalization variance contains negative values.")
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError("Normalization epsilon must be finite and > 0.")
+
+
+def load_supported_manifest(manifest_path: str | Path) -> EmulatorManifestV3:
+    """
+    Read, parse, and validate the single supported manifest schema.
+    """
+    manifest_path = Path(manifest_path)
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Missing manifest file at {manifest_path}")
+
+    raw = yaml.safe_load(manifest_path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"Manifest at {manifest_path} did not parse to a dict; got {type(raw)}"
+        )
+
+    return parse_manifest_v3(raw)
+
+
+def build_fixed_input_normalizer_from_manifest(
+    manifest: EmulatorManifestV3,
+    dtype: tf.DType,
+    *,
+    expected_nb_inputs: int | None = None,
+    name: str = "input_norm",
+) -> FixedChannelStandardization:
+    """
+    Rebuild the exact FixedChannelStandardization layer stored in the manifest.
+    """
+    p = dict(manifest.normalization.params)
+
+    mean_1d = np.asarray(p["mean_1d"], dtype=np.float64).reshape(-1)
+    var_1d = np.asarray(p["var_1d"], dtype=np.float64).reshape(-1)
+    eps = float(p["epsilon"])
+
+    if expected_nb_inputs is None:
+        expected_nb_inputs = int(manifest.nb_inputs)
+
+    if mean_1d.shape[0] != expected_nb_inputs or var_1d.shape[0] != expected_nb_inputs:
+        raise ValueError(
+            "Normalization statistics length mismatch: "
+            f"mean={mean_1d.shape[0]}, var={var_1d.shape[0]}, "
+            f"expected_nb_inputs={expected_nb_inputs}"
+        )
+
+    return FixedChannelStandardization(
+        mean_1d=mean_1d,
+        var_1d=var_1d,
+        epsilon=eps,
+        dtype=dtype,
+        name=name,
     )
 
 
-def _extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
+def validate_model_matches_manifest_v3(
+    model: tf.keras.Model,
+    manifest: EmulatorManifestV3,
+) -> None:
     """
-    Schema v3 ONLY supports FixedChannelStandardization as the forward-pass normalizer.
+    Ensure an already-constructed model matches the manifest reconstruction
+    contract exactly.
+    """
+    if not hasattr(model, "resolved_params"):
+        raise TypeError(
+            f"Model of type {type(model)} does not expose resolved_params(); "
+            "cannot verify compatibility against manifest."
+        )
 
-    Requirements on model.input_normalizer:
-      - has attributes: _mean_1d, _var_1d (1D tensors), epsilon (float)
-    """
+    actual = dict(model.resolved_params())
+    expected = dict(manifest.architecture.params)
+
+    if actual != expected:
+        raise ValueError(
+            "Current model structure does not match manifest reconstruction params.\n"
+            f"manifest.architecture.params = {expected!r}\n"
+            f"model.resolved_params()      = {actual!r}"
+        )
+
+def _extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
     norm = getattr(model, "input_normalizer", None)
     if norm is None:
         raise ValueError(
-            "Cannot write schema v3 manifest: model.input_normalizer is None. "
+            "Cannot write manifest: model.input_normalizer is None. "
             "Attach FixedChannelStandardization before saving."
         )
 
-    # must be fixed standardizer
     missing = [a for a in ("_mean_1d", "_var_1d", "epsilon") if not hasattr(norm, a)]
     if missing:
         raise TypeError(
-            "Schema v3 requires model.input_normalizer to be FixedChannelStandardization "
+            "Manifest writing requires model.input_normalizer to be FixedChannelStandardization "
             f"(missing attributes: {missing}). Got: {type(norm)}"
         )
 
-    # Read stats (stored in TF dtype; serialize in float64 for robustness)
     mean = np.asarray(getattr(norm, "_mean_1d").numpy(), dtype=np.float64).reshape(-1)
-    var  = np.asarray(getattr(norm, "_var_1d").numpy(),  dtype=np.float64).reshape(-1)
-    eps  = float(getattr(norm, "epsilon"))
+    var = np.asarray(getattr(norm, "_var_1d").numpy(), dtype=np.float64).reshape(-1)
+    eps = float(getattr(norm, "epsilon"))
 
     if mean.size == 0 or var.size == 0:
-        raise RuntimeError("FixedChannelStandardization stats are empty.")
+        raise RuntimeError("FixedChannelStandardization statistics are empty.")
     if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(var)):
-        raise RuntimeError("FixedChannelStandardization stats contain NaN/Inf.")
-    if np.any(var < 0):
+        raise RuntimeError("FixedChannelStandardization statistics contain NaN/Inf.")
+    if np.any(var < 0.0):
         raise RuntimeError("FixedChannelStandardization variance contains negative values.")
-    if not np.isfinite(eps) or eps <= 0:
+    if not np.isfinite(eps) or eps <= 0.0:
         raise RuntimeError(f"FixedChannelStandardization epsilon must be finite and > 0, got {eps!r}")
 
     return NormalizationSpec(
@@ -158,75 +283,85 @@ def _extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
             "epsilon": eps,
             "mean_1d": mean.tolist(),
             "var_1d": var.tolist(),
-            "stats_source": "fixed_channel_standardization",
         },
     )
 
 
-def _extract_architecture_spec(cfg) -> ArchitectureSpec:
-    """
-    Minimal traceability; loader uses cfg to rebuild but v3 validation can reconcile.
-    """
+def _extract_architecture_spec(cfg, model: tf.keras.Model, inputs: List[str]) -> ArchitectureSpec:
     arch_name = str(cfg.processes.iceflow.unified.network.architecture)
 
-    net_cfg = cfg.processes.iceflow.emulator.network
-    params = {
-        "nb_layers": int(getattr(net_cfg, "nb_layers")),
-        "nb_out_filter": int(getattr(net_cfg, "nb_out_filter")),
-        "conv_ker_size": int(getattr(net_cfg, "conv_ker_size")),
-        "activation": str(getattr(net_cfg, "activation")),
-        "weight_initialization": str(getattr(net_cfg, "weight_initialization")),
-        "batch_norm": bool(getattr(net_cfg, "batch_norm", False)),
-        "residual": bool(getattr(net_cfg, "residual", False)),
-        "separable": bool(getattr(net_cfg, "separable", False)),
-        "dropout_rate": float(getattr(net_cfg, "dropout_rate", 0.0)),
-        "l2_reg": float(getattr(net_cfg, "l2_reg", 0.0)),
-        "cnn3d_for_vertical": bool(getattr(net_cfg, "cnn3d_for_vertical", False)),
-        "trained_precision": getattr(cfg.processes.iceflow.numerics, "precision"),
-    }
+    if not hasattr(model, "resolved_params"):
+        raise TypeError(
+            f"Architecture {arch_name!r} does not expose resolved_params(); "
+            "cannot write a reconstruction-safe manifest."
+        )
+
+    params = dict(model.resolved_params())
+    required = {"input_names", "Nz", "network_params", "dx_const"}
+    missing = sorted(required - set(params.keys()))
+    if missing:
+        raise ValueError(
+            f"model.resolved_params() is missing required keys: {missing}"
+        )
+
+    params["input_names"] = [str(x) for x in params["input_names"]]
+    params["Nz"] = int(params["Nz"])
+    params["network_params"] = dict(params["network_params"])
+    params["dx_const"] = None if params["dx_const"] is None else float(params["dx_const"])
+
+    if params["input_names"] != list(inputs):
+        raise ValueError(
+            "Refusing to write manifest: model.resolved_params()['input_names'] "
+            "does not match the provided inputs list."
+        )
+
     return ArchitectureSpec(name=arch_name, params=params)
 
 
-def build_manifest_v3(cfg, model: tf.keras.Model, inputs: List[str], nb_outputs: int) -> EmulatorManifestV3:
-
+def build_manifest_v3(cfg, model: tf.keras.Model, inputs: List[str]) -> EmulatorManifestV3:
     cfg_unified = cfg.processes.iceflow.unified
     cfg_numerics = cfg.processes.iceflow.numerics
+    nb_outputs = int(model.nb_outputs)
 
-    # If caller passes inputs different from cfg, that’s almost always a bug.
-    cfg_inputs = list(cfg_unified.inputs)
-    if list(inputs) != cfg_inputs:
-        raise ValueError(f"Refusing to save: inputs arg {list(inputs)!r} != cfg.unified.inputs {cfg_inputs!r}")
-
-    arch = _extract_architecture_spec(cfg)
+    inputs = [str(x) for x in inputs]
+    arch = _extract_architecture_spec(cfg, model, inputs)
     norm = _extract_normalization_spec(model)
 
-    return EmulatorManifestV3(
-        schema_version=3,
+    if list(cfg_unified.inputs) != inputs:
+        raise ValueError(
+            f"Refusing to write manifest: inputs arg {inputs!r} != cfg.unified.inputs {list(cfg_unified.inputs)!r}"
+        )
+
+    if int(cfg_numerics.Nz) != int(arch.params["Nz"]):
+        raise ValueError(
+            f"Refusing to write manifest: cfg Nz={int(cfg_numerics.Nz)} != model Nz={int(arch.params['Nz'])}"
+        )
+
+    manifest = EmulatorManifestV3(
+        schema_version=SUPPORTED_SCHEMA_VERSION,
         Nz=int(cfg_numerics.Nz),
         basis_vertical=str(cfg_numerics.basis_vertical),
         basis_horizontal=str(cfg_numerics.basis_horizontal),
-        inputs=list(inputs),
-        nb_inputs=int(len(inputs)),
+        inputs=inputs,
+        nb_inputs=len(inputs),
         nb_outputs=int(nb_outputs),
         output_scale=float(cfg_unified.network.output_scale),
         architecture=arch,
         normalization=norm,
     )
 
+    _validate_internal_manifest_consistency(manifest)
+    return manifest
 
-# -----------------------------------------------------------------------------
-# v3 validation / reconciliation
-# -----------------------------------------------------------------------------
 
-def _raise_numerics_incompatibility(artifact_dir: Path, manifest: EmulatorManifestV3, errors: List[str]) -> None:
+def _raise_cfg_incompatibility(artifact_dir: Path, manifest: EmulatorManifestV3, errors: List[str]) -> None:
     info = Table(show_header=False, border_style="red", expand=False)
     info.add_column("Label", style="label")
     info.add_column("Value", style="err")
-
     info.add_row("Artifact", f"[path]{artifact_dir}[/path]")
+    info.add_row("Architecture", manifest.architecture.name)
+    info.add_row("Inputs", str(manifest.inputs))
     info.add_row("Nz", str(manifest.Nz))
-    info.add_row("basis_vertical", manifest.basis_vertical)
-    info.add_row("basis_horizontal", manifest.basis_horizontal)
 
     err = Table(show_header=False, border_style="red", expand=False)
     err.add_column("", width=2)
@@ -238,75 +373,49 @@ def _raise_numerics_incompatibility(artifact_dir: Path, manifest: EmulatorManife
     _console.print(
         Panel(
             Group(info, err),
-            title="[err]✖ Emulator artifact incompatible with current numerics[/err]",
-            subtitle="[muted]Nz/basis must match because discretization is configured before loading[/muted]",
+            title="[err]✖ Emulator artifact incompatible with current config[/err]",
+            subtitle="[muted]Refusing to mutate cfg or guess a reconstruction path[/muted]",
             border_style="red",
             padding=(1, 2),
         )
     )
     _console.print()
-    raise ValueError("Emulator artifact incompatible with numerics (see panel above).")
+    raise ValueError("Emulator artifact incompatible with current cfg (see panel above).")
 
 
-def validate_and_reconcile_cfg_v3(cfg, manifest: EmulatorManifestV3, artifact_dir: Path) -> List[str]:
-
+def validate_manifest_against_cfg_v3(cfg, manifest: EmulatorManifestV3, artifact_dir: Path) -> None:
     cfg_unified = cfg.processes.iceflow.unified
     cfg_numerics = cfg.processes.iceflow.numerics
-    desired_dtype = normalize_precision(cfg_numerics.precision)
+    cfg_emulator = cfg.processes.iceflow.emulator
 
     errors: List[str] = []
-    warnings: List[str] = []
 
-    # Strict numerics invariants (must match; do NOT override)
     if int(cfg_numerics.Nz) != int(manifest.Nz):
-        errors.append(f"Nz mismatch: cfg={int(cfg_numerics.Nz)} vs artifact={int(manifest.Nz)}")
+        errors.append(
+            f"Nz mismatch: cfg={int(cfg_numerics.Nz)} vs artifact={int(manifest.Nz)}"
+        )
     if str(cfg_numerics.basis_vertical) != str(manifest.basis_vertical):
         errors.append(
-            f"basis_vertical mismatch: cfg={str(cfg_numerics.basis_vertical)!r} vs artifact={str(manifest.basis_vertical)!r}"
+            "basis_vertical mismatch: "
+            f"cfg={str(cfg_numerics.basis_vertical)!r} vs artifact={str(manifest.basis_vertical)!r}"
         )
     if str(cfg_numerics.basis_horizontal) != str(manifest.basis_horizontal):
         errors.append(
-            f"basis_horizontal mismatch: cfg={str(cfg_numerics.basis_horizontal)!r} vs artifact={str(manifest.basis_horizontal)!r}"
+            "basis_horizontal mismatch: "
+            f"cfg={str(cfg_numerics.basis_horizontal)!r} vs artifact={str(manifest.basis_horizontal)!r}"
+        )
+
+    cfg_inputs = [str(x) for x in cfg_unified.inputs]
+    if cfg_inputs != list(manifest.inputs):
+        errors.append(
+            f"inputs mismatch: cfg={cfg_inputs!r} vs artifact={list(manifest.inputs)!r}"
+        )
+
+    cfg_output_scale = float(cfg_unified.network.output_scale)
+    if cfg_output_scale != float(manifest.output_scale):
+        errors.append(
+            f"output_scale mismatch: cfg={cfg_output_scale} vs artifact={float(manifest.output_scale)}"
         )
 
     if errors:
-        _raise_numerics_incompatibility(artifact_dir, manifest, errors)
-
-    # Non-strict: override cfg to artifact (noisy warnings)
-    with open_dict(cfg):
-        cfg_inputs = list(cfg_unified.inputs)
-        art_inputs = list(manifest.inputs)
-        if cfg_inputs != art_inputs:
-            warnings.append(f"inputs mismatch: cfg={cfg_inputs!r} → using artifact={art_inputs!r} (overriding cfg)")
-            cfg_unified.inputs = art_inputs
-
-        cfg_arch = str(cfg_unified.network.architecture)
-        art_arch = str(manifest.architecture.name)
-        if cfg_arch != art_arch:
-            warnings.append(f"architecture mismatch: cfg={cfg_arch!r} → using artifact={art_arch!r} (overriding cfg)")
-            cfg_unified.network.architecture = art_arch
-
-        cfg_os = float(cfg_unified.network.output_scale)
-        art_os = float(manifest.output_scale)
-        if cfg_os != art_os:
-            warnings.append(f"output_scale mismatch: cfg={cfg_os} → using artifact={art_os} (overriding cfg)")
-            cfg_unified.network.output_scale = art_os
-
-    # Precision warning (no cfg change)
-    trained_p = manifest.architecture.params.get("trained_precision", None)
-    if trained_p and str(trained_p) != "unknown":
-        try:
-            trained_dt = normalize_precision(str(trained_p))
-        except Exception:
-            warnings.append(
-                f"trained_precision={trained_p!r} present but unparsable; cfg requests {desired_dtype.name}. "
-                "Weights will load under the requested TF policy."
-            )
-        else:
-            if trained_dt != desired_dtype:
-                warnings.append(
-                    f"precision differs: artifact trained in {trained_dt.name} but cfg requests {desired_dtype.name}. "
-                    "Weights/vars will be cast to the requested precision via the active TF policy."
-                )
-
-    return warnings
+        _raise_cfg_incompatibility(artifact_dir, manifest, errors)

@@ -505,8 +505,8 @@ def data_assimilation_initialize(cfg, state):
     da._train_sampler = state.iceflow.optimizer.sampler
 
     da.pretrained_network_weights = [
-        tf.Variable(v.read_value(), trainable=False, name=f"pretrained_anchor_{i}")
-        for i, v in enumerate(da.shared_network.trainable_variables)
+        tf.Variable(tf.identity(v), trainable=False, name=f"pretrained_anchor_{i}")
+        for i, v in enumerate(da.map.network.trainable_variables)
     ]
 
     da.retrain_steps = int(500)

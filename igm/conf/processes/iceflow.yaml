@@ -72,6 +72,7 @@ iceflow:
     pertubate: false
     network:
       architecture: cnn
+      params: {}
       multiple_window_size: 0
       activation: LeakyReLU
       nb_layers: 16

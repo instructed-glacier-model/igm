@@ -24,7 +24,12 @@ from .io_tfrecords import load_metadata, list_shards, make_datasets
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
 
-from igm.processes.iceflow.emulate.utils.artifacts_schema_v3 import build_manifest_v3
+from igm.processes.iceflow.emulate.utils.artifacts_schema_v3 import (
+    build_manifest_v3,
+    build_fixed_input_normalizer_from_manifest,
+    load_supported_manifest,
+    validate_model_matches_manifest_v3,
+)
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 
@@ -324,55 +329,45 @@ def initialize(cfg, state):
     )
 
     # ----------------------------
-    # E) Mapping / optimizer / loss pieces
+    # E) Create model + gather mapping args
     # ----------------------------
+    # Important: get_mapping_args() constructs the network and populates
+    # state.iceflow_model as a side effect, but we must NOT instantiate the
+    # Mapping yet because the model is not built at this stage.
     mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
-    mapping = Mappings["network"](**mapping_args)
-    state.iceflow.mapping = mapping
 
     # ----------------------------
-    # E2) Normalization + single build (vars created after normalizer is attached)
+    # E2) Normalization + single build
     # ----------------------------
     manifest_path = out_dir / "manifest.yaml"
     desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
-    dummy0  = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
+    dummy0 = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
 
     if resume:
-        # For resume, normalization comes from manifest (single source of truth) BEFORE building/restoring
-        if not manifest_path.exists():
-            raise FileNotFoundError(
-                f"resume=True but {manifest_path} not found. "
-                "You chose manifest as source of truth; it must exist."
-            )
+        manifest = load_supported_manifest(manifest_path)
+        validate_model_matches_manifest_v3(state.iceflow_model, manifest)
 
-        raw = yaml.safe_load(manifest_path.read_text())
-        p = raw["normalization"]["params"]
-        mean_1d = np.asarray(p["mean_1d"], dtype=np.float64)
-        var_1d  = np.asarray(p["var_1d"],  dtype=np.float64)
-        eps = float(p.get("epsilon", p.get("variance_epsilon", 1e-7)))
-
-        norm2 = FixedChannelStandardization(
-            mean_1d=mean_1d,
-            var_1d=var_1d,
-            epsilon=eps,
-            dtype=desired_dtype,
+        norm2 = build_fixed_input_normalizer_from_manifest(
+            manifest,
+            desired_dtype,
+            expected_nb_inputs=Cx,
             name="input_norm",
         )
-        _ = norm2(dummy0)  # build the normalizer variables (if any)
+        _ = norm2(dummy0)
         state.iceflow_model.input_normalizer = norm2
         print("[norm] resume=True: attached fixed normalizer from manifest before restore")
     else:
-        # Fresh run: compute stats, then attach FixedChannelStandardization BEFORE building model vars
-        tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float64)
-        tmp.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000))
+        tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float32)
+        tmp.adapt(
+            train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000)
+        )
 
-        # Force one batch materialization so data pipeline is “ready”
         _ = next(iter(train_ds))
 
-        mean_1d = tmp.mean.numpy().reshape(-1).astype(np.float64)
-        var_1d  = tmp.variance.numpy().reshape(-1).astype(np.float64)
+        mean_1d = np.asarray(tmp.mean.numpy()).reshape(-1).astype(np.float64)
+        var_1d = np.asarray(tmp.variance.numpy()).reshape(-1).astype(np.float64)
         eps = 1e-7
         print(f"[norm-stats] computed once: mean={mean_1d} var={var_1d}")
 
@@ -385,9 +380,14 @@ def initialize(cfg, state):
         )
         _ = state.iceflow_model.input_normalizer(dummy0)
 
-    # Proper model build (creates model variables using the FINAL normalizer wiring)
-    y0 = state.iceflow_model(dummy_x, training=False)
-    nb_outputs = int(y0.shape[-1])
+    # Build AFTER final normalizer is attached
+    state.iceflow_model.build(dummy_x.shape)
+
+    # ----------------------------
+    # E3) Only now instantiate the Mapping
+    # ----------------------------
+    mapping = Mappings["network"](**mapping_args)
+    state.iceflow.mapping = mapping
 
     # Write manifest only on fresh runs (optional)
     if (not resume) and save_model:
@@ -396,7 +396,6 @@ def initialize(cfg, state):
                 cfg=cfg,
                 model=state.iceflow_model,
                 inputs=list(inputs),
-                nb_outputs=nb_outputs,
             )
             manifest_path.write_text(yaml.safe_dump(manifest_v3.to_dict(), sort_keys=False))
             print(f"[manifest] wrote schema v3 {manifest_path}")
