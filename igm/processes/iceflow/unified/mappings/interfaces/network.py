@@ -6,9 +6,12 @@ from omegaconf import DictConfig
 
 from .interface import InterfaceMapping
 from igm.common import State
-from igm.processes.iceflow.emulate.utils.artifacts import load_emulator_artifact
+from igm.processes.iceflow.emulate.utils.artifacts import (
+    build_emulator_from_cfg,
+    load_emulator_artifact,
+    _attach_config_normalizer
+)
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
-from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.emulate.utils.misc import (
@@ -18,66 +21,6 @@ from igm.processes.iceflow.emulate.utils.misc import (
 
 
 class InterfaceNetwork(InterfaceMapping):
-    @staticmethod
-    def _build_new_format_model(cfg: DictConfig):
-        cfg_numerics = cfg.processes.iceflow.numerics
-        cfg_unified = cfg.processes.iceflow.unified
-        cfg_emulator = cfg.processes.iceflow.emulator
-
-        arch_name = str(cfg_unified.network.architecture)
-        if arch_name not in Architectures:
-            raise ValueError(
-                f"Unknown network architecture: {arch_name}. "
-                f"Available: {list(Architectures.keys())}"
-            )
-
-        if not hasattr(cfg_emulator.network, "params") or cfg_emulator.network.params is None:
-            raise ValueError(
-                "cfg.processes.iceflow.emulator.network.params must be defined "
-                "for non-old-format architectures."
-            )
-
-        input_names = [str(x) for x in cfg_unified.inputs]
-        network_params = dict(cfg_emulator.network.params)
-        Nz = int(cfg_numerics.Nz)
-
-        dx_const: Optional[float]
-        if "dX" in input_names:
-            dx_const = None
-        else:
-            dx_const = 90.0
-
-        return Architectures[arch_name](
-            input_names=input_names,
-            Nz=Nz,
-            network_params=network_params,
-            dx_const=dx_const,
-        )
-
-    @staticmethod
-    def _attach_config_normalizer(cfg: DictConfig, model: tf.keras.Model) -> None:
-        cfg_unified = cfg.processes.iceflow.unified
-        nb_inputs = len(cfg_unified.inputs)
-
-        method = str(cfg_unified.normalization.method)
-        if method not in NormalizationsDict:
-            raise ValueError(f"Unknown normalizing method: {method}")
-
-        normalizing_class = NormalizationsDict[method]
-
-        if method == "adaptive":
-            normalizing_layer = normalizing_class(nb_inputs)
-        elif method == "fixed":
-            offsets = cfg_unified.normalization.fixed.inputs_offsets
-            variances = cfg_unified.normalization.fixed.inputs_variances
-            normalizing_layer = normalizing_class(offsets, variances)
-        elif method in ("automatic", "none"):
-            normalizing_layer = normalizing_class()
-        else:
-            raise ValueError(f"Unknown normalizing method: {method}")
-
-        model.input_normalizer = normalizing_layer
-
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
         cfg_numerics = cfg.processes.iceflow.numerics
@@ -117,14 +60,12 @@ class InterfaceNetwork(InterfaceMapping):
                     )
 
                 iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
+                _attach_config_normalizer(cfg, iceflow_model)
             else:
-                iceflow_model = InterfaceNetwork._build_new_format_model(cfg)
-
-            if cfg.processes.iceflow.do_pretraining:
-                # Pretraining computes and attaches a fixed normalizer itself.
-                iceflow_model.input_normalizer = None
-            else:
-                InterfaceNetwork._attach_config_normalizer(cfg, iceflow_model)
+                iceflow_model = build_emulator_from_cfg(
+                    cfg,
+                    attach_config_normalizer=not cfg.processes.iceflow.do_pretraining,
+                )
 
         state.iceflow_model = iceflow_model
         state.iceflow_manifest = manifest

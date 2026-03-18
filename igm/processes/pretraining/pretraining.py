@@ -15,7 +15,11 @@ import numpy as np
 import tensorflow as tf
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
-from igm.processes.iceflow.emulate.utils.artifacts import save_emulator_artifact
+from igm.processes.iceflow.emulate.utils.artifacts import (
+    rebuild_emulator_from_manifest,
+    save_emulator_artifact,
+    write_emulator_manifest,
+)
 from igm.processes.pretraining.cost_tmp import get_cost_fn
 from igm.utils.math.precision import normalize_precision
 
@@ -24,12 +28,6 @@ from .io_tfrecords import load_metadata, list_shards, make_datasets
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
 
-from igm.processes.iceflow.emulate.utils.artifacts_schema_v3 import (
-    build_manifest_v3,
-    build_fixed_input_normalizer_from_manifest,
-    load_supported_manifest,
-    validate_model_matches_manifest_v3,
-)
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 
@@ -331,13 +329,14 @@ def initialize(cfg, state):
     # ----------------------------
     # E) Create model + gather mapping args
     # ----------------------------
-    # Important: get_mapping_args() constructs the network and populates
-    # state.iceflow_model as a side effect, but we must NOT instantiate the
-    # Mapping yet because the model is not built at this stage.
+    # get_mapping_args() constructs the non-old-format model from cfg when
+    # pretrained=False. For resume runs we immediately replace that temporary
+    # cfg-built skeleton with the exact manifest-defined skeleton before any
+    # restore occurs.
     mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
 
     # ----------------------------
-    # E2) Normalization + single build
+    # E2) Attach final normalization / build final skeleton
     # ----------------------------
     manifest_path = out_dir / "manifest.yaml"
     desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
@@ -346,18 +345,13 @@ def initialize(cfg, state):
     dummy0 = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
 
     if resume:
-        manifest = load_supported_manifest(manifest_path)
-        validate_model_matches_manifest_v3(state.iceflow_model, manifest)
-
-        norm2 = build_fixed_input_normalizer_from_manifest(
-            manifest,
-            desired_dtype,
-            expected_nb_inputs=Cx,
-            name="input_norm",
+        state.iceflow_model, state.iceflow_manifest = rebuild_emulator_from_manifest(
+            artifact_dir=out_dir,
+            cfg=cfg,
+            load_weights=False,
         )
-        _ = norm2(dummy0)
-        state.iceflow_model.input_normalizer = norm2
-        print("[norm] resume=True: attached fixed normalizer from manifest before restore")
+        mapping_args["network"] = state.iceflow_model
+        print("[resume] rebuilt model skeleton from manifest; checkpoint will restore weights/optimizer state")
     else:
         tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float32)
         tmp.adapt(
@@ -380,27 +374,26 @@ def initialize(cfg, state):
         )
         _ = state.iceflow_model.input_normalizer(dummy0)
 
-    # Build AFTER final normalizer is attached
-    state.iceflow_model.build(dummy_x.shape)
+        # Build AFTER final normalizer is attached.
+        state.iceflow_model.build(dummy_x.shape)
+
+        if save_model:
+            if not manifest_path.exists():
+                write_emulator_manifest(
+                    artifact_dir=out_dir,
+                    cfg=cfg,
+                    model=state.iceflow_model,
+                    inputs=list(inputs),
+                )
+                print(f"[manifest] wrote schema v3 {manifest_path}")
+            else:
+                print(f"[manifest] exists, not overwriting: {manifest_path}")
 
     # ----------------------------
     # E3) Only now instantiate the Mapping
     # ----------------------------
     mapping = Mappings["network"](**mapping_args)
     state.iceflow.mapping = mapping
-
-    # Write manifest only on fresh runs (optional)
-    if (not resume) and save_model:
-        if not manifest_path.exists():
-            manifest_v3 = build_manifest_v3(
-                cfg=cfg,
-                model=state.iceflow_model,
-                inputs=list(inputs),
-            )
-            manifest_path.write_text(yaml.safe_dump(manifest_v3.to_dict(), sort_keys=False))
-            print(f"[manifest] wrote schema v3 {manifest_path}")
-        else:
-            print(f"[manifest] exists, not overwriting: {manifest_path}")
 
     opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
 
