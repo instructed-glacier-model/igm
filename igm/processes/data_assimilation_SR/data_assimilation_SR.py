@@ -249,6 +249,8 @@ def _setup_replay(cfg, da: DataAssimilation) -> None:
     replay_root = Path("/home/srosier/work2/tfrecords/strict_v2/")
     meta, H, W = _validate_replay_dataset(cfg, replay_root)
     Nz = int(cfg.processes.iceflow.numerics.Nz)
+    shapes = meta["example_shapes_by_nz"][str(Nz)]
+    H, W, Cx = shapes["x"]
 
     replay_batch_size = int(4)
     replay_val_batches = int(4)
@@ -270,6 +272,7 @@ def _setup_replay(cfg, da: DataAssimilation) -> None:
         compression="GZIP",
         batch_size=replay_batch_size,
         shuffle_buffer=replay_shuffle_buffer,
+        Cx=Cx,
     )
 
     da.replay_train_it = iter(train_ds)

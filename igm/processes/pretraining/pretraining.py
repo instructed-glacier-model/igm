@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Tuple, Any, Callable, Optional
+from typing import Tuple, Any, Callable, Optional, Sequence
 import random
 import yaml
 import time
@@ -106,24 +106,24 @@ def _prepare_run_dirs(out_dir: Path, resume: bool) -> Tuple[Path, Path]:
     return ckpt_dir, fig_dir
 
 
-def _validate_pretraining_setup(inputs: Tuple[str, ...], Cx: int, cfg_physics, state) -> None:
+def _validate_pretraining_setup(
+    inputs: Tuple[str, ...],
+    Cx: int,
+    metadata_inputs: Optional[Sequence[str]] = None,
+) -> None:
     if Cx != len(inputs):
         raise ValueError(
             f"TFRecord x has C={Cx} channels (from metadata), but cfg.processes.iceflow.unified.inputs "
             f"has {len(inputs)} entries: {inputs}. These must match in count and order."
         )
 
-    if Cx == 3 and inputs != ("thk", "usurf", "slidingco"):
-        raise ValueError(
-            f"TFRecord x has 3 channels and parse_example() assumes ('thk','usurf','slidingco') "
-            f"in that order, but cfg inputs are {inputs}."
-        )
-
-    if not hasattr(state, "iceflow") or not hasattr(state.iceflow, "discr_v") or state.iceflow.discr_v is None:
-        raise RuntimeError(
-            "state.iceflow.discr_v is missing, but the physics cost requires it. "
-            "Ensure the iceflow vertical discretization is initialized before pretraining."
-        )
+    if metadata_inputs is not None:
+        metadata_inputs = tuple(str(x) for x in metadata_inputs)
+        if metadata_inputs != inputs:
+            raise ValueError(
+                f"TFRecord metadata declares input_names={metadata_inputs}, but cfg.processes.iceflow.unified.inputs "
+                f"is {inputs}. These must match exactly in count and order."
+            )
 
 
 def _reset_metrics(metrics: MetricsBundle) -> None:
@@ -277,7 +277,9 @@ def initialize(cfg, state):
     H, W, Cx = shapes["x"]
 
     inputs = tuple(cfg_iceflow.unified.inputs)
-    _validate_pretraining_setup(inputs=inputs, Cx=Cx, cfg_physics=cfg_physics, state=state)
+    metadata_inputs = meta.get("x_channel_names", None)
+
+    _validate_pretraining_setup(inputs=inputs, Cx=Cx, metadata_inputs=metadata_inputs)
 
     # ----------------------------
     # C) Directories / resume checks (only if save_model; avoids sweep collisions)
@@ -324,6 +326,7 @@ def initialize(cfg, state):
         H=H, W=W, Nz=Nz,
         compression="GZIP",
         batch_size=micro_bs,
+        Cx=Cx,
     )
 
     # ----------------------------
