@@ -38,15 +38,15 @@ class CNO_LReLU(tf.keras.layers.Layer):
         x = tf.image.resize(
             x,
             size=self.up_size,
-            method="bicubic",
-            antialias=True,
+            method="bilinear",
+            antialias=False,
         )
         x = tf.nn.leaky_relu(x, alpha=self.negative_slope)
         x = tf.image.resize(
             x,
             size=self.out_size,
-            method="bicubic",
-            antialias=True,
+            method="bilinear",
+            antialias=False,
         )
         return x
 
