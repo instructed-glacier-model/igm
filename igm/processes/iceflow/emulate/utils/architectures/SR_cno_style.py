@@ -669,6 +669,9 @@ class CNO_DecompNet(tf.keras.Model):
     def _physics_features(self, raw_inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, Dict[str, tf.Tensor]]:
         x = tf.cast(raw_inputs, tf.float32)
 
+        # ------------------------------------------------------------------
+        # Raw fields
+        # ------------------------------------------------------------------
         H = tf.maximum(x[..., self.idx_thk : self.idx_thk + 1], 0.0)
         s = x[..., self.idx_usurf : self.idx_usurf + 1]
         b = s - H
@@ -682,21 +685,72 @@ class CNO_DecompNet(tf.keras.Model):
         if self.idx_arrhenius is not None:
             A = tf.maximum(x[..., self.idx_arrhenius : self.idx_arrhenius + 1], self.eps)
 
+        # ------------------------------------------------------------------
+        # Conservative stabilizers for thickness-derivative paths
+        #
+        # Kept local here so you only need to edit this one method for testing.
+        # For a cleaner long-term version, these could become class constants.
+        # ------------------------------------------------------------------
+        H_proxy_floor = tf.constant(10.0, dtype=tf.float32)
+
+        # 3x3 binomial blur:
+        #   [1 2 1]
+        #   [2 4 2] / 16
+        #   [1 2 1]
+        #
+        # Use REFLECT padding to avoid zero-padding edge artifacts.
+        binomial_kernel = tf.constant(
+            [[1.0, 2.0, 1.0],
+            [2.0, 4.0, 2.0],
+            [1.0, 2.0, 1.0]],
+            dtype=tf.float32,
+        ) / 16.0
+        binomial_kernel = binomial_kernel[:, :, tf.newaxis, tf.newaxis]
+
+        H_for_bed_grad = tf.nn.depthwise_conv2d(
+            tf.pad(H, paddings=[[0, 0], [1, 1], [1, 1], [0, 0]], mode="REFLECT"),
+            filter=binomial_kernel,
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+        )
+        b_for_bed_grad = s - H_for_bed_grad
+
+        # Use a floored thickness only inside the log-based proxies.
+        # This leaves the linear-in-H physics terms untouched.
+        H_for_log_proxy = H + H_proxy_floor
+
+        # ------------------------------------------------------------------
+        # Geometry
+        # ------------------------------------------------------------------
         dsdx = self._central_diff_x(s, dx)
         dsdy = self._central_diff_y(s, dx)
-        dbdx = self._central_diff_x(b, dx)
-        dbdy = self._central_diff_y(b, dx)
 
+        # Bed gradients now use blurred thickness rather than raw thickness.
+        dbdx = self._central_diff_x(b_for_bed_grad, dx)
+        dbdy = self._central_diff_y(b_for_bed_grad, dx)
+
+        # Keep curvature channels unchanged: they do not depend on H anyway.
         d2sdx2 = self._second_diff_x(s, dx)
         d2sdy2 = self._second_diff_y(s, dx)
 
         grad_s = tf.sqrt(dsdx**2 + dsdy**2 + self.eps)
         grad_b = tf.sqrt(dbdx**2 + dbdy**2 + self.eps)
 
+        # ------------------------------------------------------------------
+        # Driving stress proxy
+        # ------------------------------------------------------------------
         tau_dx = -self.rho * self.g * H * dsdx
         tau_dy = -self.rho * self.g * H * dsdy
         tau_d = tf.sqrt(tau_dx**2 + tau_dy**2 + self.eps)
 
+        # Floored version used only for the log-stress proxies.
+        tau_dx_for_log = -self.rho * self.g * H_for_log_proxy * dsdx
+        tau_dy_for_log = -self.rho * self.g * H_for_log_proxy * dsdy
+        tau_d_for_log = tf.sqrt(tau_dx_for_log**2 + tau_dy_for_log**2 + self.eps)
+
+        # ------------------------------------------------------------------
+        # Fixed physical scaling / centering to O(1)
+        # ------------------------------------------------------------------
         log_H = (tf.math.log(H + 1.0) - self.log_H_ref) / 3.0
         H_lin = H / (self.H_ref + self.eps)
         H_grad_interaction = (H * grad_s) / (self.H_ref * self.slope_ref + self.eps)
@@ -712,19 +766,35 @@ class CNO_DecompNet(tf.keras.Model):
         tau_dy_n = tau_dy / (self.tau_ref_scale + self.eps)
         tau_d_n = tau_d / (self.tau_ref_scale + self.eps)
 
-        log_tau_d_raw = tf.math.log(tau_d + self.eps)
+        # IMPORTANT: log stress uses the floored proxy, not the raw tau_d.
+        log_tau_d_raw = tf.math.log(tau_d_for_log + self.eps)
         log_tau_d = (log_tau_d_raw - self.log_tau_ref_scale) / 5.0
 
         ice_mask = tf.cast(H > 1.0, tf.float32)
         dir_x = -dsdx / (grad_s + self.eps) * ice_mask
         dir_y = -dsdy / (grad_s + self.eps) * ice_mask
 
+        # Surface-only curvature channels: not a dJ/dthk culprit.
         curv_x_n = d2sdx2 * 1000.0
         curv_y_n = d2sdy2 * 1000.0
 
+        # ------------------------------------------------------------------
+        # Sliding features
+        # ------------------------------------------------------------------
         slide_feats = [
-            log_H, dsdx_n, dsdy_n, grad_s_n, dbdx_n, dbdy_n, grad_b_n,
-            tau_dx_n, tau_dy_n, tau_d_n, log_tau_d, dir_x, dir_y,
+            log_H,
+            dsdx_n,
+            dsdy_n,
+            grad_s_n,
+            dbdx_n,
+            dbdy_n,
+            grad_b_n,
+            tau_dx_n,
+            tau_dy_n,
+            tau_d_n,
+            log_tau_d,
+            dir_x,
+            dir_y,
         ]
 
         log_tau_ref = None
@@ -732,20 +802,35 @@ class CNO_DecompNet(tf.keras.Model):
         if tau_ref is not None:
             log_tau_ref_raw = tf.math.log(tau_ref + self.eps)
             log_tau_ref = (log_tau_ref_raw - self.log_tau_ref_scale) / 5.0
+
+            # IMPORTANT: sliding log proxy now uses floored log_tau_d_raw
             log_u_slide_proxy_raw = (
                 tf.math.log(tf.constant(self.u_ref, dtype=tf.float32) + self.eps)
                 + self.m_slide * (log_tau_d_raw - log_tau_ref_raw)
             )
             log_u_slide_proxy = (log_u_slide_proxy_raw - self.log_u_slide_ref) / 5.0
+
             slide_feats.extend([log_tau_ref, log_u_slide_proxy])
         else:
             log_tau_ref_raw = None
             log_u_slide_proxy_raw = None
+
         slide_feats = tf.concat(slide_feats, axis=-1)
 
+        # ------------------------------------------------------------------
+        # Deformation features
+        # ------------------------------------------------------------------
         def_feats = [
-            log_H, dsdx_n, dsdy_n, grad_s_n, tau_dx_n, tau_dy_n, tau_d_n,
-            log_tau_d, H_lin, H_grad_interaction,
+            log_H,
+            dsdx_n,
+            dsdy_n,
+            grad_s_n,
+            tau_dx_n,
+            tau_dy_n,
+            tau_d_n,
+            log_tau_d,
+            H_lin,
+            H_grad_interaction,
         ]
 
         log_A = None
@@ -755,21 +840,27 @@ class CNO_DecompNet(tf.keras.Model):
             log_A_raw = tf.math.log(A + self.eps)
             B = 2.0 * tf.pow(A, -1.0 / self.n_glen)
             log_B_raw = tf.math.log(B + self.eps)
+
+            # IMPORTANT: deformation log proxy now uses the same thickness floor
+            # that was already added in SR.py.
             log_u_def_proxy_raw = (
                 log_A_raw
-                + (self.n_glen + 1.0) * tf.math.log(H + self.eps)
+                + (self.n_glen + 1.0) * tf.math.log(H_for_log_proxy)
                 + self.n_glen * tf.math.log(grad_s + self.eps)
             )
             log_A = (log_A_raw - self.log_A_ref) / 5.0
             log_B = (log_B_raw - self.log_B_ref) / 5.0
             log_u_def_proxy = (log_u_def_proxy_raw - self.log_u_def_ref) / 5.0
+
             def_feats.extend([log_A, log_B, log_u_def_proxy])
         else:
             log_A_raw = None
             log_B_raw = None
             log_u_def_proxy_raw = None
+
         def_feats = tf.concat(def_feats, axis=-1)
 
+        # Keep the all-features tensor shape exactly the same as before.
         all_feats = tf.concat([slide_feats, def_feats, curv_x_n, curv_y_n], axis=-1)
 
         aux = {
@@ -777,6 +868,9 @@ class CNO_DecompNet(tf.keras.Model):
             "s": s,
             "b": b,
             "dx": dx,
+            "H_for_bed_grad": H_for_bed_grad,
+            "b_for_bed_grad": b_for_bed_grad,
+            "H_for_log_proxy": H_for_log_proxy,
             "dsdx": dsdx,
             "dsdy": dsdy,
             "dbdx": dbdx,
@@ -788,6 +882,7 @@ class CNO_DecompNet(tf.keras.Model):
             "tau_dx": tau_dx,
             "tau_dy": tau_dy,
             "tau_d": tau_d,
+            "tau_d_for_log": tau_d_for_log,
             "dir_x": dir_x,
             "dir_y": dir_y,
         }
