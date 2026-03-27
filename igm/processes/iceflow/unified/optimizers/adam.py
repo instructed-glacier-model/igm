@@ -139,6 +139,9 @@ class OptimizerAdam(Optimizer):
                 self._update_debug_state(iter, cost_avg, grad_u, grad_theta)
                 self._debug_display()
 
+            if self.error_est_freq > 0 and iter > 0 and iter % self.error_est_freq == 0:
+                self._compute_error_estimator(iter, batch)
+
             iter_last = iter
 
             if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):

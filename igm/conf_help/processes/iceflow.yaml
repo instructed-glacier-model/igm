@@ -679,3 +679,24 @@ unified:
       Type: integer
       Description: "Frequency of printing the cost during the ice-flow optimization."
       Units: dimless
+  error_estimator:
+    freq:
+      Type: integer
+      Description: "Frequency (in optimizer iterations) at which the Hessian-based velocity error estimator is computed. 0 = disabled."
+      Units: dimless
+    maxit:
+      Type: integer
+      Description: "Maximum number of PCG iterations for the error estimator linear solve."
+      Units: dimless
+    tol:
+      Type: float
+      Description: "Relative residual tolerance for the PCG solve in the error estimator."
+      Units: dimless
+    shift:
+      Type: float
+      Description: "Tikhonov shift added to the Hessian diagonal for regularisation in the PCG solve."
+      Units: dimless
+    filename:
+      Type: string
+      Description: "Base file path for saving error estimator diagnostics (deltaU, deltaV, uvelbase, vvelbase, uvelsurf, vvelsurf) as NetCDF. Empty string disables saving. Files are written as <filename>_iter<N>.nc."
+      Units: dimless

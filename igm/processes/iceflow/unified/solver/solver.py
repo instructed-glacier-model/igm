@@ -100,5 +100,6 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
     # Optimize and save cost
     if do_solve:
-
-        state.cost = optimizer.minimize(inputs)
+        dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+        mask_thk = tf.cast(state.thk > 0.0, dtype)[tf.newaxis, :, :]
+        state.cost = optimizer.minimize(inputs, mask_thk=mask_thk)

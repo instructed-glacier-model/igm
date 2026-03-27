@@ -196,3 +196,9 @@ iceflow:
     display:
       print_cost: false
       print_cost_freq: 1
+    error_estimator:
+      freq: 0
+      maxit: 50
+      tol: 1e-5
+      shift: 0.0
+      filename: "error_estimator"

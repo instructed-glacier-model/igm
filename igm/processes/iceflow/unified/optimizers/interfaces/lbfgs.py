@@ -25,6 +25,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
 
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
+        cfg_error = cfg_unified.error_estimator
 
         if isinstance(map, MappingDataAssimilation):
             nbit = cfg.processes.data_assimilation_SR.optimization.nbitmax
@@ -49,6 +50,11 @@ class InterfaceLBFGS(InterfaceOptimizer):
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            "error_est_freq": cfg_error.freq,
+            "error_est_maxit": cfg_error.maxit,
+            "error_est_tol": cfg_error.tol,
+            "error_est_shift": cfg_error.shift,
+            "error_est_filename": cfg_error.filename,
         }
 
     @staticmethod

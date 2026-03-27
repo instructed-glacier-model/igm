@@ -5,6 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
+import netCDF4 as nc
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional, Tuple
 
@@ -13,6 +14,7 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus, HaltState, StepState, DebugState
 from igm.utils.math.precision import normalize_precision
 from igm.utils.math.norms import compute_norm
+from igm.utils.solver import value_and_grad, make_hvp_fn, cg
 
 import logging
 
@@ -34,6 +36,11 @@ class Optimizer(ABC):
         ord_grad_theta: str = "l2_weighted",
         debug_mode: bool = False,
         debug_freq: int = 100,
+        error_est_freq: int = 0,
+        error_est_maxit: int = 20,
+        error_est_tol: float = 1e-3,
+        error_est_shift: float = 0.0,
+        error_est_filename: Optional[str] = None,
     ):
         self.name = ""
         self.cost_fn = cost_fn
@@ -47,6 +54,14 @@ class Optimizer(ABC):
         self.ord_grad_theta = ord_grad_theta
         self.debug_mode = debug_mode
         self.debug_freq = debug_freq
+        self.error_est_freq = error_est_freq
+        self.error_est_maxit = error_est_maxit
+        self.error_est_tol = error_est_tol
+        self.error_est_shift = error_est_shift
+        self.error_est_filename = error_est_filename
+        self.error_est_mask = None
+        self.deltaU_prev = None
+        self.deltaV_prev = None
         if self.debug_mode:
             self._init_debug_display()
 
@@ -56,10 +71,15 @@ class Optimizer(ABC):
             "❌ The parameters update function is not implemented in this class."
         )
 
-    def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+    def minimize(
+        self, inputs: tf.Tensor, mask_thk: Optional[tf.Tensor] = None
+    ) -> tf.Tensor:
 
         if int(self.iter_max) == 0:
             return tf.zeros([0], dtype=self.precision)
+
+        if mask_thk is not None:
+            self.error_est_mask = mask_thk
 
         if self.halt:
             self.halt.reset_all()
@@ -106,7 +126,7 @@ class Optimizer(ABC):
         grads = tape.gradient(cost, [U, V] + theta)
         grad_u = tuple(grads[:2])
         grad_theta = grads[2:]
-        
+
         return cost, grad_u, grad_theta
 
     def _init_step_state(
@@ -162,6 +182,76 @@ class Optimizer(ABC):
         )
 
         return self.halt_state.status
+
+    def _compute_error_estimator(self, iter: tf.Tensor, inputs: tf.Tensor) -> None:
+
+        U, V = self.map.get_UV(inputs)
+        U0, V0 = U[0], V[0]
+
+        if self.error_est_mask is not None:
+            mask = self.error_est_mask
+        else:
+            mask = tf.ones_like(U0)
+
+        _, dJdU, dJdV = value_and_grad(self.cost_fn, U0, V0, inputs)
+        dJdU = dJdU * mask
+        dJdV = dJdV * mask
+
+        if self.deltaU_prev is None:
+            self.deltaU_prev = tf.Variable(tf.zeros_like(dJdU), trainable=False)
+            self.deltaV_prev = tf.Variable(tf.zeros_like(dJdV), trainable=False)
+
+        hvp_fn = make_hvp_fn(
+            self.cost_fn, inputs, U0, V0, mask, shift=self.error_est_shift
+        )
+        deltaU, deltaV, _, _, _ = cg(
+            dJdU,
+            dJdV,
+            hvp_fn,
+            mask,
+            self.error_est_tol,
+            self.error_est_maxit,
+            x0U=self.deltaU_prev,
+            x0V=self.deltaV_prev,
+        )
+
+        self.deltaU_prev.assign(deltaU)
+        self.deltaV_prev.assign(deltaV)
+
+        def _save(iter, deltaU, deltaV, U0, V0):
+            if self.error_est_filename:
+                path = f"{self.error_est_filename}_iter{int(iter)}.nc"
+                nz, ny, nx = (
+                    int(deltaU.shape[0]),
+                    int(deltaU.shape[1]),
+                    int(deltaU.shape[2]),
+                )
+                with nc.Dataset(path, "w") as ds:
+                    ds.createDimension("z", nz)
+                    ds.createDimension("y", ny)
+                    ds.createDimension("x", nx)
+                    ds.createVariable("iter", "i4")[:] = int(iter)
+                    ds.createVariable("deltaU", "f4", ("z", "y", "x"))[
+                        :
+                    ] = deltaU.numpy()
+                    ds.createVariable("deltaV", "f4", ("z", "y", "x"))[
+                        :
+                    ] = deltaV.numpy()
+                    ds.createVariable("uvelbase", "f4", ("y", "x"))[:] = U0[
+                        0, :, :
+                    ].numpy()
+                    ds.createVariable("vvelbase", "f4", ("y", "x"))[:] = V0[
+                        0, :, :
+                    ].numpy()
+                    ds.createVariable("uvelsurf", "f4", ("y", "x"))[:] = U0[
+                        1, :, :
+                    ].numpy()
+                    ds.createVariable("vvelsurf", "f4", ("y", "x"))[:] = V0[
+                        1, :, :
+                    ].numpy()
+            return 0
+
+        tf.py_function(_save, [iter, deltaU, deltaV, U0, V0], tf.int32)
 
     def _update_display(self) -> None:
         """Update display using halt_state"""

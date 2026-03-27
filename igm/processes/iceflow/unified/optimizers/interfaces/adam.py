@@ -9,7 +9,11 @@ from typing import Any, Callable, Dict
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ...mappings import (
+    Mapping,
+    MappingDataAssimilation,
+    MappingCombinedDataAssimilation,
+)
 from ...halt import Halt, InterfaceHalt
 
 
@@ -24,6 +28,7 @@ class InterfaceAdam(InterfaceOptimizer):
 
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
+        cfg_error = cfg_unified.error_estimator
 
         if isinstance(map, MappingDataAssimilation) or isinstance(
             map, MappingCombinedDataAssimilation
@@ -51,6 +56,11 @@ class InterfaceAdam(InterfaceOptimizer):
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
             "batch_size": cfg_unified.data_preparation.patches_per_batch,
+            "error_est_freq": cfg_error.freq,
+            "error_est_maxit": cfg_error.maxit,
+            "error_est_tol": cfg_error.tol,
+            "error_est_shift": cfg_error.shift,
+            "error_est_filename": cfg_error.filename,
         }
 
     @staticmethod
