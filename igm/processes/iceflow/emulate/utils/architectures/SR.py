@@ -72,6 +72,8 @@ class SIADecompNet(tf.keras.Model):
     FIXED_SLOPE_REF = 0.1
     FIXED_A_REF = 7.6e-24
 
+    FIXED_H_PROXY_FLOOR = 10.0  # this is needed to try and resolve issues arising in thin ice areas, particular in the reverse model gradients
+
     def __init__(
         self,
         *,
@@ -109,6 +111,9 @@ class SIADecompNet(tf.keras.Model):
         self.tau_ref_scale_value = (
             self.rho * self.g * self.H_ref_value * self.slope_ref_value
         )
+
+        self.H_proxy_floor_value = float(self.FIXED_H_PROXY_FLOOR)
+        self.H_proxy_floor = tf.constant(self.H_proxy_floor_value, dtype=tf.float32)
 
         self.eps = tf.constant(self.eps_value, dtype=tf.float32)
         self.H_ref = tf.constant(self.H_ref_value, dtype=tf.float32)
@@ -203,7 +208,7 @@ class SIADecompNet(tf.keras.Model):
         )
         self.log_u_def_ref = (
             self.log_A_ref
-            + (self.n_glen + 1.0) * tf.math.log(self.H_ref + self.eps)
+            + (self.n_glen + 1.0) * tf.math.log(self.H_ref + self.H_proxy_floor)
             + self.n_glen * tf.math.log(self.slope_ref + self.eps)
         )
 
@@ -533,8 +538,32 @@ class SIADecompNet(tf.keras.Model):
 
         H = tf.maximum(x[..., self.idx_thk : self.idx_thk + 1], 0.0)
         s = x[..., self.idx_usurf : self.idx_usurf + 1]
-        b = s - H
         dx = self._get_dx_field(x)
+
+        # Use a lightly smoothed thickness ONLY for bed-gradient features.
+        # Replace 3x3 avg-pool with a 3x3 binomial blur:
+        #   [1 2 1]
+        #   [2 4 2] / 16
+        #   [1 2 1]
+        #
+        # Reflect padding avoids edge artifacts from zero-padding.
+        binomial_kernel = tf.constant(
+            [[1.0, 2.0, 1.0],
+            [2.0, 4.0, 2.0],
+            [1.0, 2.0, 1.0]],
+            dtype=tf.float32,
+        ) / 16.0
+        binomial_kernel = binomial_kernel[:, :, tf.newaxis, tf.newaxis]  # [3, 3, 1, 1]
+
+        H_for_bed_grad = tf.nn.depthwise_conv2d(
+            tf.pad(H, paddings=[[0, 0], [1, 1], [1, 1], [0, 0]], mode="REFLECT"),
+            binomial_kernel,
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+        )
+
+        b = s - H
+        b_for_bed_grad = s - H_for_bed_grad
 
         tau_ref = None
         if self.idx_slidingco is not None:
@@ -553,8 +582,8 @@ class SIADecompNet(tf.keras.Model):
         # ------------------------------------------------------------------
         dsdx = self._central_diff_x(s, dx)
         dsdy = self._central_diff_y(s, dx)
-        dbdx = self._central_diff_x(b, dx)
-        dbdy = self._central_diff_y(b, dx)
+        dbdx = self._central_diff_x(b_for_bed_grad, dx)
+        dbdy = self._central_diff_y(b_for_bed_grad, dx)
 
         d2sdx2 = self._second_diff_x(s, dx)
         d2sdy2 = self._second_diff_y(s, dx)
@@ -568,6 +597,20 @@ class SIADecompNet(tf.keras.Model):
         tau_dx = -self.rho * self.g * H * dsdx
         tau_dy = -self.rho * self.g * H * dsdy
         tau_d = tf.sqrt(tau_dx**2 + tau_dy**2 + self.eps)
+
+        # ------------------------------------------------------------------
+        # Fixed physical scaling / centering to O(1)
+        # ------------------------------------------------------------------
+        tau_dx = -self.rho * self.g * H * dsdx
+        tau_dy = -self.rho * self.g * H * dsdy
+        tau_d = tf.sqrt(tau_dx**2 + tau_dy**2 + self.eps)
+
+        # Use a floored thickness only for the log-based stress/sliding proxies.
+        # Keep the linear stress features on raw H.
+        H_for_log_proxy = H + self.H_proxy_floor
+        tau_dx_for_log = -self.rho * self.g * H_for_log_proxy * dsdx
+        tau_dy_for_log = -self.rho * self.g * H_for_log_proxy * dsdy
+        tau_d_for_log = tf.sqrt(tau_dx_for_log**2 + tau_dy_for_log**2 + self.eps)
 
         # ------------------------------------------------------------------
         # Fixed physical scaling / centering to O(1)
@@ -587,7 +630,7 @@ class SIADecompNet(tf.keras.Model):
         tau_dy_n = tau_dy / (self.tau_ref_scale + self.eps)
         tau_d_n = tau_d / (self.tau_ref_scale + self.eps)
 
-        log_tau_d_raw = tf.math.log(tau_d + self.eps)
+        log_tau_d_raw = tf.math.log(tau_d_for_log + self.eps)
         log_tau_d = (log_tau_d_raw - self.log_tau_ref_scale) / 5.0
 
         # Downhill unit vector (masked off-ice)
@@ -667,7 +710,7 @@ class SIADecompNet(tf.keras.Model):
 
             log_u_def_proxy_raw = (
                 log_A_raw
-                + (self.n_glen + 1.0) * tf.math.log(H + self.eps)
+                + (self.n_glen + 1.0) * tf.math.log(H_for_log_proxy)
                 + self.n_glen * tf.math.log(grad_s + self.eps)
             )
 
@@ -704,8 +747,12 @@ class SIADecompNet(tf.keras.Model):
             "tau_dx": tau_dx,
             "tau_dy": tau_dy,
             "tau_d": tau_d,
+            "tau_d_for_log": tau_d_for_log,
             "dir_x": dir_x,
             "dir_y": dir_y,
+            "H_for_bed_grad": H_for_bed_grad,
+            "b_for_bed_grad": b_for_bed_grad,
+            "H_for_log_proxy": H_for_log_proxy,
         }
 
         if tau_ref is not None:
