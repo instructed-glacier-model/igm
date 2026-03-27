@@ -150,6 +150,7 @@ def rebuild_emulator_from_manifest(
     cfg,
     *,
     load_weights: bool = False,
+    input_hw: tuple[int, int] | None = None,
 ) -> Tuple[tf.keras.Model, EmulatorManifestV3]:
     """
     Rebuild a new-format emulator purely from manifest.
@@ -185,7 +186,14 @@ def rebuild_emulator_from_manifest(
         name="input_norm",
     )
 
-    input_shape = tf.TensorShape([None, None, None, manifest.nb_inputs])
+    if input_hw is None:
+        input_shape = tf.TensorShape([None, 4, 4, manifest.nb_inputs])
+        verify_h, verify_w = 4, 4
+    else:
+        H, W = map(int, input_hw)
+        input_shape = tf.TensorShape([None, H, W, manifest.nb_inputs])
+        verify_h, verify_w = H, W
+
     model.build(input_shape)
 
     if load_weights:
@@ -194,7 +202,7 @@ def rebuild_emulator_from_manifest(
             raise FileNotFoundError(f"Missing weights file at {weights_path}")
         model.load_weights(str(weights_path))
 
-        dummy = tf.zeros((1, 4, 4, manifest.nb_inputs), dtype=desired_dtype)
+        dummy = tf.zeros((1, verify_h, verify_w, manifest.nb_inputs), dtype=desired_dtype)
         y = model(dummy, training=False)
 
         if int(y.shape[-1]) != int(manifest.nb_outputs):

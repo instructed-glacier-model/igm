@@ -233,20 +233,13 @@ def _validate_replay_dataset(cfg, replay_root: Path):
             f"Replay TFRecords have C={Cx} channels, but cfg.processes.iceflow.unified.inputs has {len(inputs)} entries: {inputs}."
         )
 
-    if Cx != 3 or inputs != ("thk", "usurf", "slidingco"):
-        raise ValueError(
-            "Replay retraining currently reuses igm.processes.pretraining.io_tfrecords.parse_example(), "
-            "which assumes exactly 3 channels in the order ('thk', 'usurf', 'slidingco'). "
-            f"Got C={Cx}, inputs={inputs}."
-        )
-
     return meta, H, W
 
 
 def _setup_replay(cfg, da: DataAssimilation) -> None:
     cfg_opt = cfg.processes.data_assimilation_SR.optimization
 
-    replay_root = Path("/home/srosier/work2/tfrecords/strict_v2/")
+    replay_root = Path("/home/srosier/work2/tfrecords/varRes2/")
     meta, H, W = _validate_replay_dataset(cfg, replay_root)
     Nz = int(cfg.processes.iceflow.numerics.Nz)
     shapes = meta["example_shapes_by_nz"][str(Nz)]
@@ -541,7 +534,6 @@ def data_assimilation_initialize(cfg, state):
     da.retrain_iter = int(cfg_da.optimization.retrain_iter)
 
     state.data_assimilation = da
-
 
 def initialize(cfg, state):
     data_assimilation_initialize(cfg, state)

@@ -352,6 +352,7 @@ def initialize(cfg, state):
             artifact_dir=out_dir,
             cfg=cfg,
             load_weights=False,
+            input_hw=(H, W),
         )
         mapping_args["network"] = state.iceflow_model
         print("[resume] rebuilt model skeleton from manifest; checkpoint will restore weights/optimizer state")
@@ -433,7 +434,7 @@ def initialize(cfg, state):
     EMA          = tf.constant(0.99, tf.float32)
     UPDATE_EVERY = tf.constant(100, tf.int64)
     LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(1e2, tf.float32)
+    LAM_MAX      = tf.constant(2e2, tf.float32)
     EPS          = tf.constant(1e-6, tf.float32)
     WARMUP_STEPS = tf.constant(100000, tf.int64)
     ACCUM_STEPS = tf.constant(accum_steps_py, tf.int64)
