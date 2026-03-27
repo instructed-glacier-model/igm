@@ -47,10 +47,6 @@ class MappingDataAssimilation(Mapping):
         eps: float = 1e-12,
         field_to_channel: Optional[Dict[str, int]] = None,
         precision: str = "single",
-        grad_precond_lambda: float = 0.0,
-        grad_precond_p: int = 1,
-        grad_precond_cg_max_iter: int = 15,
-        grad_precond_cg_tol: float = 1e-4,
     ):
         super().__init__(bcs, precision)
         if not variables:
@@ -63,23 +59,6 @@ class MappingDataAssimilation(Mapping):
         self.output_scale = tf.cast(output_scale, self.precision)
         self.vars: List[VariableSpec] = variables
         self.eps = eps
-
-        self.grad_precond_enable = grad_precond_lambda > 0.0
-        self.grad_precond_lambda = float(grad_precond_lambda)
-        self.grad_precond_p = int(grad_precond_p)
-        self.grad_precond_cg_max_iter = int(grad_precond_cg_max_iter)
-        self.grad_precond_cg_tol = float(grad_precond_cg_tol)
-
-        if self.grad_precond_p not in (1, 2):
-            raise ValueError(
-                f"❌ precondition_grad_theta expects p in {{1, 2}}, got {self.grad_precond_p}."
-            )
-
-        # Scalar grid spacing for Laplacian-based gradient preconditioning
-        dx0 = tf.reshape(tf.convert_to_tensor(state.dX), [-1])[0]
-        self._dx = tf.cast(dx0, self.precision)
-        self.cg_debug = tf.Variable(False, trainable=False, dtype=tf.bool)
-        self.cg_warn = tf.Variable(True, trainable=False, dtype=tf.bool)
 
         self._da_step_callback = None  # python callable
         self._da_out_freq = 0  # python int
@@ -147,12 +126,6 @@ class MappingDataAssimilation(Mapping):
             full_shape_static = theta0_full.shape
             self._full_shapes.append(full_shape_static)
 
-            if self.grad_precond_enable and full_shape_static.rank != 2:
-                raise ValueError(
-                    f"❌ Gradient preconditioner currently supports only 2D fields, "
-                    f"but '{spec.name}' has shape {full_shape_static}."
-                )
-
             mask_path = spec.mask or self._DEFAULT_MASK_PATH
             mask_tensor = self._resolve_mask(state, mask_path)
             mask_bool = tf.cast(mask_tensor, tf.bool)
@@ -192,24 +165,6 @@ class MappingDataAssimilation(Mapping):
             self._mask_bool.append(mask_bool)
             self._mask_flat_idx.append(flat_idx)
             self._background_phys_flat.append(background_phys_flat)
-
-        # Warm-start cache for the gradient preconditioner.
-        self._pcg_warm: List[List[tf.Variable]] = []
-        for spec, full_shape in zip(self.vars, self._full_shapes):
-            self._pcg_warm.append(
-                [
-                    tf.Variable(
-                        tf.zeros(full_shape, dtype=self.precision),
-                        trainable=False,
-                        name=f"pcg_warm_{spec.name}_1",
-                    ),
-                    tf.Variable(
-                        tf.zeros(full_shape, dtype=self.precision),
-                        trainable=False,
-                        name=f"pcg_warm_{spec.name}_2",
-                    ),
-                ]
-            )
 
         # Precompute θ-space bounds for optimizer consumption.
         self._L_list: List[tf.Tensor] = []
@@ -372,14 +327,6 @@ class MappingDataAssimilation(Mapping):
             splits = tf.split(theta_flat, self._sizes)
             return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
-    def reset_preconditioner_cache(self) -> None:
-        for cache_per_var in self._pcg_warm:
-            for x in cache_per_var:
-                x.assign(tf.zeros_like(x))
-
-    def on_minimize_start(self, iter_max: int) -> None:
-        self.reset_preconditioner_cache()
-
     # ------- Input channel patching ------------------------------------------
 
     @tf.function(reduce_retracing=True, jit_compile=False)
@@ -415,289 +362,3 @@ class MappingDataAssimilation(Mapping):
         idx = self._varname_to_idx[name]
         return tf.cast(self._theta_to_field(idx), self.precision)
 
-    # ------- Gradient preconditioning (Sobolev / inverse-Laplacian) ----------
-
-    @tf.function(reduce_retracing=True)
-    def _dot2(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        acc = tf.reduce_sum(tf.cast(a, tf.float64) * tf.cast(b, tf.float64))
-        return tf.cast(acc, a.dtype)
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def _apply_A(self, v: tf.Tensor, mask: tf.Tensor, lam: tf.Tensor) -> tf.Tensor:
-        """
-        Apply A(v) = v + lam * L(v), where L is a masked graph Laplacian
-        (Neumann-like at the mask boundary), scaled by dx^2.
-
-        This uses the PSD graph Laplacian form:
-            L(v) = (deg*v - sum_neighbors(v)) / dx^2
-        so A is SPD for lam >= 0.
-        """
-        v = tf.where(mask, v, tf.zeros_like(v))
-        mf = tf.cast(mask, v.dtype)
-
-        vpad = tf.pad(v, [[1, 1], [1, 1]], mode="SYMMETRIC")
-        mpad = tf.pad(mf, [[1, 1], [1, 1]], mode="CONSTANT", constant_values=0.0)
-
-        c = vpad[1:-1, 1:-1]
-
-        mu = mpad[0:-2, 1:-1]
-        md = mpad[2:, 1:-1]
-        ml = mpad[1:-1, 0:-2]
-        mr = mpad[1:-1, 2:]
-
-        fu = vpad[0:-2, 1:-1]
-        fd = vpad[2:, 1:-1]
-        fl = vpad[1:-1, 0:-2]
-        fr = vpad[1:-1, 2:]
-
-        neigh = mu * fu + md * fd + ml * fl + mr * fr
-        deg = mu + md + ml + mr
-
-        dx = tf.cast(self._dx, v.dtype)
-        L = (deg * c - neigh) / (dx * dx)
-
-        Av = v + tf.cast(lam, v.dtype) * L
-        return tf.where(mask, Av, tf.zeros_like(Av))
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def _mask_degree(self, mask: tf.Tensor, dtype: tf.dtypes.DType) -> tf.Tensor:
-        """
-        Number of active 4-neighbors per cell on the masked domain.
-        """
-        mf = tf.cast(mask, dtype)
-        mpad = tf.pad(mf, [[1, 1], [1, 1]], mode="CONSTANT", constant_values=0.0)
-
-        deg = (
-            mpad[0:-2, 1:-1]
-            + mpad[2:, 1:-1]
-            + mpad[1:-1, 0:-2]
-            + mpad[1:-1, 2:]
-        )
-        return tf.where(mask, deg, tf.zeros_like(deg))
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def _cg_solve_A(
-        self,
-        rhs: tf.Tensor,
-        mask: tf.Tensor,
-        lam: tf.Tensor,
-        x0: Optional[tf.Tensor] = None,
-        *,
-        max_iter: int = 15,
-        tol: float = 1e-4,
-    ) -> tf.Tensor:
-        """
-        Jacobi-preconditioned CG solve for A x = rhs on the masked domain.
-
-        `tol` is a relative tolerance; a small absolute floor is also added so
-        we do not oversolve tiny rhs late in the inversion.
-        """
-        lam = tf.cast(lam, rhs.dtype)
-
-        b = tf.where(mask, rhs, tf.zeros_like(rhs))
-        dtype = b.dtype
-
-        dx = tf.cast(self._dx, dtype)
-        dx2 = dx * dx
-
-        deg = self._mask_degree(mask, dtype)
-        diagA = tf.where(
-            mask,
-            tf.ones_like(b) + lam * deg / dx2,
-            tf.ones_like(b),
-        )
-
-        if x0 is None:
-            x = tf.where(mask, b / diagA, tf.zeros_like(b))
-        else:
-            x = tf.where(mask, tf.cast(x0, dtype), tf.zeros_like(b))
-
-        r = b - self._apply_A(x, mask, lam)
-        z = tf.where(mask, r / diagA, tf.zeros_like(r))
-        p = tf.identity(z)
-
-        rr = self._dot2(r, r)
-        rz = self._dot2(r, z)
-        rr0 = rr
-        bs = self._dot2(b, b)
-
-        b_inf = tf.cast(tf.reduce_max(tf.abs(b)), tf.float64)
-        n_active = tf.reduce_sum(tf.cast(mask, tf.float64))
-        eps_mach = tf.constant(
-            1.1920928955078125e-7 if self.precision == tf.float32 else 2.220446049250313e-16,
-            dtype=tf.float64,
-        )
-        atol = (
-            10.0
-            * tf.sqrt(tf.maximum(n_active, 1.0))
-            * eps_mach
-            * tf.maximum(b_inf, tf.cast(self.eps, tf.float64))
-        )
-        target = tf.maximum(
-            tf.cast(tol * tol, tf.float64) * tf.cast(bs, tf.float64),
-            atol * atol,
-        )
-
-        def _dbg_start():
-            tf.print(
-                "[PCG] start  lam=", lam,
-                "  rr0=", rr0,
-                "  target=", target,
-                "  max_iter=", max_iter,
-            )
-            return tf.constant(0, dtype=tf.int32)
-
-        _ = tf.cond(self.cg_debug, _dbg_start, lambda: tf.constant(0, dtype=tf.int32))
-
-        eps = tf.cast(self.eps, dtype)
-
-        def cond(i, x, r, z, p, rr, rz):
-            return tf.logical_and(i < max_iter, tf.cast(rr, tf.float64) > target)
-
-        def body(i, x, r, z, p, rr, rz):
-            Ap = self._apply_A(p, mask, lam)
-            denom = self._dot2(p, Ap) + eps
-            alpha = rz / denom
-
-            x_new = x + alpha * p
-            r_new = r - alpha * Ap
-            z_new = tf.where(mask, r_new / diagA, tf.zeros_like(r_new))
-
-            rr_new = self._dot2(r_new, r_new)
-            rz_new = self._dot2(r_new, z_new)
-            beta = rz_new / (rz + eps)
-            p_new = z_new + beta * p
-
-            return i + 1, x_new, r_new, z_new, p_new, rr_new, rz_new
-
-        i0 = tf.constant(0, dtype=tf.int32)
-        i_end, x, _, _, _, rr_end, _ = tf.while_loop(
-            cond,
-            body,
-            loop_vars=[i0, x, r, z, p, rr, rz],
-            parallel_iterations=1,
-        )
-
-        rel = tf.sqrt(rr_end / (rr0 + eps))
-        rel_b = tf.sqrt(rr_end / (bs + eps))
-        finite = tf.math.is_finite(rr_end)
-        converged = tf.cast(rr_end, tf.float64) <= target
-        need_warn = tf.logical_or(tf.logical_not(finite), tf.logical_not(converged))
-
-        def _warn():
-            tf.print(
-                "[PCG] WARNING  lam=", lam,
-                "  iters=", i_end,
-                "  rr_end=", rr_end,
-                "  rel=", rel,
-                "  rel_b=", rel_b,
-                "  (finite=", finite, ", converged=", converged, ")",
-            )
-            return tf.constant(0, dtype=tf.int32)
-
-        _ = tf.cond(
-            tf.logical_and(self.cg_warn, need_warn),
-            _warn,
-            lambda: tf.constant(0, dtype=tf.int32),
-        )
-
-        def _dbg_end():
-            tf.print(
-                "[PCG] end    lam=", lam,
-                "  iters=", i_end,
-                "  rr_end=", rr_end,
-                "  rel=", rel,
-                "  rel_b=", rel_b,
-            )
-            return tf.constant(0, dtype=tf.int32)
-
-        _ = tf.cond(self.cg_debug, _dbg_end, lambda: tf.constant(0, dtype=tf.int32))
-
-        return tf.where(mask, x, tf.zeros_like(x))
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def precondition_grad_theta(
-        self,
-        grad_theta: list[tf.Tensor],
-        lam: tf.Tensor,
-        *,
-        p: int = 1,
-        cg_max_iter: int = 15,
-        cg_tol: float = 1e-4,
-    ) -> list[tf.Tensor]:
-        """
-        Apply (I + lam * L)^(-p) to each variable's gradient, respecting the
-        variable mask. Warm starts are kept separately for stage 1 and stage 2,
-        so p=2 also benefits.
-        """
-        lam = tf.cast(lam, self.precision)
-
-        out: list[tf.Tensor] = []
-        for i, g in enumerate(grad_theta):
-            g_dtype = g.dtype
-            g = tf.cast(g, self.precision)
-            mask = self._mask_bool[i]
-
-            rhs = self._active_to_full_field(
-                i,
-                g,
-                tf.zeros_like(self._background_phys_flat[i], dtype=self.precision),
-            )
-            rhs = tf.where(mask, rhs, tf.zeros_like(rhs))
-
-            x = rhs
-            for stage in range(p):
-                x = self._cg_solve_A(
-                    x,
-                    mask,
-                    lam,
-                    x0=self._pcg_warm[i][stage],
-                    max_iter=cg_max_iter,
-                    tol=cg_tol,
-                )
-                self._pcg_warm[i][stage].assign(x)
-
-            out.append(tf.cast(self._full_field_to_active(i, x), g_dtype))
-
-        return out
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def precondition_grad_theta_flat(
-        self,
-        grad_flat: tf.Tensor,
-        lam: tf.Tensor,
-        *,
-        p: int = 1,
-        cg_max_iter: int = 15,
-        cg_tol: float = 1e-4,
-    ) -> tf.Tensor:
-        """
-        Flat wrapper used by optimizers: unflatten -> precondition per variable -> flatten.
-        """
-        grads = self.unflatten_theta(grad_flat)
-        grads_p = self.precondition_grad_theta(
-            grads,
-            lam,
-            p=p,
-            cg_max_iter=cg_max_iter,
-            cg_tol=cg_tol,
-        )
-        return self.flatten_theta(grads_p)
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def precondition_direction_grad_flat(self, grad_flat: tf.Tensor) -> tf.Tensor:
-        """
-        Gradient transform used for search direction / curvature pairs.
-
-        Returns the input unchanged if gradient preconditioning is disabled.
-        """
-        if not self.grad_precond_enable:
-            return grad_flat
-
-        return self.precondition_grad_theta_flat(
-            grad_flat,
-            tf.cast(self.grad_precond_lambda, self.precision),
-            p=self.grad_precond_p,
-            cg_max_iter=self.grad_precond_cg_max_iter,
-            cg_tol=self.grad_precond_cg_tol,
-        )

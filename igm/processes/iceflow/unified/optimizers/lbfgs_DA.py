@@ -178,11 +178,8 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         Gradient used for:
         - the L-BFGS search direction
         - curvature pairs
-
-        In the data assimilation mapping we then optionally apply a preconditioner to this gradient
-        Line search and descent checks still use the true gradient.
         """
-        g = self.map.precondition_direction_grad_flat(grad_base_flat)
+        g = grad_base_flat
 
         if mask_base is not None:
             g = tf.where(mask_base, g, tf.zeros_like(g))

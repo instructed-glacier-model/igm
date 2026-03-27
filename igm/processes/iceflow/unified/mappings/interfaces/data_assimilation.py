@@ -98,8 +98,4 @@ class InterfaceDataAssimilation(InterfaceMapping):
             "variables": variables,
             "precision": precision,
             "field_to_channel": field_to_channel,
-            "grad_precond_lambda": cfg.processes.data_assimilation_SR.optimization.grad_precond_lambda,
-            "grad_precond_p": cfg.processes.data_assimilation_SR.optimization.grad_precond_p,
-            "grad_precond_cg_max_iter": cfg.processes.data_assimilation_SR.optimization.grad_precond_cg_max_iter,
-            "grad_precond_cg_tol": cfg.processes.data_assimilation_SR.optimization.grad_precond_cg_tol,
         }

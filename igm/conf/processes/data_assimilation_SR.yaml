@@ -4,10 +4,6 @@ data_assimilation_SR:
     retrain_lr: 1e-5 # Learning rate for network retraining steps
     retrain_iter: 10 # number of times we iterate between DA minimize and network retraining
     nbitmax: 1000 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
-    grad_precond_lambda: 0.0 # Lambda for gradient preconditioning (0.0 means no preconditioning)
-    grad_precond_p: 1 # Exponent for gradient preconditioning (1 means L1, 2 means L2)
-    grad_precond_cg_max_iter: 50 # Max CG iterations for gradient preconditioning
-    grad_precond_cg_tol: 1e-6 # CG tolerance for gradient preconditioning
     retrain_anchor_weight: 0.0 # Weight that penalizes deviation of the retrained network from the original pretrained network (i.e. L2 distance between the weights of the two networks)
     retrain_replay_data_weight: 0.0 # Weight for replaying past training examples
     retrain_replay_phys_weight: 0.0 # Weight for physics-based replay loss (i.e. deviation of the network predictions from the physics constraints on past training examples)
