@@ -3,6 +3,7 @@ from .mlps import MLP, FourierMLP
 from .nos import FNO, FNO2
 from .utils import DTypeActivation
 from .SR import SIADecompNet
+from .SR_v2 import SIADecompNetV2
 from .SR_cno_style import CNO_DecompNet
 
 Architectures = {
@@ -15,5 +16,6 @@ Architectures = {
     'FNO': FNO,
     'FNO2': FNO2,
     'SIADecompNet': SIADecompNet,
+    'SIADecompNetV2': SIADecompNetV2,
     'CNO_DecompNet': CNO_DecompNet,
 }
