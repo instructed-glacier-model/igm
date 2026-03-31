@@ -28,6 +28,12 @@ from igm.processes.data_assimilation_SR.objective import build_objective_from_cf
 from igm.processes.pretraining.cost_tmp import get_cost_fn
 from igm.processes.pretraining.io_tfrecords import load_metadata, list_shards, make_datasets
 
+class StaticBatchSampler:
+    dynamic_augmentation = False
+
+    def __call__(self, inputs):
+        # L-BFGS expects shape [M, B, H, W, C] with M=1
+        return tf.expand_dims(inputs, axis=0)
 
 class DataAssimilation:
     def __init__(self):
@@ -76,6 +82,11 @@ class DataAssimilation:
         self.retrain_phase = 0
         self.retrain_history = []
         self.last_retrain_summary = None
+
+        # per-retraining-phase normalization scales for the retraining loss
+        self.retrain_local_phys_scale = None
+        self.retrain_replay_data_scale = None
+        self.retrain_replay_phys_scale = None
 
 
 def get_cost_and_obj(cfg, state, da_map):
@@ -298,12 +309,28 @@ def _sample_local_batch(da: DataAssimilation, current_inputs: tf.Tensor) -> tf.T
     raise ValueError(f"Unexpected sampler output rank {sampled.shape.rank}; expected 4 or 5.")
 
 
-def _anchor_loss(current_vars, ref_vars):
+def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e-6) -> tf.Tensor:
+    value = tf.cast(value, dtype)
+    return tf.maximum(tf.abs(value), tf.cast(floor, dtype))
+
+
+def _anchor_loss(current_vars, ref_vars, eps: float = 1e-12):
     if not current_vars:
         return tf.constant(0.0, dtype=tf.float32)
+
     dtype = current_vars[0].dtype
-    vals = [tf.reduce_mean(tf.square(tf.cast(v, dtype) - tf.cast(v0, dtype))) for v, v0 in zip(current_vars, ref_vars)]
-    return tf.add_n(vals) / tf.cast(len(vals), dtype)
+    diff_vals = [
+        tf.reduce_mean(tf.square(tf.cast(v, dtype) - tf.cast(v0, dtype)))
+        for v, v0 in zip(current_vars, ref_vars)
+    ]
+    ref_vals = [
+        tf.reduce_mean(tf.square(tf.cast(v0, dtype)))
+        for v0 in ref_vars
+    ]
+
+    diff_mean = tf.add_n(diff_vals) / tf.cast(len(diff_vals), dtype)
+    ref_mean = tf.add_n(ref_vals) / tf.cast(len(ref_vals), dtype)
+    return diff_mean / (ref_mean + tf.cast(eps, dtype))
 
 
 def _evaluate_local_physics_loss(da: DataAssimilation, current_inputs: tf.Tensor) -> tf.Tensor:
@@ -343,19 +370,22 @@ def _make_retrain_train_step(da: DataAssimilation):
         with tf.GradientTape() as tape:
             U_local, V_local = shared_mapping.get_UV(local_x)
             local_phys = tf.cast(da.cost_fn_train(U_local, V_local, local_x), dtype)
+            local_phys_norm = local_phys / da.retrain_local_phys_scale
 
-            total = local_phys
+            total = local_phys_norm
             replay_data = tf.zeros((), dtype=dtype)
             replay_phys = tf.zeros((), dtype=dtype)
 
             if replay_enabled:
                 U_rep, V_rep = shared_mapping.get_UV(replay_x)
                 replay_data = tf.cast(da.replay_data_loss_fn(U_rep, V_rep, replay_y), dtype)
-                total = total + w_replay_data * replay_data
+                replay_data_norm = replay_data / da.retrain_replay_data_scale
+                total = total + w_replay_data * replay_data_norm
 
                 if replay_phys_enabled:
                     replay_phys = tf.cast(da.cost_fn_train(U_rep, V_rep, replay_x), dtype)
-                    total = total + w_replay_phys * replay_phys
+                    replay_phys_norm = replay_phys / da.retrain_replay_phys_scale
+                    total = total + w_replay_phys * replay_phys_norm
 
             anchor = tf.cast(_anchor_loss(shared_vars, da.pretrained_network_weights), dtype)
             total = total + w_anchor * anchor
@@ -376,14 +406,22 @@ def _retrain_network_with_current_thickness(cfg, state, da: DataAssimilation):
     X = fieldin_state_to_X(cfg, state)
     inputs_current = state.iceflow.patching.generate_patches(X)
 
-    local_phys_before = tf.cast(_evaluate_local_physics_loss(da, inputs_current), da.shared_network.trainable_variables[0].dtype)
+    dtype = da.shared_network.trainable_variables[0].dtype
+    local_phys_before = tf.cast(_evaluate_local_physics_loss(da, inputs_current), dtype)
     replay_val_data_before, replay_val_phys_before = _evaluate_replay_validation(da)
+
+    da.retrain_local_phys_scale.assign(_safe_loss_scale(local_phys_before, dtype))
+    da.retrain_replay_data_scale.assign(_safe_loss_scale(replay_val_data_before, dtype))
+    da.retrain_replay_phys_scale.assign(_safe_loss_scale(replay_val_phys_before, dtype))
 
     history = {
         "phase": int(da.retrain_phase),
         "local_phys_before": float(local_phys_before.numpy()),
         "replay_val_data_before": float(replay_val_data_before.numpy()),
         "replay_val_phys_before": float(replay_val_phys_before.numpy()),
+        "local_phys_scale": float(da.retrain_local_phys_scale.numpy()),
+        "replay_val_data_scale": float(da.retrain_replay_data_scale.numpy()),
+        "replay_val_phys_scale": float(da.retrain_replay_phys_scale.numpy()),
         "steps": [],
     }
 
@@ -485,15 +523,7 @@ def data_assimilation_initialize(cfg, state):
     optimizer_args["halt"] = halt
     da.opt = OptimizerLBFGSBoundsDA(**optimizer_args)
 
-    num_patches = state.iceflow.patching.num_patches
-    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
-    sampler = TrainingBatchBuilder(
-        preparation_params=state.iceflow.preparation_params,
-        fieldin_names=state.iceflow.preparation_params.fieldin_names,
-        patch_shape=(patch_H, patch_W, patch_C),
-        num_patches=num_patches,
-    )
-    da.opt.sampler = sampler
+    da.opt.sampler = StaticBatchSampler()
 
     da.shared_mapping = state.iceflow.mapping
     da.shared_network = state.iceflow.mapping.network
@@ -515,6 +545,11 @@ def data_assimilation_initialize(cfg, state):
     da.retrain_optimizer = tf.keras.optimizers.Adam(learning_rate=da.retrain_lr)
     if hasattr(da.retrain_optimizer, "build"):
         da.retrain_optimizer.build(da.shared_network.trainable_variables)
+
+    retrain_dtype = da.shared_network.trainable_variables[0].dtype
+    da.retrain_local_phys_scale = tf.Variable(1.0, trainable=False, dtype=retrain_dtype, name="retrain_local_phys_scale")
+    da.retrain_replay_data_scale = tf.Variable(1.0, trainable=False, dtype=retrain_dtype, name="retrain_replay_data_scale")
+    da.retrain_replay_phys_scale = tf.Variable(1.0, trainable=False, dtype=retrain_dtype, name="retrain_replay_phys_scale")
 
     replay_requested = (
         da.retrain_replay_data_weight > 0.0
