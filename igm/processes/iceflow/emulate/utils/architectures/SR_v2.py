@@ -135,18 +135,6 @@ class SIADecompNetV2(tf.keras.Model):
         self.input_normalizer = None
 
         # ------------------------------------------------------------------
-        # Settings that might help identifiability such that each head 
-        # focuses on its intended component of the solution.  These are
-        # not strictly necessary but may help training stability and
-        # interpretability.
-        # ------------------------------------------------------------------
-        self.anchor_deformation_at_bed = bool(params.get("anchor_deformation_at_bed", True))
-        self.zero_mean_residual_over_depth = bool(
-            params.get("zero_mean_residual_over_depth", True)
-        )
-        self.bed_index = int(0)   # TO DO: for different vertical discretizations this may not work
-
-        # ------------------------------------------------------------------
         # Parse and validate network_params
         # ------------------------------------------------------------------
         params = dict(network_params)
@@ -161,7 +149,21 @@ class SIADecompNetV2(tf.keras.Model):
             "def_head_layers",
             "res_head_filters",
             "res_head_layers",
+            "anchor_deformation_at_bed",
+            "zero_mean_residual_over_depth",
         }
+
+        # ------------------------------------------------------------------
+        # Settings that might help identifiability such that each head
+        # focuses on its intended component of the solution.  These are
+        # not strictly necessary but may help training stability and
+        # interpretability.
+        # ------------------------------------------------------------------
+        self.anchor_deformation_at_bed = bool(params.get("anchor_deformation_at_bed", True))
+        self.zero_mean_residual_over_depth = bool(
+            params.get("zero_mean_residual_over_depth", True)
+        )
+        self.bed_index = int(0)   # TO DO: for different vertical discretizations this may not work
         unexpected = sorted(set(params.keys()) - allowed_keys)
         if unexpected:
             raise ValueError(
@@ -213,6 +215,8 @@ class SIADecompNetV2(tf.keras.Model):
             "def_head_layers": int(self.def_head_n_layers),
             "res_head_filters": int(self.res_head_n_filters),
             "res_head_layers": int(self.res_head_n_layers),
+            "anchor_deformation_at_bed": bool(self.anchor_deformation_at_bed),
+            "zero_mean_residual_over_depth": bool(self.zero_mean_residual_over_depth),
         }
 
         # ------------------------------------------------------------------
@@ -368,6 +372,8 @@ class SIADecompNetV2(tf.keras.Model):
                 "def_head_layers": int(self.def_head_n_layers),
                 "res_head_filters": int(self.res_head_n_filters),
                 "res_head_layers": int(self.res_head_n_layers),
+                "anchor_deformation_at_bed": bool(self.anchor_deformation_at_bed),
+                "zero_mean_residual_over_depth": bool(self.zero_mean_residual_over_depth),
             },
             "dx_const": None
             if self.dx_const_value is None
