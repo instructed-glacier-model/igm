@@ -4,12 +4,10 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, Any, Callable, Optional, Sequence
-import random
-import yaml
-import time
+from typing import Tuple, Any, Callable, Optional
+
 
 import numpy as np
 import tensorflow as tf
@@ -24,9 +22,9 @@ from igm.processes.pretraining.cost_tmp import get_cost_fn
 from igm.utils.math.precision import normalize_precision
 
 # Best-guess local imports; adjust paths as needed in your repo
-from .io_tfrecords import load_metadata, list_shards, make_datasets
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
+from .training_utils import build_tfrecord_datasets_for_nz, build_velocity_data_loss
 
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
@@ -104,26 +102,6 @@ def _prepare_run_dirs(out_dir: Path, resume: bool) -> Tuple[Path, Path]:
         fig_dir.mkdir(parents=True, exist_ok=True)
 
     return ckpt_dir, fig_dir
-
-
-def _validate_pretraining_setup(
-    inputs: Tuple[str, ...],
-    Cx: int,
-    metadata_inputs: Optional[Sequence[str]] = None,
-) -> None:
-    if Cx != len(inputs):
-        raise ValueError(
-            f"TFRecord x has C={Cx} channels (from metadata), but cfg.processes.iceflow.unified.inputs "
-            f"has {len(inputs)} entries: {inputs}. These must match in count and order."
-        )
-
-    if metadata_inputs is not None:
-        metadata_inputs = tuple(str(x) for x in metadata_inputs)
-        if metadata_inputs != inputs:
-            raise ValueError(
-                f"TFRecord metadata declares input_names={metadata_inputs}, but cfg.processes.iceflow.unified.inputs "
-                f"is {inputs}. These must match exactly in count and order."
-            )
 
 
 def _reset_metrics(metrics: MetricsBundle) -> None:
@@ -252,7 +230,6 @@ def initialize(cfg, state):
     # ----------------------------
     cfg_pretraining = cfg.processes.pretraining
     cfg_iceflow     = cfg.processes.iceflow
-    cfg_physics     = cfg.processes.iceflow.physics
     Nz = cfg_iceflow.numerics.Nz
 
     make_plots = bool(getattr(cfg_pretraining, "make_plots", True))
@@ -272,14 +249,7 @@ def initialize(cfg, state):
     # ----------------------------
     # B) Read metadata + validate invariants
     # ----------------------------
-    meta = load_metadata(tfrecord_root)
-    shapes = meta["example_shapes_by_nz"][str(Nz)]
-    H, W, Cx = shapes["x"]
-
     inputs = tuple(cfg_iceflow.unified.inputs)
-    metadata_inputs = meta.get("x_channel_names", None)
-
-    _validate_pretraining_setup(inputs=inputs, Cx=Cx, metadata_inputs=metadata_inputs)
 
     # ----------------------------
     # C) Directories / resume checks (only if save_model; avoids sweep collisions)
@@ -313,21 +283,17 @@ def initialize(cfg, state):
     accum_steps_py = effective_bs // micro_bs
     print(f"[grad-accum] effective_bs={effective_bs} micro_bs={micro_bs} accum_steps={accum_steps_py}")
 
-    train_files = list_shards(tfrecord_root, Nz, split="train")
-    val_files   = list_shards(tfrecord_root, Nz, split="val")
-
-    rng = random.Random(getattr(cfg_pretraining, "split_seed", 0))
-    rng.shuffle(train_files)
-
-    # use micro_bs in the dataset pipeline
-    train_ds, val_ds = make_datasets(
-        train_files=train_files,
-        val_files=val_files,
-        H=H, W=W, Nz=Nz,
-        compression="GZIP",
+    datasets = build_tfrecord_datasets_for_nz(
+        tfrecord_root,
+        nz=int(Nz),
+        inputs=inputs,
         batch_size=micro_bs,
-        Cx=Cx,
+        compression="GZIP",
+        split_seed=int(getattr(cfg_pretraining, "split_seed", 0)),
     )
+    H, W, Cx = datasets.H, datasets.W, datasets.Cx
+    train_ds = datasets.train_ds
+    val_ds = datasets.val_ds
 
     # ----------------------------
     # E) Create model + gather mapping args
@@ -352,7 +318,6 @@ def initialize(cfg, state):
             artifact_dir=out_dir,
             cfg=cfg,
             load_weights=False,
-            input_hw=(H, W),
         )
         mapping_args["network"] = state.iceflow_model
         print("[resume] rebuilt model skeleton from manifest; checkpoint will restore weights/optimizer state")
@@ -407,22 +372,14 @@ def initialize(cfg, state):
 
     physics_cost_fn = get_cost_fn(cfg, state)
 
-    lt = cfg_pretraining.loss_type.lower()
-    if lt not in ("mse", "huber"):
-        raise ValueError(f"loss_type must be 'mse' or 'huber', got {lt!r}")
-
-    if lt == "huber":
-        delta = float(getattr(cfg_pretraining, "huber_delta", 50.0))
-        huber = tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)
+    data_loss_fn = build_velocity_data_loss(
+        loss_type=cfg_pretraining.loss_type,
+        huber_delta=float(getattr(cfg_pretraining, "huber_delta", 50.0)),
+    )
 
     def compute_losses(x_batch: tf.Tensor, y_batch: tf.Tensor, in_warmup: tf.Tensor):
         U, V = mapping.get_UV(x_batch)
-        Ut, Vt = y_batch[..., 0], y_batch[..., 1]
-
-        if lt == "huber":
-            data_loss = tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
-        else:
-            data_loss = tf.reduce_mean(tf.square(U - Ut) + tf.square(V - Vt))
+        data_loss = tf.cast(data_loss_fn(U, V, y_batch), U.dtype)
 
         phys_loss = tf.cond(
             in_warmup,
@@ -434,7 +391,7 @@ def initialize(cfg, state):
     EMA          = tf.constant(0.99, tf.float32)
     UPDATE_EVERY = tf.constant(100, tf.int64)
     LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(2e2, tf.float32)
+    LAM_MAX      = tf.constant(1e2, tf.float32)
     EPS          = tf.constant(1e-6, tf.float32)
     WARMUP_STEPS = tf.constant(100000, tf.int64)
     ACCUM_STEPS = tf.constant(accum_steps_py, tf.int64)

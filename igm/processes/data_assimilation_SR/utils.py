@@ -35,6 +35,56 @@ def masked_integral(x: tf.Tensor, mask: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
     area = cell_area_like(dx, x)
     return tf.reduce_sum(tf.where(mask, x * area, tf.zeros_like(x)))
 
+
+def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e-6) -> tf.Tensor:
+    value = tf.cast(value, dtype)
+    return tf.maximum(tf.abs(value), tf.cast(floor, dtype))
+
+    
+def _get_inverted_field_names(cfg) -> set[str]:
+    return {
+        str(item["name"])
+        for item in getattr(cfg.processes.data_assimilation_SR, "variables", [])
+    }
+
+def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
+    """
+    Only initialize fields that are actually inverted for.
+    Non-inverted fields are left unchanged.
+    """
+    inverted = _get_inverted_field_names(cfg)
+
+    # These are not inversion variables, just cast once for consistency.
+    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
+    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
+    state.usurf = tf.cast(state.usurf, dtype=dtype)
+    state.dX = tf.cast(state.dX, dtype=dtype)
+
+    if "thk" in inverted:
+        thk0 = initial_thickness(
+            s=state.usurf,
+            u=state.uvelsurfobs,
+            v=state.vvelsurfobs,
+            mask=state.icemask,
+            dx=state.dX[0, 0],
+            dy=state.dX[0, 0],
+        )
+        state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
+
+    if "slidingco" in inverted:
+        state.slidingco = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_slidingco, dtype)
+        )
+
+    if "arrhenius" in inverted:
+        state.arrhenius = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
+        )
+
+    return inverted
+
 def initial_thickness(
     s,                 # surface elevation [m], shape (Ny, Nx)
     u, v,              # surface velocities (same shape), units set by speed_units

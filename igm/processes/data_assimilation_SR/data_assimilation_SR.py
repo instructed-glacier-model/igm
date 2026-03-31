@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import random
 
 import tensorflow as tf
 
@@ -13,7 +12,7 @@ from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
 from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
 
 from .outputs.output_ncdf import update_ncdf_optimize
-from .utils import initial_thickness
+from .utils import _initialize_inverted_fields, _safe_loss_scale
 from igm.utils.math.precision import normalize_precision
 
 from igm.processes.iceflow.unified.mappings.data_assimilation import MappingDataAssimilation
@@ -26,7 +25,11 @@ from igm.processes.iceflow.unified.halt.metrics import Metrics
 from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
 from igm.processes.data_assimilation_SR.objective import build_objective_from_cfg
 from igm.processes.pretraining.cost_tmp import get_cost_fn
-from igm.processes.pretraining.io_tfrecords import load_metadata, list_shards, make_datasets
+from igm.processes.pretraining.training_utils import (
+    build_tfrecord_datasets_for_nz,
+    build_velocity_data_loss,
+    _anchor_loss,
+)
 
 class StaticBatchSampler:
     dynamic_augmentation = False
@@ -117,50 +120,6 @@ def _sync_state_costs_and_outputs(cfg, state, da: DataAssimilation, iteration: i
     evaluate_iceflow(cfg, state)
     update_ncdf_optimize(cfg, state, int(iteration))
 
-def _get_inverted_field_names(cfg) -> set[str]:
-    return {
-        str(item["name"])
-        for item in getattr(cfg.processes.data_assimilation_SR, "variables", [])
-    }
-
-def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
-    """
-    Only initialize fields that are actually inverted for.
-    Non-inverted fields are left unchanged.
-    """
-    inverted = _get_inverted_field_names(cfg)
-
-    # These are not inversion variables, just cast once for consistency.
-    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
-    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
-    state.usurf = tf.cast(state.usurf, dtype=dtype)
-    state.dX = tf.cast(state.dX, dtype=dtype)
-
-    if "thk" in inverted:
-        thk0 = initial_thickness(
-            s=state.usurf,
-            u=state.uvelsurfobs,
-            v=state.vvelsurfobs,
-            mask=state.icemask,
-            dx=state.dX[0, 0],
-            dy=state.dX[0, 0],
-        )
-        state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
-
-    if "slidingco" in inverted:
-        state.slidingco = (
-            tf.ones_like(state.usurf, dtype=dtype)
-            * tf.cast(cfg.processes.iceflow.physics.init_slidingco, dtype)
-        )
-
-    if "arrhenius" in inverted:
-        state.arrhenius = (
-            tf.ones_like(state.usurf, dtype=dtype)
-            * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
-        )
-
-    return inverted
-
 def _configure_da_step_callback(cfg, state, da: DataAssimilation, iter_offset: int) -> None:
     def _step_callback(it_tf):
         it = int(it_tf.numpy()) + 1
@@ -213,84 +172,36 @@ def _run_da_phase(cfg, state, da: DataAssimilation, store_attr: str | None = Non
     return costs
 
 
-def _build_replay_data_loss_fn(cfg):
-
-    delta = float(50.0)
-    huber = tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)
-
-    @tf.function(reduce_retracing=True, jit_compile=False)
-    def replay_data_loss(U, V, y_batch):
-        Ut = tf.cast(y_batch[..., 0], U.dtype)
-        Vt = tf.cast(y_batch[..., 1], V.dtype)
-        return tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
-
-
-    return replay_data_loss
-
-
-def _validate_replay_dataset(cfg, replay_root: Path):
-    meta = load_metadata(replay_root)
-    Nz = int(cfg.processes.iceflow.numerics.Nz)
-
-    if "example_shapes_by_nz" not in meta or str(Nz) not in meta["example_shapes_by_nz"]:
-        raise ValueError(f"Replay metadata at {replay_root} has no entry for Nz={Nz}.")
-
-    shapes = meta["example_shapes_by_nz"][str(Nz)]
-    H, W, Cx = shapes["x"]
-    inputs = tuple(str(x) for x in cfg.processes.iceflow.unified.inputs)
-
-    if Cx != len(inputs):
-        raise ValueError(
-            f"Replay TFRecords have C={Cx} channels, but cfg.processes.iceflow.unified.inputs has {len(inputs)} entries: {inputs}."
-        )
-
-    return meta, H, W
-
-
 def _setup_replay(cfg, da: DataAssimilation) -> None:
-    cfg_opt = cfg.processes.data_assimilation_SR.optimization
-
     replay_root = Path("/home/srosier/work2/tfrecords/varRes2/")
-    meta, H, W = _validate_replay_dataset(cfg, replay_root)
-    Nz = int(cfg.processes.iceflow.numerics.Nz)
-    shapes = meta["example_shapes_by_nz"][str(Nz)]
-    H, W, Cx = shapes["x"]
-
     replay_batch_size = int(4)
     replay_val_batches = int(4)
     replay_shuffle_buffer = int(2048)
     split_seed = int(0)
+    Nz = int(cfg.processes.iceflow.numerics.Nz)
 
-    train_files = list_shards(replay_root, Nz, split="train")
-    val_files = list_shards(replay_root, Nz, split="val")
-
-    rng = random.Random(split_seed)
-    rng.shuffle(train_files)
-
-    train_ds, val_ds = make_datasets(
-        train_files=train_files,
-        val_files=val_files,
-        H=H,
-        W=W,
-        Nz=Nz,
-        compression="GZIP",
+    datasets = build_tfrecord_datasets_for_nz(
+        replay_root,
+        nz=Nz,
+        inputs=tuple(str(x) for x in cfg.processes.iceflow.unified.inputs),
         batch_size=replay_batch_size,
+        compression="GZIP",
         shuffle_buffer=replay_shuffle_buffer,
-        Cx=Cx,
+        split_seed=split_seed,
     )
 
-    da.replay_train_it = iter(train_ds)
+    da.replay_train_it = iter(datasets.train_ds)
     da.replay_val_buffer = []
-    val_it = iter(val_ds.repeat())
+    val_it = iter(datasets.val_ds.repeat())
     for _ in range(replay_val_batches):
         x_b, y_b = next(val_it)
         da.replay_val_buffer.append((tf.identity(x_b), tf.identity(y_b)))
 
     da.replay_enabled = True
-    da.replay_metadata = meta
+    da.replay_metadata = datasets.metadata
     da.retrain_replay_batch_size = replay_batch_size
     da.retrain_replay_val_batches = replay_val_batches
-    da.replay_data_loss_fn = _build_replay_data_loss_fn(cfg)
+    da.replay_data_loss_fn = build_velocity_data_loss(loss_type="huber", huber_delta=50.0)
 
     print(
         "[replay] enabled "
@@ -307,31 +218,6 @@ def _sample_local_batch(da: DataAssimilation, current_inputs: tf.Tensor) -> tf.T
     if sampled.shape.rank == 4:
         return sampled
     raise ValueError(f"Unexpected sampler output rank {sampled.shape.rank}; expected 4 or 5.")
-
-
-def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e-6) -> tf.Tensor:
-    value = tf.cast(value, dtype)
-    return tf.maximum(tf.abs(value), tf.cast(floor, dtype))
-
-
-def _anchor_loss(current_vars, ref_vars, eps: float = 1e-12):
-    if not current_vars:
-        return tf.constant(0.0, dtype=tf.float32)
-
-    dtype = current_vars[0].dtype
-    diff_vals = [
-        tf.reduce_mean(tf.square(tf.cast(v, dtype) - tf.cast(v0, dtype)))
-        for v, v0 in zip(current_vars, ref_vars)
-    ]
-    ref_vals = [
-        tf.reduce_mean(tf.square(tf.cast(v0, dtype)))
-        for v0 in ref_vars
-    ]
-
-    diff_mean = tf.add_n(diff_vals) / tf.cast(len(diff_vals), dtype)
-    ref_mean = tf.add_n(ref_vals) / tf.cast(len(ref_vals), dtype)
-    return diff_mean / (ref_mean + tf.cast(eps, dtype))
-
 
 def _evaluate_local_physics_loss(da: DataAssimilation, current_inputs: tf.Tensor) -> tf.Tensor:
     U, V = da.shared_mapping.get_UV(current_inputs)
@@ -365,7 +251,7 @@ def _make_retrain_train_step(da: DataAssimilation):
     replay_enabled = bool(da.replay_enabled)
     replay_phys_enabled = float(da.retrain_replay_phys_weight) > 0.0
 
-    @tf.function(reduce_retracing=True, jit_compile=False)
+    @tf.function(reduce_retracing=True, jit_compile=False, autograph=False)
     def train_step(local_x, replay_x, replay_y):
         with tf.GradientTape() as tape:
             U_local, V_local = shared_mapping.get_UV(local_x)
@@ -560,7 +446,7 @@ def data_assimilation_initialize(cfg, state):
         _setup_replay(cfg, da)
     else:
         da.replay_enabled = False
-        da.replay_data_loss_fn = _build_replay_data_loss_fn(cfg)
+        da.replay_data_loss_fn = build_velocity_data_loss(loss_type="huber", huber_delta=50.0)
 
     da._retrain_train_step = _make_retrain_train_step(da)
 
