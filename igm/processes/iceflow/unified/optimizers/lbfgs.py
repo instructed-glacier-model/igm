@@ -27,8 +27,8 @@ class OptimizerLBFGS(Optimizer):
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
-        gamma_min: float = 1e-8,
-        gamma_max: float = 1e8,
+        gamma_min: float = 1e-6,
+        gamma_max: float = 1e6,
         **kwargs
     ):
         super().__init__(

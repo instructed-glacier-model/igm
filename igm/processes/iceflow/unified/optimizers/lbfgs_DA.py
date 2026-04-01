@@ -58,10 +58,30 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             freq=self.display.freq,
         )
 
+        empty = tf.zeros([0], dtype=dtype)
+        self.accepted_cost_total_hist = empty
+        self.accepted_cost_data_hist = empty
+        self.accepted_cost_reg_hist = empty
+
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
         self.rho_mean.assign(tf.cast(0.0, self.rho_mean.dtype))
         self.rho_count.assign(0)
+        empty = tf.zeros([0], dtype=self.last_total.dtype)
+        self.accepted_cost_total_hist = empty
+        self.accepted_cost_data_hist = empty
+        self.accepted_cost_reg_hist = empty
         return super().minimize(inputs)
+
+    def _publish_cost_history(
+        self,
+        cost_total_hist: tf.TensorArray,
+        cost_data_hist: tf.TensorArray,
+        cost_reg_hist: tf.TensorArray,
+        n_keep: int,
+    ) -> None:
+        self.accepted_cost_total_hist = cost_total_hist.stack()[:n_keep]
+        self.accepted_cost_data_hist = cost_data_hist.stack()[:n_keep]
+        self.accepted_cost_reg_hist = cost_reg_hist.stack()[:n_keep]
 
     @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
@@ -255,8 +275,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 tape.watch(t)
 
             U, V = self.map.get_UV(inputs)
-            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
-            total, _, _ = self.cost_fn(U, V, inputs_used)
+            total, _, _ = self.cost_fn(U, V, self.map.inputs)
 
         grad_theta = tape.gradient(total, theta)
         grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
@@ -324,7 +343,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         alpha, _ = self._line_search_with_fallback(theta_flat, p_flat, input)
         return alpha
 
-    @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
         first_batch = self.sampler(inputs)  # [M, B, H, W, C]
         n_batches = first_batch.shape[0]
@@ -357,6 +375,9 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
         iter_last = tf.constant(-1, dtype=tf.int32)
         costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        cost_total_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        cost_data_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        cost_reg_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
 
         for iter in tf.range(self.iter_max):
             # Sample fresh augmented batch for this iteration
@@ -431,10 +452,23 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 s_flat_mem, y_flat_mem, idx_memory, s, y
             )
 
-            # this is needed e.g. for data assimilation logging
-            self.map.on_step_end(iter)
-
             costs = costs.write(iter, cost)
+            cost_total_hist = cost_total_hist.write(iter, self.last_total.read_value())
+            cost_data_hist = cost_data_hist.write(iter, self.last_data.read_value())
+            cost_reg_hist = cost_reg_hist.write(iter, self.last_reg.read_value())
+
+            iter_py = int(iter.numpy())
+            accepted_iter = iter_py + 1
+
+            if self.map._da_out_freq > 0 and accepted_iter % self.map._da_out_freq == 0:
+                self._publish_cost_history(
+                    cost_total_hist,
+                    cost_data_hist,
+                    cost_reg_hist,
+                    accepted_iter,
+                )
+
+            self.map.maybe_run_step_callback(iter_py)
 
             U, V = self.map.get_UV(input)
             grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
@@ -454,48 +488,38 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 break
 
         self._finalize_display(halt_status)
-        return costs.stack()[: iter_last + 1]
+
+        n_keep = max(0, int(iter_last.numpy()) + 1)
+        self._publish_cost_history(
+            cost_total_hist,
+            cost_data_hist,
+            cost_reg_hist,
+            n_keep,
+        )
+
+        return costs.stack()[:n_keep]
 
     def _update_display(self) -> None:
         if not getattr(self.display, "enabled", False):
             return
 
-        def update_display(iter_val, total_val, data_val, reg_val, *crit_data):
-            if crit_data:
-                n = len(crit_data) // 2
-                values = [float(crit_data[i].numpy()) for i in range(n)]
-                satisfied = [bool(crit_data[n + i].numpy()) for i in range(n)]
-            else:
-                values = None
-                satisfied = None
-
-            self.display.update(
-                int(iter_val.numpy()),
-                float(total_val.numpy()),
-                float(data_val.numpy()),
-                float(reg_val.numpy()),
-                values,
-                satisfied,
-            )
-            return 1.0
-
-        should_update = self.display.should_update(self.step_state.iter)
-
-        py_func_args = [
-            self.step_state.iter,
-            self.last_total.read_value(),
-            self.last_data.read_value(),
-            self.last_reg.read_value(),
-        ]
+        if not bool(self.display.should_update(self.step_state.iter).numpy()):
+            return
 
         if self.halt_state.criterion_values and self.halt_state.criterion_satisfied:
-            py_func_args.extend(self.halt_state.criterion_values)
-            py_func_args.extend(self.halt_state.criterion_satisfied)
+            values = [float(v.numpy()) for v in self.halt_state.criterion_values]
+            satisfied = [bool(v.numpy()) for v in self.halt_state.criterion_satisfied]
+        else:
+            values = None
+            satisfied = None
 
-        tf.cond(
-            should_update,
-            lambda: tf.py_function(update_display, py_func_args, tf.float32),
-            lambda: tf.constant(0.0, dtype=tf.float32),
+        self.display.update(
+            int(self.step_state.iter.numpy()),
+            float(self.last_total.read_value().numpy()),
+            float(self.last_data.read_value().numpy()),
+            float(self.last_reg.read_value().numpy()),
+            values,
+            satisfied,
         )
 
     @tf.function(reduce_retracing=True)
@@ -509,8 +533,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 tape.watch(t)
 
             U, V = self.map.get_UV(inputs)
-            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
-            total, data, reg = self.cost_fn(U, V, inputs_used)
+            total, data, reg = self.cost_fn(U, V, self.map.inputs)
 
         grad_u = tape.gradient(total, [U, V])
         grad_theta = tape.gradient(total, theta)

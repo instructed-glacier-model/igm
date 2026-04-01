@@ -255,22 +255,45 @@ class MappingDataAssimilation(Mapping):
         return U, V
 
     def set_step_callback(self, callback, out_freq: int) -> None:
+        """
+        Register a Python callback to be run every ``out_freq`` accepted iterations.
+
+        The DA-specific optimizer runs its outer minimize loop eagerly, so it can call
+        this callback directly from Python via ``maybe_run_step_callback`` instead of
+        crossing the host/device boundary through ``tf.py_function``.
+        """
         self._da_step_callback = callback
         self._da_out_freq = int(out_freq)
 
+    def clear_step_callback(self) -> None:
+        self._da_step_callback = None
+        self._da_out_freq = 0
+
+    def maybe_run_step_callback(self, iter_zero_based: int) -> None:
+        """
+        Eager-only accepted-step callback runner.
+
+        ``iter_zero_based`` is the optimizer iteration index of the accepted step.
+        The registered callback receives a one-based accepted-iteration count so that
+        output iteration numbering is intuitive and aligns with stored cost histories.
+        """
+        if self._da_step_callback is None or self._da_out_freq <= 0:
+            return
+
+        accepted_iter = int(iter_zero_based) + 1
+        if accepted_iter % int(self._da_out_freq) != 0:
+            return
+
+        self._da_step_callback(accepted_iter)
+
     @tf.function(reduce_retracing=True)
     def on_step_end(self, it: tf.Tensor) -> tf.Tensor:
-        if self._da_step_callback is None or self._da_out_freq <= 0:
-            return tf.constant(0, dtype=tf.int32)
-
-        of = tf.cast(self._da_out_freq, it.dtype)
-        do_call = tf.equal(tf.math.floormod(it, of), 0)
-
-        def _call():
-            tf.py_function(self._da_step_callback, [it], Tout=[])
-            return tf.constant(0, dtype=tf.int32)
-
-        return tf.cond(do_call, _call, lambda: tf.constant(0, dtype=tf.int32))
+        """
+        Compatibility no-op for code paths that still call ``on_step_end`` inside a
+        traced optimizer loop. The DA optimizer uses ``maybe_run_step_callback``.
+        """
+        del it
+        return tf.constant(0, dtype=tf.int32)
 
     # ------- State update -----------------------------------------------------
 

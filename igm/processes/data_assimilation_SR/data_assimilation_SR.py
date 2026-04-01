@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.unified.halt import Halt
 from igm.processes.iceflow.unified.halt.criteria import Criteria
 from igm.processes.iceflow.unified.halt.metrics import Metrics
@@ -12,6 +11,7 @@ from igm.processes.iceflow.unified.mappings.data_assimilation import MappingData
 from igm.processes.iceflow.unified.mappings.interfaces.data_assimilation import InterfaceDataAssimilation
 from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS
 from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoundsDA
+from igm.utils.math.precision import normalize_precision
 
 from .phase_runner import (
     DataAssimilationRuntime,
@@ -20,11 +20,15 @@ from .phase_runner import (
     reset_da_run_state,
     run_da_phase,
 )
-from .retraining import initialize_retraining, reset_retraining_run_state, run_retraining_phase
+from .retraining import (
+    initialize_retraining,
+    reset_retraining_run_state,
+    run_retraining_phase,
+)
 from .utils import _initialize_inverted_fields
 
 
-def _build_halt(cfg):
+def _build_halt(cfg) -> Halt:
     cfg_da = cfg.processes.data_assimilation_SR
     patience_metric = Metrics["cost"]()
     patience_halt_crit = Criteria["patience"](
@@ -41,13 +45,15 @@ def _build_halt(cfg):
     )
 
 
-def data_assimilation_initialize(cfg, state):
+def data_assimilation_initialize(cfg, state) -> None:
     cfg_da = cfg.processes.data_assimilation_SR
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     _initialize_inverted_fields(cfg, state, dtype)
 
-    da_map = MappingDataAssimilation(**InterfaceDataAssimilation.get_mapping_args(cfg, state))
+    da_map = MappingDataAssimilation(
+        **InterfaceDataAssimilation.get_mapping_args(cfg, state)
+    )
     cost_fn, objective = build_cost_and_objective(cfg, state, da_map)
 
     optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
@@ -62,25 +68,25 @@ def data_assimilation_initialize(cfg, state):
         objective=objective,
         out_freq=int(cfg_da.output.freq),
         retrain_iter=int(cfg_da.optimization.retrain_iter),
+        retraining=initialize_retraining(cfg, state, da_map),
     )
-    da.retraining = initialize_retraining(cfg, state, da_map)
     state.data_assimilation = da
 
 
-def initialize(cfg, state):
+def initialize(cfg, state) -> None:
     data_assimilation_initialize(cfg, state)
 
 
-def update(cfg, state):
+def update(cfg, state) -> None:
     da = state.data_assimilation
     reset_da_run_state(da)
     reset_retraining_run_state(da.retraining)
 
-    run_da_phase(cfg, state, da, store_attr="result_stage1")
-    for k in range(da.retrain_iter):
+    run_da_phase(cfg, state, da)
+    for _ in range(da.retrain_iter):
         run_retraining_phase(cfg, state, da)
-        run_da_phase(cfg, state, da, store_attr="result_stage2" if k == 0 else None)
+        run_da_phase(cfg, state, da)
 
 
-def finalize(cfg, state):
+def finalize(cfg, state) -> None:
     pass
