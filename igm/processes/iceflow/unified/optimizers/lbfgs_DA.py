@@ -4,13 +4,21 @@
 
 from __future__ import annotations
 
+import collections
+
 import tensorflow as tf
 from typing import Tuple, Optional
 from ..halt import HaltStatus
 
 from .lbfgs_bounds import OptimizerLBFGSBounds
-from .line_searches import ValueAndGradient  # NEW
-from .da_progress_optimizer import _DAProgressOptimizer  # NEW
+from .line_searches import ValueAndGradient
+from .da_progress_optimizer import _DAProgressOptimizer
+
+
+LineSearchResult = collections.namedtuple(
+    "LineSearchResult",
+    ["alpha", "converged", "failed", "func_evals", "iterations", "left", "right"],
+)
 
 
 class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
@@ -31,18 +39,24 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         dtype = getattr(self.map, "precision", tf.float32)
 
         self.last_total = tf.Variable(0.0, trainable=False, dtype=dtype)
-        self.last_data  = tf.Variable(0.0, trainable=False, dtype=dtype)
-        self.last_reg   = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_data = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_reg = tf.Variable(0.0, trainable=False, dtype=dtype)
 
-        self.rho_mean  = tf.Variable(0.0, trainable=False, dtype=dtype)
-        self.rho_count = tf.Variable(0,   trainable=False, dtype=tf.int64)
+        self.rho_mean = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.rho_count = tf.Variable(0, trainable=False, dtype=tf.int64)
 
         self.rho_spike_factor = tf.constant(rho_spike_factor, dtype=dtype)
-        self.rho_warmup       = tf.constant(rho_warmup, dtype=tf.int64)
-        self.rho_ema_beta     = tf.constant(rho_ema_beta, dtype=dtype)
+        self.rho_warmup = tf.constant(rho_warmup, dtype=tf.int64)
+        self.rho_ema_beta = tf.constant(rho_ema_beta, dtype=dtype)
+
+        # Cache this once to avoid repeated Python hasattr() checks in the hot path.
+        self._line_search_supports_result = bool(hasattr(self.line_search, "search_result"))
 
         # swap display for DA-specific one, preserving enabled/freq
-        self.display = _DAProgressOptimizer(enabled=self.display.enabled, freq=self.display.freq)
+        self.display = _DAProgressOptimizer(
+            enabled=self.display.enabled,
+            freq=self.display.freq,
+        )
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
         self.rho_mean.assign(tf.cast(0.0, self.rho_mean.dtype))
@@ -73,7 +87,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         s: tf.Tensor,
         y: tf.Tensor,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-
         dot_ys = self._dot(y, s)
         finite = tf.math.is_finite(dot_ys)
         accept = finite & (dot_ys > self.eps)
@@ -95,7 +108,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
 
             return tf.cond(self.rho_count <= 0, init, ema)
 
-        tf.cond(accept, lambda: tf.cast(_update_stats(), tf.int32), lambda: tf.constant(0, tf.int32))
+        tf.cond(
+            accept,
+            lambda: tf.cast(_update_stats(), tf.int32),
+            lambda: tf.constant(0, tf.int32),
+        )
 
         def update():
             def append():
@@ -125,7 +142,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         num_elems: tf.Tensor,
         tau: tf.Tensor,
     ) -> tf.Tensor:
-
         if tf.equal(num_elems, 0):
             return -grad
 
@@ -150,7 +166,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         gamma = self._dot(last_y, last_s) / (self._dot(last_y, last_y) + self.eps)
 
         gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
-        gamma = tf.clip_by_value(gamma, tf.constant(1e-6, gamma.dtype), tf.constant(1e6, gamma.dtype))
+        gamma = tf.clip_by_value(gamma, self.gamma_min, self.gamma_max)
         gamma = tf.cast(gamma, q.dtype)
 
         r = tau * gamma * q
@@ -167,7 +183,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             r = r + s_i * (tf.cast(alpha_i, r.dtype) - tf.cast(beta, r.dtype))
 
         return -r
-    
+
     @tf.function(reduce_retracing=True, jit_compile=False)
     def _search_grad(
         self,
@@ -175,9 +191,12 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         mask_base: Optional[tf.Tensor],
     ) -> tf.Tensor:
         """
-        Gradient used for:
+        Gradient representation used for:
         - the L-BFGS search direction
         - curvature pairs
+
+        In DA this is now just the true gradient, optionally restricted to the
+        active subspace.
         """
         g = grad_base_flat
 
@@ -185,7 +204,127 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             g = tf.where(mask_base, g, tf.zeros_like(g))
 
         return g
-    
+
+    @tf.function(reduce_retracing=True)
+    def _usable_line_search_point(self, vg: ValueAndGradient) -> tf.Tensor:
+        zero = tf.zeros_like(vg.x)
+        return (
+            tf.math.is_finite(vg.x)
+            & tf.math.is_finite(vg.f)
+            & tf.math.is_finite(vg.df)
+            & (vg.x > zero)
+        )
+
+    @tf.function(reduce_retracing=True)
+    def _select_line_search_alpha(self, ls_result) -> Tuple[tf.Tensor, tf.Tensor]:
+        dtype = ls_result.alpha.dtype
+        zero = tf.constant(0.0, dtype=dtype)
+
+        alpha_raw = tf.cast(ls_result.alpha, dtype)
+        alpha_raw_valid = tf.math.is_finite(alpha_raw) & (alpha_raw >= zero)
+
+        left_valid = self._usable_line_search_point(ls_result.left)
+        right_valid = self._usable_line_search_point(ls_result.right)
+
+        left_x = tf.cast(ls_result.left.x, dtype)
+        right_x = tf.cast(ls_result.right.x, dtype)
+        left_f = tf.cast(ls_result.left.f, dtype)
+        right_f = tf.cast(ls_result.right.f, dtype)
+
+        best_endpoint_alpha = tf.where(
+            left_valid & right_valid,
+            tf.where(left_f <= right_f, left_x, right_x),
+            tf.where(left_valid, left_x, tf.where(right_valid, right_x, zero)),
+        )
+
+        use_fallback = tf.cast(ls_result.failed, tf.bool) | tf.logical_not(alpha_raw_valid)
+        alpha = tf.where(use_fallback, best_endpoint_alpha, alpha_raw)
+        alpha = tf.where(tf.math.is_finite(alpha), alpha, zero)
+
+        return alpha, use_fallback
+
+    @tf.function(reduce_retracing=True)
+    def _get_grad_trial(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
+        # the point of a separate method here is to avoid writing the wrong costs to the
+        # display when doing line search evaluations, which can be confusing when the line
+        # search evaluates points with much higher cost than the current iterate
+        theta = self.map.get_theta()
+
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
+
+            U, V = self.map.get_UV(inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+            total, _, _ = self.cost_fn(U, V, inputs_used)
+
+        grad_theta = tape.gradient(total, theta)
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+        return total, grad_theta
+
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _line_search_result(
+        self,
+        theta_flat: tf.Tensor,
+        p_flat: tf.Tensor,
+        input: tf.Tensor,
+    ) -> LineSearchResult:
+        L, U = self.map.get_box_bounds_flat()
+        amax = self._alpha_max(theta_flat, p_flat, L, U)
+
+        def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
+            alpha_eff = tf.minimum(alpha, amax)
+
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
+
+            f, grad_theta = self._get_grad_trial(input)
+            grad_flat = self.map.flatten_theta(grad_theta)
+
+            mask = self._get_mask(theta_alpha, grad_flat, L, U)
+            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
+            df = self._dot(grad_flat, p_masked)
+
+            self.map.set_theta(theta_backup)
+            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
+
+        if self._line_search_supports_result:
+            return self.line_search.search_result(theta_flat, p_flat, eval_fn)
+
+        alpha = self.line_search.search(theta_flat, p_flat, eval_fn)
+        alpha_valid = tf.math.is_finite(alpha) & (alpha >= tf.zeros_like(alpha))
+        alpha_safe = tf.where(alpha_valid, alpha, tf.zeros_like(alpha))
+        vg = eval_fn(alpha_safe)
+
+        return LineSearchResult(
+            alpha=tf.cast(vg.x, theta_flat.dtype),
+            converged=tf.cast(alpha_valid, tf.bool),
+            failed=tf.logical_not(tf.cast(alpha_valid, tf.bool)),
+            func_evals=tf.constant(-1, dtype=tf.int32),
+            iterations=tf.constant(-1, dtype=tf.int32),
+            left=vg,
+            right=vg,
+        )
+
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _line_search_with_fallback(
+        self,
+        theta_flat: tf.Tensor,
+        p_flat: tf.Tensor,
+        input: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        ls_result = self._line_search_result(theta_flat, p_flat, input)
+        alpha, used_fallback = self._select_line_search_alpha(ls_result)
+        return tf.cast(alpha, theta_flat.dtype), used_fallback
+
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+        alpha, _ = self._line_search_with_fallback(theta_flat, p_flat, input)
+        return alpha
+
+    @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
         first_batch = self.sampler(inputs)  # [M, B, H, W, C]
         n_batches = first_batch.shape[0]
@@ -220,7 +359,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
 
         for iter in tf.range(self.iter_max):
-
             # Sample fresh augmented batch for this iteration
             if dynamic_augmentation:
                 next_batch = self.sampler(inputs)
@@ -239,7 +377,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 theta_flat, grad_theta_flat, input
             )
 
-            # Gradient used by the inverse-Hessian model (optionally preconditioned).
+            # Gradient used by the inverse-Hessian model.
             grad_search_prev = self._search_grad(grad_base_flat, mask_base)
 
             # Restrict memory to the active subspace if needed.
@@ -259,9 +397,13 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             # Force descent uses TRUE base gradient
             p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
 
-            # Line search uses TRUE gradients internally (DA overrides _line_search/_get_grad_trial)
-            alpha = self._line_search(theta_base, p_flat, input)
-            alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
+            # Line search uses TRUE gradients internally.
+            alpha, ls_used_fallback = self._line_search_with_fallback(theta_base, p_flat, input)
+            alpha = tf.cond(
+                ls_used_fallback,
+                lambda: tf.maximum(alpha, tf.zeros_like(alpha)),
+                lambda: tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype)),
+            )
             alpha = self._clip_alpha(alpha, theta_base, p_flat)
 
             theta_flat, theta_trial = self._apply_step(theta_base, alpha, p_flat)
@@ -313,49 +455,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
 
         self._finalize_display(halt_status)
         return costs.stack()[: iter_last + 1]
-
-    @tf.function(reduce_retracing=True)
-    def _get_grad_trial(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
-        # the point of a separate method here is to avoid writing the wrong costs to the display when doing line search evaluations, which can be confusing when the line search evaluates points with much higher cost than the current iterate
-        theta = self.map.get_theta()
-
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            for t in theta:
-                tape.watch(t)
-
-            U, V = self.map.get_UV(inputs)
-            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
-            total, _, _ = self.cost_fn(U, V, inputs_used)
-
-        grad_theta = tape.gradient(total, theta)
-        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
-        return total, grad_theta
-
-    @tf.function
-    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
-        L, U = self.map.get_box_bounds_flat()
-        amax = self._alpha_max(theta_flat, p_flat, L, U)
-
-        def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
-            alpha_eff = tf.minimum(alpha, amax)
-
-            theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
-
-            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
-
-            f, grad_theta = self._get_grad_trial(input)
-            grad_flat = self.map.flatten_theta(grad_theta)
-
-            mask = self._get_mask(theta_alpha, grad_flat, L, U)
-            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-            df = self._dot(grad_flat, p_masked)
-
-            self.map.set_theta(theta_backup)
-            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
-
-        return self.line_search.search(theta_flat, p_flat, eval_fn)
-
 
     def _update_display(self) -> None:
         if not getattr(self.display, "enabled", False):

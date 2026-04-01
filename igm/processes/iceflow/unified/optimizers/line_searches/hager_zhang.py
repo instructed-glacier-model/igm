@@ -13,6 +13,11 @@ import tensorflow as tf
 from .line_search import LineSearch, ValueAndGradient
 
 
+LineSearchResult = collections.namedtuple(
+    "LineSearchResult",
+    ["alpha", "converged", "failed", "func_evals", "iterations", "left", "right"],
+)
+
 HagerZhangLineSearchResult = collections.namedtuple(
     "HagerZhangLineSearchResult",
     ["converged", "failed", "func_evals", "iterations", "left", "right"],
@@ -592,6 +597,22 @@ def _prepare_args(
     return val_0, val_initial, f_lim, tf.constant(2, dtype=tf.int32)
 
 
+def _select_output_alpha(result: HagerZhangLineSearchResult, dtype: tf.dtypes.DType) -> tf.Tensor:
+    zero = tf.constant(0.0, dtype=dtype)
+    left_x = tf.cast(result.left.x, dtype)
+    left_valid = tf.math.is_finite(left_x) & (left_x > zero)
+
+    return tf.cond(
+        result.converged,
+        lambda: left_x,
+        lambda: tf.cond(
+            tf.logical_not(result.failed) & left_valid,
+            lambda: left_x,
+            lambda: zero,
+        ),
+    )
+
+
 class LineSearchHagerZhang(LineSearch):
     def __init__(
         self,
@@ -616,16 +637,15 @@ class LineSearchHagerZhang(LineSearch):
         self.max_iterations = max_iterations
 
     @tf.function
-    def search(
+    def search_result(
         self,
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
-    ) -> tf.Tensor:
+    ) -> LineSearchResult:
         del p  # unused by the scalar line-search routine itself
 
         dtype = w.dtype
-        zero = tf.constant(0.0, dtype=dtype)
 
         initial_step_size = tf.cast(self.step_size_initial, dtype)
         threshold_use_approximate_wolfe_condition = tf.cast(
@@ -645,9 +665,9 @@ class LineSearchHagerZhang(LineSearch):
 
         valid_inputs = (
             _is_finite(val_0)
-            & (val_0.df < zero)
+            & (val_0.df < tf.zeros_like(val_0.df))
             & tf.math.is_finite(val_initial.x)
-            & (val_initial.x > zero)
+            & (val_initial.x > tf.zeros_like(val_initial.x))
         )
 
         init_interval = HagerZhangLineSearchResult(
@@ -703,21 +723,21 @@ class LineSearchHagerZhang(LineSearch):
             lambda: init_interval,
         )
 
-        # Your local API must return just a scalar alpha, not the full TFP result
-        # object. Conservatively:
-        # - on convergence: return the Wolfe point
-        # - on non-failed non-converged exit: return left.x
-        # - on failure: return 0
-        alpha = tf.cond(
-            result.converged,
-            lambda: result.left.x,
-            lambda: tf.cond(
-                tf.logical_not(result.failed)
-                & tf.math.is_finite(result.left.x)
-                & (result.left.x > zero),
-                lambda: result.left.x,
-                lambda: zero,
-            ),
+        return LineSearchResult(
+            alpha=tf.cast(_select_output_alpha(result, dtype), dtype),
+            converged=result.converged,
+            failed=result.failed,
+            func_evals=result.func_evals,
+            iterations=result.iterations,
+            left=result.left,
+            right=result.right,
         )
 
-        return tf.cast(alpha, dtype)
+    @tf.function
+    def search(
+        self,
+        w: tf.Tensor,
+        p: tf.Tensor,
+        value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
+    ) -> tf.Tensor:
+        return self.search_result(w, p, value_and_grad_fn).alpha
