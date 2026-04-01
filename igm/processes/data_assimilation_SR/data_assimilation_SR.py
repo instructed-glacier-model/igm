@@ -4,6 +4,63 @@
 
 from __future__ import annotations
 
+import re
+
+import tensorflow as tf
+import keras
+
+_MIN_TF_VERSION = (2, 19, 1)
+_MIN_KERAS_VERSION = (3, 12, 1)
+
+def _parse_version_tuple(version: str, n: int = 3) -> tuple[int, ...]:
+    """
+    Convert version strings like '2.19.1', '3.12.1rc0', '3.12' into
+    comparable integer tuples.
+    """
+    parts = [int(x) for x in re.findall(r"\d+", version)]
+    if len(parts) < n:
+        parts.extend([0] * (n - len(parts)))
+    return tuple(parts[:n])
+
+def _format_version(version_tuple: tuple[int, ...]) -> str:
+    return ".".join(str(x) for x in version_tuple)
+
+def _require_supported_tf_keras_versions() -> None:
+    tf_version = getattr(tf, "__version__", "unknown")
+    keras_version = getattr(keras, "__version__", "unknown")
+
+    tf_ok = _parse_version_tuple(tf_version) >= _MIN_TF_VERSION
+    keras_ok = _parse_version_tuple(keras_version) >= _MIN_KERAS_VERSION
+
+    if tf_ok and keras_ok:
+        return
+
+    border = "═" * 90
+    req_tf = _format_version(_MIN_TF_VERSION)
+    req_keras = _format_version(_MIN_KERAS_VERSION)
+
+    raise RuntimeError(
+        "\n"
+        f"{border}\n"
+        "❌  UNSUPPORTED TENSORFLOW / KERAS VERSION\n"
+        f"{border}\n"
+        "This data assimilation module wont to run with older package versions.\n\n"
+        "Minimum required versions:\n"
+        f"  • tensorflow >= {req_tf}\n"
+        f"  • keras      >= {req_keras}\n\n"
+        "Detected versions:\n"
+        f"  • tensorflow == {tf_version}\n"
+        f"  • keras      == {keras_version}\n\n"
+        "Why this is blocked:\n"
+        "  This code depends on newer TensorFlow / Keras behavior.\n"
+        "  It might be possible to get it working, I haven't bothered trying yet.\n\n"
+        "Fix:\n"
+        "  Upgrade the environment, then rerun.\n"
+        f"{border}\n"
+    )
+
+_require_supported_tf_keras_versions()
+
 from igm.processes.iceflow.unified.halt import Halt
 from igm.processes.iceflow.unified.halt.criteria import Criteria
 from igm.processes.iceflow.unified.halt.metrics import Metrics
