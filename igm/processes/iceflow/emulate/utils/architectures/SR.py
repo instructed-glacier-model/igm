@@ -7,54 +7,34 @@ import tensorflow as tf
 
 class SIADecompNet(tf.keras.Model):
     """
-    Physics-guided ice-flow emulator with an additive decomposition:
+    Physics-guided ice-flow emulator with additive decomposition:
 
-        total velocity = sliding head + deformation head + residual head
+        total velocity = sliding + deformation + residual
 
-    where:
-      - sliding head predicts a depth-independent plug-like component
-      - deformation head predicts the full depth-dependent deformation field
-      - residual head predicts a full depth-dependent correction
+    Heads
+    -----
+    sliding
+        Depth-uniform plug-like component.
+    deformation
+        Depth-dependent deformation profile.
+    residual
+        Depth-dependent correction.
 
-    The architecture uses two parallel streams:
-      1. explicit physics features computed from RAW inputs
-      2. learned context features computed from normalized inputs
+    The model combines:
+      1. explicit physics features from raw inputs
+      2. learned context features from normalized inputs
 
-    This keeps the physics features interpretable while still allowing
-    the network to exploit nonlocal/contextual information.
+    Output layout
+    -------------
+    [B, H, W, 2*Nz] with
 
-    ------------------------------------------------------------------
-    Fixed architecture assumptions
-    ------------------------------------------------------------------
-    The following are fixed inside this architecture and are NOT part
-    of the reconstruction manifest:
-      - n_glen = 3.0
-      - rho = 917.0
-      - g = 9.81
-      - m_slide = 3.0
-      - u_ref = 100.0
-      - eps = 1e-8
-      - H_ref = 200.0
-      - slope_ref = 0.1
-      - A_ref = 7.6e-24
+        output[..., :Nz] = Ux(z)
+        output[..., Nz:] = Uy(z)
 
-    If any of those need to change in future, that should be treated as
-    a new architecture variant rather than as a parameterized instance
-    of this one.
+    Internally, velocities are often represented as [B, H, W, Nz, 2].
 
-    ------------------------------------------------------------------
-    Output convention
-    ------------------------------------------------------------------
-    The model outputs shape [B, H, W, 2*Nz], ordered as:
-
-        output[..., :Nz]   = U_x(z)
-        output[..., Nz:]   = U_y(z)
-
-    Internally, the velocity tensors are often represented as:
-
-        [B, H, W, Nz, 2]
-
-    where the last axis is [Ux, Uy].
+    Fixed physical constants are part of the architecture, not the
+    reconstruction manifest.
     """
 
     # ------------------------------------------------------------------
@@ -72,7 +52,7 @@ class SIADecompNet(tf.keras.Model):
     FIXED_SLOPE_REF = 0.1
     FIXED_A_REF = 7.6e-24
 
-    FIXED_H_PROXY_FLOOR = 10.0  # this is needed to try and resolve issues arising in thin ice areas, particular in the reverse model gradients
+    FIXED_H_PROXY_FLOOR = 10.0  # stabilizes thin-ice log proxies and inverse gradients
 
     def __init__(
         self,
@@ -86,7 +66,7 @@ class SIADecompNet(tf.keras.Model):
         super().__init__(**kwargs)
 
         # ------------------------------------------------------------------
-        # Minimal reconstruction inputs
+        # Reconstruction inputs
         # ------------------------------------------------------------------
         self.input_names = list(input_names)
         self.Nz = int(Nz)
@@ -95,7 +75,7 @@ class SIADecompNet(tf.keras.Model):
         self.nb_outputs = 2 * self.Nz
 
         # ------------------------------------------------------------------
-        # Fixed physics constants for this architecture
+        # Fixed physical constants
         # ------------------------------------------------------------------
         self.n_glen = float(self.FIXED_N_GLEN)
         self.rho = float(self.FIXED_RHO)
@@ -139,7 +119,7 @@ class SIADecompNet(tf.keras.Model):
         )
         self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
 
-        # Fixed dx fallback if no dX channel exists
+        # Fixed grid spacing fallback when no dX channel is present
         if self.idx_dX is None:
             self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
             self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
@@ -148,12 +128,12 @@ class SIADecompNet(tf.keras.Model):
             self.dx_const = None
 
         # ------------------------------------------------------------------
-        # Learned normalizer for the CONTEXT branch only
+        # Input normalizer for the context branch
         # ------------------------------------------------------------------
         self.input_normalizer = None
 
         # ------------------------------------------------------------------
-        # Architecture parameters from network_params
+        # Architecture parameters
         # ------------------------------------------------------------------
         params = dict(network_params)
 
@@ -186,7 +166,7 @@ class SIADecompNet(tf.keras.Model):
                 f"but got {len(self.context_dilation_schedule)}"
             )
 
-        # Store the normalized architecture dict exactly as used
+        # Canonical architecture parameters used for reconstruction
         self.network_params = {
             "nb_layers": int(self.nb_layers),
             "nb_out_filter": int(self.nb_out_filter),
@@ -194,7 +174,7 @@ class SIADecompNet(tf.keras.Model):
         }
 
         # ------------------------------------------------------------------
-        # Fixed explicit-physics scaling / centering
+        # Fixed scaling for explicit physics features
         # ------------------------------------------------------------------
         self.log_H_ref = tf.math.log(self.H_ref + 1.0)
         self.log_tau_ref_scale = tf.math.log(self.tau_ref_scale + self.eps)
@@ -213,7 +193,7 @@ class SIADecompNet(tf.keras.Model):
         )
 
         # ------------------------------------------------------------------
-        # Shared learned context encoder
+        # Shared context encoder
         # ------------------------------------------------------------------
         self.context_in = tf.keras.layers.Conv2D(
             self.nb_out_filter,
@@ -253,7 +233,7 @@ class SIADecompNet(tf.keras.Model):
 
         # ------------------------------------------------------------------
         # Sliding head
-        # Output: [B, H, W, 2] = [ubx, uby]
+        # Output: [B, H, W, 2] = depth-uniform sliding velocity
         # ------------------------------------------------------------------
         self.slide_head_conv1 = tf.keras.layers.Conv2D(
             self.nb_out_filter,
@@ -281,7 +261,7 @@ class SIADecompNet(tf.keras.Model):
 
         # ------------------------------------------------------------------
         # Deformation head
-        # Output: [B, H, W, 2*Nz]
+        # Output: [B, H, W, 2*Nz] = depth-dependent deformation
         # ------------------------------------------------------------------
         self.def_head_conv1 = tf.keras.layers.Conv2D(
             self.nb_out_filter,
@@ -309,9 +289,8 @@ class SIADecompNet(tf.keras.Model):
 
         # ------------------------------------------------------------------
         # Residual head
-        # Output: [B, H, W, 2*Nz]
-        #
-        # Initialized with zeros so it starts inactive.
+        # Output: [B, H, W, 2*Nz] = depth-dependent correction
+        # Initialized at zero so the model starts from the structured heads.
         # ------------------------------------------------------------------
         self.res_head_filters = max(self.nb_out_filter // 2, 8)
 
@@ -346,13 +325,10 @@ class SIADecompNet(tf.keras.Model):
         )
 
     # ----------------------------------------------------------------------
-    # Minimal reconstruction manifest payload
+    # Reconstruction payload
     # ----------------------------------------------------------------------
     def resolved_params(self) -> Dict[str, Any]:
-        """
-        Return exactly the minimal constructor payload needed to rebuild the
-        model structure before attaching weights / external normalizer.
-        """
+        """Return the constructor payload needed to rebuild the model."""
         return {
             "input_names": list(self.input_names),
             "Nz": int(self.Nz),
@@ -369,16 +345,10 @@ class SIADecompNet(tf.keras.Model):
         }
 
     # ----------------------------------------------------------------------
-    # Keras build
+    # Deterministic build
     # ----------------------------------------------------------------------
     def build(self, input_shape) -> None:
-        """
-        Explicit deterministic build for subclassed-model compatibility.
-
-        This creates all weights in a fixed order via a dummy forward pass.
-        That avoids calling self.build(...) inside __init__ and makes
-        rebuilding + attaching weights much safer under Keras 3.
-        """
+        """Build all weights in a fixed order using a dummy forward pass."""
         if self.built:
             return
 
@@ -409,54 +379,35 @@ class SIADecompNet(tf.keras.Model):
             dtype=tf.float32,
         )
 
-        # Build all sublayers in forward-pass order.
+        # Build sublayers in forward-pass order.
         _ = self.call(dummy, training=False, return_components=False)
 
         super().build(input_shape)
 
     # ----------------------------------------------------------------------
-    # Public helper methods
+    # Public helpers
     # ----------------------------------------------------------------------
     def set_input_normalizer(self, layer: tf.keras.layers.Layer) -> None:
-        """
-        Attach an external normalizer for the learned context branch.
-
-        This is not part of the architecture reconstruction contract and is
-        intended to be attached separately after rebuilding the model.
-        """
+        """Attach the external normalizer used by the context branch."""
         self.input_normalizer = layer
 
     # ----------------------------------------------------------------------
-    # Small tensor utilities
+    # Tensor utilities
     # ----------------------------------------------------------------------
     def _split_xy_channels(self, uv_flat: tf.Tensor) -> tf.Tensor:
-        """
-        Convert [B, H, W, 2*Nz] into [B, H, W, Nz, 2].
-
-        Convention:
-            uv_flat[..., :Nz]   -> Ux(z)
-            uv_flat[..., Nz:]   -> Uy(z)
-        """
+        """Convert [B, H, W, 2*Nz] to [B, H, W, Nz, 2]."""
         ux = uv_flat[..., : self.Nz]
         uy = uv_flat[..., self.Nz :]
         return tf.stack([ux, uy], axis=-1)
 
     def _merge_xy_channels(self, uv: tf.Tensor) -> tf.Tensor:
-        """
-        Convert [B, H, W, Nz, 2] into [B, H, W, 2*Nz].
-
-        Convention:
-            output[..., :Nz]   = Ux(z)
-            output[..., Nz:]   = Uy(z)
-        """
+        """Convert [B, H, W, Nz, 2] to [B, H, W, 2*Nz]."""
         ux = uv[..., 0]
         uy = uv[..., 1]
         return tf.concat([ux, uy], axis=-1)
 
     def _broadcast_slide(self, slide_xy: tf.Tensor) -> tf.Tensor:
-        """
-        Broadcast [B, H, W, 2] into [B, H, W, Nz, 2].
-        """
+        """Broadcast [B, H, W, 2] to [B, H, W, Nz, 2]."""
         slide_xy = slide_xy[..., tf.newaxis, :]  # [B, H, W, 1, 2]
         multiples = tf.stack(
             [
@@ -470,12 +421,10 @@ class SIADecompNet(tf.keras.Model):
         return tf.tile(slide_xy, multiples)
 
     # ----------------------------------------------------------------------
-    # Finite differences with non-periodic symmetric padding
+    # Finite differences with symmetric padding
     # ----------------------------------------------------------------------
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
-        """
-        Return dX as a tensor of shape [B, H, W, 1].
-        """
+        """Return dX with shape [B, H, W, 1]."""
         if self.idx_dX is not None:
             return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
 
@@ -483,70 +432,44 @@ class SIADecompNet(tf.keras.Model):
         return tf.ones_like(thk, dtype=tf.float32) * self.dx_const
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
-        """
-        Central difference in x direction (axis=2) with symmetric padding.
-        """
+        """Central difference in x with symmetric padding."""
         fpad = tf.pad(field, [[0, 0], [0, 0], [1, 1], [0, 0]], mode="SYMMETRIC")
         return (fpad[:, :, 2:, :] - fpad[:, :, :-2, :]) / (2.0 * dx + self.eps)
 
     def _central_diff_y(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
-        """
-        Central difference in y direction (axis=1) with symmetric padding.
-        """
+        """Central difference in y with symmetric padding."""
         fpad = tf.pad(field, [[0, 0], [1, 1], [0, 0], [0, 0]], mode="SYMMETRIC")
         return (fpad[:, 2:, :, :] - fpad[:, :-2, :, :]) / (2.0 * dx + self.eps)
 
     def _second_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
-        """
-        Second derivative in x direction (axis=2) with symmetric padding.
-        """
+        """Second derivative in x with symmetric padding."""
         fpad = tf.pad(field, [[0, 0], [0, 0], [1, 1], [0, 0]], mode="SYMMETRIC")
         return (fpad[:, :, 2:, :] - 2.0 * field + fpad[:, :, :-2, :]) / (
             dx * dx + self.eps
         )
 
     def _second_diff_y(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
-        """
-        Second derivative in y direction (axis=1) with symmetric padding.
-        """
+        """Second derivative in y with symmetric padding."""
         fpad = tf.pad(field, [[0, 0], [1, 1], [0, 0], [0, 0]], mode="SYMMETRIC")
         return (fpad[:, 2:, :, :] - 2.0 * field + fpad[:, :-2, :, :]) / (
             dx * dx + self.eps
         )
 
     # ----------------------------------------------------------------------
-    # Explicit physics feature construction from RAW inputs
+    # Explicit physics features from raw inputs
     # ----------------------------------------------------------------------
     def _physics_features(
         self, raw_inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, Dict[str, tf.Tensor]]:
-        """
-        Build explicit physics features from raw inputs.
-
-        Returns
-        -------
-        slide_feats : tf.Tensor
-            Features intended primarily for the sliding head
-        def_feats : tf.Tensor
-            Features intended primarily for the deformation head
-        all_feats : tf.Tensor
-            Union of all explicit features, intended for the residual head
-        aux : dict
-            Dictionary of useful intermediate tensors for debugging/inspection
-        """
+        """Build explicit physics features for the three heads."""
         x = tf.cast(raw_inputs, tf.float32)
 
         H = tf.maximum(x[..., self.idx_thk : self.idx_thk + 1], 0.0)
         s = x[..., self.idx_usurf : self.idx_usurf + 1]
         dx = self._get_dx_field(x)
 
-        # Use a lightly smoothed thickness ONLY for bed-gradient features.
-        # Replace 3x3 avg-pool with a 3x3 binomial blur:
-        #   [1 2 1]
-        #   [2 4 2] / 16
-        #   [1 2 1]
-        #
-        # Reflect padding avoids edge artifacts from zero-padding.
+        # Smooth thickness only for bed-gradient features to suppress pixel-scale DA spikes.
+        # Use a 3x3 binomial blur with reflect padding.
         binomial_kernel = tf.constant(
             [[1.0, 2.0, 1.0],
             [2.0, 4.0, 2.0],
@@ -592,28 +515,28 @@ class SIADecompNet(tf.keras.Model):
         grad_b = tf.sqrt(dbdx**2 + dbdy**2 + self.eps)
 
         # ------------------------------------------------------------------
-        # Driving stress proxy
+        # Driving-stress proxy
         # ------------------------------------------------------------------
         tau_dx = -self.rho * self.g * H * dsdx
         tau_dy = -self.rho * self.g * H * dsdy
         tau_d = tf.sqrt(tau_dx**2 + tau_dy**2 + self.eps)
 
         # ------------------------------------------------------------------
-        # Fixed physical scaling / centering to O(1)
+        # Log-safe stress proxy
         # ------------------------------------------------------------------
         tau_dx = -self.rho * self.g * H * dsdx
         tau_dy = -self.rho * self.g * H * dsdy
         tau_d = tf.sqrt(tau_dx**2 + tau_dy**2 + self.eps)
 
-        # Use a floored thickness only for the log-based stress/sliding proxies.
-        # Keep the linear stress features on raw H.
+        # Use floored thickness only in log-based proxies.
+        # Keep linear stress features on raw H.
         H_for_log_proxy = H + self.H_proxy_floor
         tau_dx_for_log = -self.rho * self.g * H_for_log_proxy * dsdx
         tau_dy_for_log = -self.rho * self.g * H_for_log_proxy * dsdy
         tau_d_for_log = tf.sqrt(tau_dx_for_log**2 + tau_dy_for_log**2 + self.eps)
 
         # ------------------------------------------------------------------
-        # Fixed physical scaling / centering to O(1)
+        # Fixed scaling to O(1)
         # ------------------------------------------------------------------
         log_H = (tf.math.log(H + 1.0) - self.log_H_ref) / 3.0
         H_lin = H / (self.H_ref + self.eps)
@@ -633,17 +556,17 @@ class SIADecompNet(tf.keras.Model):
         log_tau_d_raw = tf.math.log(tau_d_for_log + self.eps)
         log_tau_d = (log_tau_d_raw - self.log_tau_ref_scale) / 5.0
 
-        # Downhill unit vector (masked off-ice)
+        # Downhill unit vector, masked off ice
         ice_mask = tf.cast(H > 1.0, tf.float32)
         dir_x = -dsdx / (grad_s + self.eps) * ice_mask
         dir_y = -dsdy / (grad_s + self.eps) * ice_mask
 
-        # Curvature channels for the residual/all-features stack
+        # Curvature channels for the residual stack
         curv_x_n = d2sdx2 * 1000.0
         curv_y_n = d2sdy2 * 1000.0
 
         # ------------------------------------------------------------------
-        # Sliding features
+        # Sliding-head features
         # ------------------------------------------------------------------
         slide_feats = [
             log_H,
@@ -684,7 +607,7 @@ class SIADecompNet(tf.keras.Model):
         slide_feats = tf.concat(slide_feats, axis=-1)
 
         # ------------------------------------------------------------------
-        # Deformation features
+        # Deformation-head features
         # ------------------------------------------------------------------
         def_feats = [
             log_H,
@@ -727,7 +650,7 @@ class SIADecompNet(tf.keras.Model):
         def_feats = tf.concat(def_feats, axis=-1)
 
         # ------------------------------------------------------------------
-        # Residual/all features
+        # Residual-head features
         # ------------------------------------------------------------------
         all_feats = tf.concat([slide_feats, def_feats, curv_x_n, curv_y_n], axis=-1)
 
@@ -772,9 +695,7 @@ class SIADecompNet(tf.keras.Model):
     # Learned context branch
     # ----------------------------------------------------------------------
     def _context_features(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
-        """
-        Compute learned context features from normalized inputs.
-        """
+        """Compute learned context features from normalized inputs."""
         x = tf.cast(inputs, tf.float32)
 
         if self.input_normalizer is not None:
@@ -794,7 +715,7 @@ class SIADecompNet(tf.keras.Model):
         return h
 
     # ----------------------------------------------------------------------
-    # Main forward pass
+    # Forward pass
     # ----------------------------------------------------------------------
     def call(
         self,
@@ -802,28 +723,10 @@ class SIADecompNet(tf.keras.Model):
         training: bool = False,
         return_components: bool = False,
     ) -> tf.Tensor | Dict[str, Any]:
-        """
-        Forward pass.
-
-        Parameters
-        ----------
-        inputs : tf.Tensor
-            Shape [B, H, W, C]
-        training : bool
-            Standard Keras training flag
-        return_components : bool
-            If True, return a dict containing the total field and the three
-            decomposed components for diagnostics/inspection.
-
-        Returns
-        -------
-        tf.Tensor or dict
-            By default, returns [B, H, W, 2*Nz].
-            If return_components=True, returns a dictionary.
-        """
+        """Return total velocity, or the decomposed components if requested."""
         raw_inputs = tf.cast(inputs, tf.float32)
 
-        # 1. Explicit physics features from RAW inputs
+        # 1. Explicit physics features from raw inputs
         slide_phys, def_phys, all_phys, aux = self._physics_features(raw_inputs)
 
         # 2. Learned context features from normalized inputs
@@ -855,11 +758,11 @@ class SIADecompNet(tf.keras.Model):
         res_flat = self.res_head_out(res_h)  # [B, H, W, 2*Nz]
         res_uv = self._split_xy_channels(res_flat)  # [B, H, W, Nz, 2]
 
-        # 6. Broadcast sliding over depth and sum all components
+        # 6. Broadcast sliding over depth and sum the three components
         slide_uv = self._broadcast_slide(slide_xy)  # [B, H, W, Nz, 2]
         total_uv = slide_uv + def_uv + res_uv
 
-        # Convert back to flat [B, H, W, 2*Nz]
+        # Flatten back to [B, H, W, 2*Nz]
         total_flat = self._merge_xy_channels(total_uv)
 
         if not return_components:
