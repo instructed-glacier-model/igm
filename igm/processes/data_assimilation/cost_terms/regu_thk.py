@@ -102,42 +102,82 @@ def regu_thk_v2(cfg,state):
         w_acc = 0.5 * (1.0 + tf.math.tanh((state.usurf - ELA) / 100.0)) 
         rect = (r_acc * w_acc + r_abl * (1.0 - w_acc))
 
-    # Compute derivatives directly on 2D tensors
-    kx, ky, kxx, kyy, kxy = _kernels(state.dx)           # Derivative stencils
-    bx  = _conv2(field, kx);  by  = _conv2(field, ky)    # Derivatives of field
-    bxx = _conv2(field, kxx); byy = _conv2(field, kyy); bxy = _conv2(field, kxy) 
+    anis_factor = cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
 
+    # Derivative stencils
+    kx, ky, kxx, kyy, kxy = _kernels(state.dx)
+
+    # 1st derivatives (gradient)
+    if cfg.processes.data_assimilation.regularization.thk_1st_der_disc_version == "new":
+        bx  = _conv2(field, kx);  by  = _conv2(field, ky)    # Derivatives of field
+        if cfg.processes.data_assimilation.optimization.sole_mask:
+            bx  = tf.where( state.icemaskobs > 0.0, bx, 0.0)
+            by  = tf.where( state.icemaskobs > 0.0, by, 0.0)
+    else:  # do as in regu_thk_v1()
+        if anis_factor == 1:
+            bx = (field[:, 1:] - field[:, :-1])/state.dx
+            by = (field[1:, :] - field[:-1, :])/state.dx
+            if cfg.processes.data_assimilation.optimization.sole_mask:
+                bx = tf.where( (state.icemaskobs[:, 1:] > 0.5) & (state.icemaskobs[:, :-1] > 0.5) , bx, 0.0)
+                by = tf.where( (state.icemaskobs[1:, :] > 0.5) & (state.icemaskobs[:-1, :] > 0.5) , by, 0.0)
+        else:
+            bx = (field[:, 1:] - field[:, :-1])/state.dx
+            bx = (bx[1:, :] + bx[:-1, :]) / 2.0
+            by = (field[1:, :] - field[:-1, :])/state.dx
+            by = (by[:, 1:] + by[:, :-1]) / 2.0
+            if cfg.processes.data_assimilation.optimization.sole_mask:
+                MASK = (state.icemaskobs[1:, 1:] > 0.5) & (state.icemaskobs[1:, :-1] > 0.5) & (state.icemaskobs[:-1, 1:] > 0.5) & (state.icemaskobs[:-1, :-1] > 0.5)
+                bx = tf.where( MASK, bx, 0.0)
+                by = tf.where( MASK, by, 0.0)
+    
+    # 2nd derivatives (Hessian)
+    bxx = _conv2(field, kxx); byy = _conv2(field, kyy); bxy = _conv2(field, kxy) 
     if cfg.processes.data_assimilation.optimization.sole_mask:
-        bx  = tf.where( state.icemaskobs > 0.0, bx, 0.0)
-        by  = tf.where( state.icemaskobs > 0.0, by, 0.0)
         bxx = tf.where( state.icemaskobs > 0.0, bxx, 0.0)
         byy = tf.where( state.icemaskobs > 0.0, byy, 0.0)
         bxy = tf.where( state.icemaskobs > 0.0, bxy, 0.0)
 
-    if cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
-        Dnn     = byy 
-        Dtautau = bxx 
-    else:
-        tx, ty = state.flowdirx, state.flowdiry   # along-flow
-        nx, ny = -ty, tx      
-        Dtautau = (tx*tx)*bxx + 2.0*(tx*ty)*bxy + (ty*ty)*byy   # along-flow curvature
-        Dnn     = (nx*nx)*bxx + 2.0*(nx*ny)*bxy + (ny*ny)*byy   # cross-flow curvature
-
-    alpha = cfg.processes.data_assimilation.regularization.thk_2nd_der
-    beta  = cfg.processes.data_assimilation.regularization.thk_1st_der
-    anis_factor = cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
+    alpha_2 = cfg.processes.data_assimilation.regularization.thk_2nd_der
+    alpha_1  = cfg.processes.data_assimilation.regularization.thk_1st_der
     gamma = cfg.processes.data_assimilation.regularization.convexity_weight
  
     if cfg.processes.data_assimilation.optimization.fix_opti_normalization_issue:
-        J = alpha * rect * (tf.square(Dtautau) + anis_factor * tf.square(Dnn) ) \
-          + beta * (tf.square(bx) + tf.square(by))  \
-          - gamma * state.thk
-        return tf.reduce_mean( J) 
+        if anis_factor == 1:
+            R_1 = 0.5 * tf.reduce_mean(tf.square(bx)) + tf.reduce_mean(tf.square(by))
+            R_2 = 0.5 * rect * tf.reduce_mean(tf.square(bxx) + 2 * tf.square(bxy) + tf.square(byy))
+        else:
+            ux, uy = state.flowdirx, state.flowdiry
+            if cfg.processes.data_assimilation.regularization.thk_1st_der_disc_version == "new":
+                ux1, uy1 = ux, uy
+            else:
+                ux1, uy1 = ave4(ux), ave4(uy)  # so that dims match bx and by
+                
+            R_1 = 0.5 * tf.reduce_mean(tf.square(ux1*bx + uy1*by) + anis_factor * tf.square(uy1*bx - ux1*by))
+            R_2 = 0.5 * tf.reduce_mean(
+                tf.square(ux*ux*bxx + 2*ux*uy*bxy + uy*uy*byy) \
+                + 2 * anis_factor * tf.square(ux*uy*bxx + (uy*uy-ux*ux)*bxy + ux*uy*byy) \
+                + anis_factor * anis_factor * tf.square(uy*uy*bxx - 2*ux*uy*bxy + ux*ux*byy)
+            )
+        convexity_term = tf.reduce_mean(state.thk)
 
     else:
-        return alpha * (tf.nn.l2_loss( tf.square(Dtautau) + anis_factor * tf.square(Dnn) )) \
-             + beta  * tf.nn.l2_loss( tf.square(bx) + tf.square(by) ) \
-             - gamma * tf.reduce_sum(state.thk) 
+        if anis_factor == 1:
+            R_1 = tf.nn.l2_loss(bx) + tf.nn.l2_loss(by)
+            R_2 = tf.nn.l2_loss(bxx) + 2 * tf.nn.l2_loss(bxy) + tf.nn.l2_loss(byy)
+        else:
+            ux, uy = state.flowdirx, state.flowdiry
+            if cfg.processes.data_assimilation.regularization.thk_1st_der_disc_version == "new":
+                ux1, uy1 = ux, uy
+            else:
+                ux1, uy1 = ave4(ux), ave4(uy)  # so that dims match bx and by
+            R_1 = tf.nn.l2_loss(ux1*bx + uy1*by) + anis_factor * tf.nn.l2_loss(uy1*bx - ux1*by)
+            R_2 = tf.nn.l2_loss(ux*ux*bxx + 2*ux*uy*bxy + uy*uy*byy) \
+                + 2 * anis_factor * tf.nn.l2_loss(ux*uy*bxx + (uy*uy-ux*ux)*bxy + ux*uy*byy) \
+                + anis_factor * anis_factor * tf.nn.l2_loss(uy*uy*bxx - 2*ux*uy*bxy + ux*ux*byy)
+        convexity_term = tf.reduce_sum(state.thk)
+    
+    R = alpha_1 * R_1 + alpha_2 * R_2 - gamma * convexity_term
+    return R
     
 def map_range(x,source_min, source_max, target_min, target_max): 
         return target_min + (x - source_min) / (source_max - source_min) * (target_max - target_min)

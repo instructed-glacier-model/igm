@@ -32,6 +32,7 @@ data_assimilation:
     thk_version: 1
     thk_2nd_der: 1.0e+6
     thk_1st_der: 1.0e+2
+    thk_1st_der_disc_version: new
     abl_acc_balance: 1.0
     slidingco: 1.0
     arrhenius: 10.0
