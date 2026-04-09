@@ -5,6 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
+from igm.processes.data_assimilation.utils import ave4
 
 def regu_thk(cfg,state):
     if cfg.processes.data_assimilation.regularization.thk_version == 1:
@@ -49,6 +50,9 @@ def regu_thk_v1(cfg,state):
                 - gamma * tf.math.reduce_sum(state.thk)
             )
     else:
+        state.flowdirx = ave4(state.flowdirx)
+        state.flowdiry = ave4(state.flowdiry)
+
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdx = (dbdx[1:, :] + dbdx[:-1, :]) / 2.0
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
