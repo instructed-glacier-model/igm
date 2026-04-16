@@ -6,6 +6,7 @@
 from . import processes
 from . import inputs, outputs
 from . import common
+from .common import optuna  # registers Hydra sweeper plugin
 from .processes import iceflow
 
 from .utils import math, grad, profiling, stag

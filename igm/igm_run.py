@@ -136,9 +136,17 @@ def main(cfg: DictConfig) -> None:
     state.runtime = (state.end_time - state.start_time).total_seconds()
 
     if hasattr(state, "score"):
-        return state.score
+        score = state.score
     else:
-        return float("inf")
+        score = float("inf")
+
+    # Write score to file for subprocess-based sweepers
+    import json
+
+    with open("_igm_score.json", "w") as f:
+        json.dump(score, f)
+
+    return score
 
 
 if __name__ == "__main__":
