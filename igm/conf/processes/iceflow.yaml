@@ -86,6 +86,12 @@ iceflow:
   unified:
     mapping: network
     bcs: []
+    bc:
+      dirichlet:
+        left: 0.0
+        right: 0.0
+        top: 0.0
+        bottom: 0.0
     optimizer: adam
     nbit: 1
     nbit_init: 1
@@ -100,6 +106,18 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
+    muon:
+      lr: 2.0e-02
+      momentum: 0.95
+      ns_steps: 5
+      lr_1d: 3.0e-04
+    soap:
+      lr: 2.0e-05
+      beta1: 0.95
+      beta2: 0.999
+      eps: 1.0e-08
+      precond_freq: 10
+      damping: 1.0e-08
     sequential:
       stages: []
     line_search: hager-zhang
@@ -114,9 +132,29 @@ iceflow:
         normalization:
           method: adaptive
         network:
-          architecture: CNN
+          architecture: FNO2
           pretrained: false
           output_scale: 1.0
+          width: 32
+          modes1: 8
+          modes2: 8
+          padding: 9
+          use_grid: false
+        #network:
+        #  architecture: CNN
+        #  pretrained: false
+        #  output_scale: 1.0
+        #  nb_layers: 16
+        #  nb_out_filter: 32
+        #  conv_ker_size: 3
+        #  activation: LeakyReLU
+        #  weight_initialization: glorot_uniform
+        #  batch_norm: false
+        #  residual: true
+        #  separable: false
+        #  dropout_rate: 0.0
+        physics_features:
+          mode: grounded
       fl:
         mapping: network
         inputs: [thk, usurf, arrhenius, slidingco, dX]
@@ -126,10 +164,17 @@ iceflow:
           architecture: FNO2
           pretrained: false
           output_scale: 1.0
+          width: 32
+          modes1: 8
+          modes2: 8
+          padding: 9
+          use_grid: false
+        physics_features:
+          mode: floating
       stages:
         - active: all
           optimizer: adam
-          nbit_init: 3000
+          nbit_init: 1000
           nbit: 100
     normalization:
       method: adaptive
@@ -157,6 +202,12 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: CNN
+      # FNO2 parameters
+      width: 32
+      modes1: 8
+      modes2: 8
+      padding: 9
+      use_grid: false
     data_preparation:
       framesizemax: 1000000000
       patches_per_batch: 1
