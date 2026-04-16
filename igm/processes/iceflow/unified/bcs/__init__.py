@@ -1,5 +1,6 @@
 from .bc import BoundaryCondition
 from .frozen_bed import FrozenBed
+from .dirichlet import DirichletBoundary
 from .periodic_ns import PeriodicNS, PeriodicNSGlobal
 from .periodic_we import PeriodicWE, PeriodicWEGlobal
 from .zero_left import ZeroLeft
@@ -10,6 +11,7 @@ BoundaryConditions = {
     "periodic_we": PeriodicWE,
     "periodic_ns_global": PeriodicNSGlobal,
     "periodic_we_global": PeriodicWEGlobal,
+    "dirichlet": DirichletBoundary,
     "zero_left": ZeroLeft,
 }
 
