@@ -8,17 +8,41 @@ import tensorflow as tf
 from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
 
 
+def _ensure_water_level(cfg, state):
+    """Guarantee that state.water_level is a 2D tf.Variable matching topg.
+
+    Resolution order, highest priority first:
+      1. state.water_level if already loaded from the input NetCDF.
+      2. cfg.processes.thk.default_sealevel, broadcast to a uniform 2D field.
+
+    The default value of default_sealevel is a large negative sentinel so
+    that the flotation term is inactive (lsurf = topg) unless the user
+    either provides a 2D water_level field in the input or explicitly
+    overrides default_sealevel in the config.
+    """
+    if hasattr(state, "water_level"):
+        return
+
+    state.water_level = tf.Variable(
+        tf.ones_like(state.topg) * tf.cast(
+            cfg.processes.thk.default_sealevel, state.topg.dtype
+        ),
+        trainable=False,
+    )
+
+
 def initialize(cfg, state):
 
     if not hasattr(state, "topg"):
         raise ValueError("The 'thk' module requires an initial topography ('state.topg') to be defined. Please define it through the preprocessing steps (not yet implemented)")
-        
-    # define the lower ice surface
-    if hasattr(state, "sealevel"):
-        # ! This is not clear which modules provides state.topg and allows us to use state.thk!!!
-        state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + state.sealevel)
-    else:
-        state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + cfg.processes.thk.default_sealevel)
+
+    _ensure_water_level(cfg, state)
+
+    # define the lower ice surface (flotation constraint applied)
+    state.lsurf = tf.maximum(
+        state.topg,
+        -cfg.processes.thk.ratio_density * state.thk + state.water_level,
+    )
 
     # define the upper ice surface
     state.usurf = state.lsurf + state.thk
@@ -44,11 +68,11 @@ def update(cfg, state):
         # Forward Euler with projection to keep ice thickness non-negative
         state.thk = tf.maximum(state.thk + state.dt * (state.smb - state.divflux), 0)
 
-        # define the lower ice surface
-        if hasattr(state, "sealevel"):
-            state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + state.sealevel)
-        else:
-            state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + cfg.processes.thk.default_sealevel)
+        # define the lower ice surface (flotation constraint applied)
+        state.lsurf = tf.maximum(
+            state.topg,
+            -cfg.processes.thk.ratio_density * state.thk + state.water_level,
+        )
 
         # define the upper ice surface
         state.usurf = state.lsurf + state.thk
