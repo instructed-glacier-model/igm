@@ -202,6 +202,82 @@ def compute_thk_implicit_1d_x(
     return tf.maximum(tf.squeeze(h_new, axis=-1), 0.0)
 
 
+@tf.function()
+def compute_thk_implicit_1d_x_flowband(
+    u: tf.Tensor,
+    h: tf.Tensor,
+    dx: tf.Tensor,
+    dt: tf.Tensor,
+    smb: tf.Tensor,
+) -> tf.Tensor:
+    """
+    Fully implicit first-order upwind solver for dH/dt + d(uH)/dx = smb
+    on a collocated flowband grid (no y variation).
+
+    Interface velocities are arithmetic averages of neighbouring cell values.
+    Boundary conditions hard-wired for the marine ice-sheet flowband problem:
+      Left  -- ice-divide symmetry : H[0] = H[2]
+      Right -- zero thickness gradient : H[-1] = H[-2]
+
+    Translated from the transport section of FlowlineSSA_collocated.m
+    (F. Pattyn, ULB, 2018; collocated adaptation, 2026).
+    """
+
+    # --- Interface velocities by arithmetic averaging ---
+    # u_{i+1/2} = (u_i + u_{i+1}) / 2  for interior faces;
+    # rightmost face copies the last cell value.
+    uhp = tf.concat([0.5 * (u[:, :-1] + u[:, 1:]), u[:, -1:]], axis=1)  # (ny, nx)
+    # u_{i-1/2} = u_{(i-1)+1/2}  for i >= 1;  leftmost face copies first cell value.
+    uhm = tf.concat([u[:, :1], uhp[:, :-1]], axis=1)  # (ny, nx)
+
+    dtdx = dt / dx
+
+    # --- Upwind splitting ---
+    uhp_pos = tf.nn.relu(uhp)  # max(u_{i+1/2}, 0)
+    uhp_neg = -tf.nn.relu(-uhp)  # min(u_{i+1/2}, 0)
+    uhm_pos = tf.nn.relu(uhm)  # max(u_{i-1/2}, 0)
+    uhm_neg = -tf.nn.relu(-uhm)  # min(u_{i-1/2}, 0)
+
+    # --- Tridiagonal coefficients (valid for interior cells) ---
+    #   sub * H[i-1]  +  diag * H[i]  +  sup * H[i+1]  =  rhs
+    sub = -dtdx * uhm_pos
+    diag = 1.0 + dtdx * (uhp_pos - uhm_neg)
+    sup = dtdx * uhp_neg
+    rhs = h + smb * dt
+
+    # --- Left BC: divide symmetry  H[0] = H[2] ---
+    # Dirichlet row using old H[2] as predictor; post-corrected after solve.
+    ones_bc = tf.ones_like(sub[:, :1])
+    zeros_bc = tf.zeros_like(sub[:, :1])
+
+    diag = tf.concat([ones_bc, diag[:, 1:]], axis=1)
+    sub = tf.concat([zeros_bc, sub[:, 1:]], axis=1)
+    sup = tf.concat([zeros_bc, sup[:, 1:]], axis=1)
+    rhs = tf.concat([h[:, 2:3], rhs[:, 1:]], axis=1)
+
+    # --- Right BC: zero gradient  H[-1] = H[-2] ---
+    #   -1 * H[-2] + 1 * H[-1] = 0
+    diag = tf.concat([diag[:, :-1], ones_bc], axis=1)
+    sub = tf.concat([sub[:, :-1], -ones_bc], axis=1)
+    sup = tf.concat([sup[:, :-1], zeros_bc], axis=1)
+    rhs = tf.concat([rhs[:, :-1], zeros_bc], axis=1)
+
+    # --- Solve tridiagonal system (Thomas algorithm) ---
+    diagonals = tf.stack([sup, diag, sub], axis=1)  # (ny, 3, nx)
+    h_new = tf.linalg.tridiagonal_solve(
+        diagonals,
+        rhs[..., tf.newaxis],  # (ny, nx, 1)
+        diagonals_format="compact",
+        partial_pivoting=False,
+    )
+    h_new = tf.squeeze(h_new, axis=-1)  # (ny, nx)
+
+    # Post-correction: enforce symmetry with the *new* H[2]
+    h_new = tf.concat([h_new[:, 2:3], h_new[:, 1:]], axis=1)
+
+    return tf.maximum(h_new, 0.0)
+
+
 def _update_explicit(cfg: DictConfig, state: State) -> None:
     """Update thickness using explicit slope-limiter scheme."""
     state.divflux = compute_divflux_slope_limiter(
@@ -233,6 +309,18 @@ def _update_implicit_1d_x(cfg: DictConfig, state: State) -> None:
     )
 
 
+def _update_implicit_1d_x_flowband(cfg: DictConfig, state: State) -> None:
+    """Update thickness using implicit upwind scheme with flowband BCs."""
+
+    state.thk = compute_thk_implicit_1d_x_flowband(
+        state.ubar,
+        state.thk,
+        state.dx,
+        state.dt,
+        state.smb,
+    )
+
+
 def initialize(cfg: DictConfig, state: State) -> None:
     if not hasattr(state, "topg"):
         raise ValueError(
@@ -244,7 +332,11 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 
 def update(cfg: DictConfig, state: State) -> None:
-    if state.it > 0:
+
+    if state.dt == 0:
+        return
+
+    if state.it >= 0:
         if hasattr(state, "logger"):
             state.logger.info(f"Ice thickness equation at time: {state.t.numpy()}")
 
@@ -264,6 +356,8 @@ def update(cfg: DictConfig, state: State) -> None:
                 mode_u=cfg.processes.thk.flux_mode_u,
                 mode_h=cfg.processes.thk.flux_mode_h,
             )
+        elif time_scheme == "implicit_1d_x_flowband":
+            _update_implicit_1d_x_flowband(cfg, state)
         else:
             raise ValueError("Unknown time_scheme :(")
 
