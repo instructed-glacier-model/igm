@@ -1,0 +1,9 @@
+effective_pressure:
+  # How to compute state.effective_pressure (MPa). Modes:
+  #   constant_one    — N = 1 everywhere (recovers Weertman when used with Budd)
+  #   percentage      — N = (1 - percentage) * rho_ice * g * h
+  #   ocean_connected — N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0)
+  #   from_input      — leave state.effective_pressure as already loaded
+  mode: ocean_connected
+  percentage: 0.0      # only used if mode == percentage
+  N_min: 1.0e-3        # MPa: floor applied after the chosen formula

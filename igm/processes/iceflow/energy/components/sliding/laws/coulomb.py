@@ -9,7 +9,6 @@ from typing import Dict
 from ..sliding import SlidingComponent, mask_gr
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 
 
 class CoulombParams(tf.experimental.ExtensionType):
