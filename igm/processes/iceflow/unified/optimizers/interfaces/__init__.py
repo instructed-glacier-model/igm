@@ -4,6 +4,9 @@ from .lbfgs import InterfaceLBFGS
 from .cg import InterfaceCG
 from .sequential import InterfaceSequential
 from .composite import InterfaceComposite
+from .soap import InterfaceSOAP
+from .muon import InterfaceMuon
+
 
 InterfaceOptimizers = {
     "adam": InterfaceAdam,
@@ -14,4 +17,6 @@ InterfaceOptimizers = {
     "cg": InterfaceCG,
     "sequential": InterfaceSequential,
     "composite": InterfaceComposite,
+    "soap": InterfaceSOAP,
+    "muon": InterfaceMuon,
 }

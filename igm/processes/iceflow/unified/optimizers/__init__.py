@@ -7,6 +7,8 @@ from .lbfgs_DA import OptimizerLBFGSDataAssimilation
 from .cg import OptimizerCG
 from .sequential import OptimizerSequential
 from .composite import OptimizerComposite
+from .muon import OptimizerMuon
+from .soap import OptimizerSOAP
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -17,6 +19,8 @@ Optimizers = {
     "cg": OptimizerCG,
     "sequential": OptimizerSequential,
     "composite": OptimizerComposite,
+    "muon": OptimizerMuon,
+    "soap": OptimizerSOAP,
 }
 
 from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status, get_save_args
