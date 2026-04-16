@@ -1,13 +1,13 @@
 effective_pressure:
-  # How to compute state.effective_pressure (Pa). Modes:
-  #   constant_one    — N = 1 Pa everywhere (use with Budd N_ref=1 for Weertman-like behaviour)
+  # How to compute state.effective_pressure (MPa). Modes:
+  #   constant_one    — N = 1 MPa everywhere (use with Budd N_ref=1 for Weertman-like behaviour)
   #   percentage      — N = (1 - percentage) * rho_ice * g * h
   #   ocean_connected — N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0)
   #   from_input      — leave state.effective_pressure as already loaded
   #
-  # Unit is Pa for backward compatibility with the legacy Budd N. The
-  # Budd cost depends on the ratio N/N_ref so the choice of unit cancels
-  # provided N_ref is in the same unit (default 1.0 Pa).
+  # Unit is MPa to match the rest of the iceflow stresses (slidingco, σ, τ).
+  # Literature N_ref values are typically O(1 MPa) (Brondex et al. 2019,
+  # Pollard & DeConto 2012, Pattyn 2017).
   mode: ocean_connected
   percentage: 0.0      # only used if mode == percentage
-  N_min: 1.0e+3        # Pa: floor (1 kPa) applied after the chosen formula
+  N_min: 1.0e-3        # MPa: floor (1 kPa) applied after the chosen formula

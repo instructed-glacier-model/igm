@@ -120,7 +120,7 @@ def _cost(
     h : tf.Tensor
         Ice thickness (m)
     N : tf.Tensor
-        Effective pressure (Pa)
+        Effective pressure (MPa)
     s : tf.Tensor
         Upper-surface elevation (m)
     tau_ref : tf.Tensor
@@ -159,9 +159,7 @@ def _cost(
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
     V_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
     tau_ref_h = discr_h.interp_h(tau_ref)  # -> (batch, Nq_h, Ny-1, Nx-1)
-    # N is in Pa (matching the effective_pressure module / enthalpy). Convert
-    # to MPa so τ_c = μ·N is in MPa, consistent with tau_ref and the cost.
-    N_h = discr_h.interp_h(N) * 1.0e-6  # -> (batch, Nq_h, Ny-1, Nx-1)
+    N_h = discr_h.interp_h(N)  # -> (batch, Nq_h, Ny-1, Nx-1); MPa
 
     # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
     ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)

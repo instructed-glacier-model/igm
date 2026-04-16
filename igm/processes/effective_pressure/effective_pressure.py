@@ -3,17 +3,17 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-"""Compute and maintain state.effective_pressure (Pa).
+"""Compute and maintain state.effective_pressure (MPa).
 
 This module is the single source of truth for the basal effective
-pressure N consumed by the Budd sliding law (via
+pressure N consumed by the Budd and Coulomb sliding laws (via
 fieldin["effective_pressure"]). Several closure modes are available;
 which one to pick is a config choice.
 
-Unit convention: N is in Pa, matching the legacy Budd implementation
-so that existing slidingco / N_ref values remain valid. The Budd cost
-is formula-invariant under a uniform rescaling of N because N and
-N_ref appear as a ratio.
+Unit convention: N is in MPa to match the rest of the iceflow
+quantities (slidingco, gravity, viscosity costs). Literature values
+for N_ref are typically O(1 MPa) (Brondex et al. 2019, Pollard &
+DeConto 2012, Pattyn 2017).
 
 The module is opt-in: if Weertman is the only sliding law in use, it
 should not be activated.
@@ -67,8 +67,9 @@ def _compute(cfg: DictConfig, state: State) -> None:
     rho_i = tf.cast(cfg_phys.ice_density, state.thk.dtype)
     rho_w = tf.cast(cfg_phys.water_density, state.thk.dtype)
     g = tf.cast(cfg_phys.gravity_cst, state.thk.dtype)
+    PA_TO_MPA = tf.cast(1.0e-6, state.thk.dtype)
 
-    p_ice = rho_i * g * state.thk  # Pa
+    p_ice = rho_i * g * state.thk * PA_TO_MPA  # MPa
 
     if mode == "constant_one":
         N = tf.ones_like(state.thk)
@@ -83,7 +84,7 @@ def _compute(cfg: DictConfig, state: State) -> None:
                 "creates state.water_level) before 'effective_pressure'."
             )
         Dw = tf.maximum(state.water_level - state.topg, 0.0)
-        p_water = rho_w * g * Dw  # Pa
+        p_water = rho_w * g * Dw * PA_TO_MPA  # MPa
         N = p_ice - p_water
 
     N_min = tf.cast(cfg_ep.N_min, state.thk.dtype)
