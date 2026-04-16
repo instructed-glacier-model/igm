@@ -19,6 +19,21 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
 
     cfg_physics = cfg.processes.iceflow.physics
 
+    # Validate component-conditional inputs.
+    # The floating component reads `water_level` from fieldin to detect
+    # water-bordering ice cells and to compute the calving-front pressure.
+    if "floating" in cfg_physics.energy_components:
+        unified_inputs = list(cfg.processes.iceflow.unified.inputs)
+        if "water_level" not in unified_inputs:
+            raise ValueError(
+                "❌ The 'floating' energy component requires 'water_level' in "
+                "cfg.processes.iceflow.unified.inputs. "
+                f"Current inputs: {unified_inputs}. "
+                "Add 'water_level' to that list. The field is auto-populated "
+                "as a uniform field from cfg.processes.thk.default_sealevel "
+                "if no water_level variable is found in the input NetCDF."
+            )
+
     energy_components = []
     for component in cfg_physics.energy_components:
         if component not in EnergyComponents:
