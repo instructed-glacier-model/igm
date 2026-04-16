@@ -22,8 +22,9 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
     # Validate component-conditional inputs.
     # The floating component reads `water_level` from fieldin to detect
     # water-bordering ice cells and to compute the calving-front pressure.
+    unified_inputs = list(cfg.processes.iceflow.unified.inputs)
+
     if "floating" in cfg_physics.energy_components:
-        unified_inputs = list(cfg.processes.iceflow.unified.inputs)
         if "water_level" not in unified_inputs:
             raise ValueError(
                 "❌ The 'floating' energy component requires 'water_level' in "
@@ -32,6 +33,21 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
                 "Add 'water_level' to that list. The field is auto-populated "
                 "as a uniform field from cfg.processes.thk.default_sealevel "
                 "if no water_level variable is found in the input NetCDF."
+            )
+
+    # The Budd and Coulomb sliding laws read `effective_pressure` from
+    # fieldin. Weertman does not.
+    if "sliding" in cfg_physics.energy_components:
+        law = cfg_physics.sliding.law
+        if law in ("budd", "coulomb") and "effective_pressure" not in unified_inputs:
+            raise ValueError(
+                f"❌ The '{law}' sliding law requires 'effective_pressure' in "
+                "cfg.processes.iceflow.unified.inputs. "
+                f"Current inputs: {unified_inputs}. "
+                "Add 'effective_pressure' to that list. The field can be "
+                "loaded from the input NetCDF, computed by the "
+                "'effective_pressure' process module, or set by another "
+                "module such as enthalpy."
             )
 
     energy_components = []
