@@ -67,6 +67,7 @@ def cost_floating(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
+    wl = fieldin["water_level"]
     dx = fieldin["dX"]
 
     V_q = discr_v.V_q
@@ -78,7 +79,7 @@ def cost_floating(
     g = tf.cast(floating_params.g, dtype)
     cf_eswn = floating_params.cf_eswn
 
-    return _cost(U, V, h, s, dx, rho, rho_w, g, cf_eswn, discr_h, V_q, w_v)
+    return _cost(U, V, h, s, wl, dx, rho, rho_w, g, cf_eswn, discr_h, V_q, w_v)
 
 
 @tf.function()
@@ -87,6 +88,7 @@ def _cost(
     V: tf.Tensor,
     h: tf.Tensor,
     s: tf.Tensor,
+    wl: tf.Tensor,
     dx: tf.Tensor,
     rho: tf.Tensor,
     rho_w: tf.Tensor,
@@ -157,16 +159,26 @@ def _cost(
     l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
     l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
 
-    # Detect calving front: ice (h>0) next to ocean (h=0, l≤0)
-    # is_float = (l <= 0.0) & (h > 0.0)
-    is_ice = h > 0.0
-    is_ocean = lambda h_n, l_n: (h_n == 0.0) & (l_n <= 0.0)
-    is_cf = lambda h_n, l_n: tf.cast(is_ice & is_ocean(h_n, l_n), dtype)
+    # Pad water_level (same convention as l: at non-CF boundaries the value
+    # is irrelevant because h_ext kills the test; at CF boundaries we pad
+    # with 0 so the legacy "ocean at sea level" behaviour is recovered if
+    # the user's domain edge is in fact open ocean).
+    wl_ext = tf.pad(wl, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
+    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
+    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
+    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
 
-    CF_W = is_cf(h_ext[:, 1:-1, :-2], l_ext[:, 1:-1, :-2])
-    CF_E = is_cf(h_ext[:, 1:-1, 2:], l_ext[:, 1:-1, 2:])
-    CF_S = is_cf(h_ext[:, :-2, 1:-1], l_ext[:, :-2, 1:-1])
-    CF_N = is_cf(h_ext[:, 2:, 1:-1], l_ext[:, 2:, 1:-1])
+    # Detect calving front: current cell has ice (h>0) and the neighbour
+    # is a water cell (h_n=0 and its lower surface is at or below the
+    # local water level w_n).
+    is_ice = h > 0.0
+    is_water = lambda h_n, l_n, w_n: (h_n == 0.0) & (l_n <= w_n)
+    is_cf = lambda h_n, l_n, w_n: tf.cast(is_ice & is_water(h_n, l_n, w_n), dtype)
+
+    CF_W = is_cf(h_ext[:, 1:-1, :-2], l_ext[:, 1:-1, :-2], wl_ext[:, 1:-1, :-2])
+    CF_E = is_cf(h_ext[:, 1:-1, 2:],  l_ext[:, 1:-1, 2:],  wl_ext[:, 1:-1, 2:])
+    CF_S = is_cf(h_ext[:, :-2, 1:-1], l_ext[:, :-2, 1:-1], wl_ext[:, :-2, 1:-1])
+    CF_N = is_cf(h_ext[:, 2:, 1:-1],  l_ext[:, 2:, 1:-1],  wl_ext[:, 2:, 1:-1])
 
     # Depth-integrated velocity using vertical quadrature
     # U, V: (batch, Nz, Ny, Nx) -> (batch, Nq_v, Ny, Nx)
@@ -177,7 +189,9 @@ def _cost(
     V_int = tf.reduce_sum(v_q * w_q, axis=1)  # -> (batch, Ny, Nx)
 
     # Pre-factor: P = 0.5 * ρ * g * h² * (1 - ρ_w/ρ * r²)
-    r = tf.maximum(-l / tf.maximum(h, 1.0), 0.0)
+    # r = D/h, where D = max(w - l, 0) is the water depth at the cliff
+    # (w = local water level, l = lower surface of the ice).
+    r = tf.maximum((wl - l) / tf.maximum(h, 1.0), 0.0)
     P = 0.5 * g * rho * h * h * (1.0 - (rho_w / rho) * r * r)
 
     # Boundary energy density on nodal grid: (batch, Ny, Nx)
