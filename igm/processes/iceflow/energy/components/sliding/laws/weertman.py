@@ -74,11 +74,12 @@ def cost_weertman(
     rho_ratio = tf.cast(weertman_params.rho_ratio, dtype)
     use_mask_gr = tf.cast(weertman_params.use_mask_gr, tf.bool)
 
-    # Weertman ≡ power law with N=1, N_ref=1
+    # Weertman ≡ power law with N=1, N_ref=1, q=1 (N terms cancel)
     N = tf.ones_like(h)
     N_ref = tf.cast(1.0, dtype)
+    q = tf.cast(1.0, dtype)
 
     return power_law_cost(
-        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref,
+        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref, q,
         rho_ratio, use_mask_gr, discr_h, V_b,
     )

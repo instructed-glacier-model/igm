@@ -7,10 +7,15 @@
 
 Both Weertman and Budd are special cases of the general power law
 
-    cost = (tau_ref / (N_ref * u_ref^(1/m))) * N * |u_b|^p / p,    p = 1 + 1/m
+    cost = (tau_ref / (N_ref^q * u_ref^(1/m))) * N^q * |u_b|^p / p,    p = 1 + 1/m
 
-with N=1, N_ref=1 recovering Weertman exactly. Keeping the math in one
-place avoids the two laws drifting out of sync.
+with N=1, N_ref=1, q=1 recovering Weertman exactly. The exponent q
+controls the sensitivity to effective pressure:
+  q = 1.0  standard linear Budd (strong thickness dependence)
+  q = 0.5  sublinear Budd (Tsai 2015; weaker, recommended for tidewater)
+  q = 0.0  Weertman (no N dependence)
+
+Keeping the math in one place avoids the two laws drifting out of sync.
 
 Coulomb (Shapero 2021 regularised) has a different functional form and
 stays in its own file.
@@ -35,6 +40,7 @@ def power_law_cost(
     u_regu: tf.Tensor,
     u_ref: tf.Tensor,
     N_ref: tf.Tensor,
+    q: tf.Tensor,
     rho_ratio: tf.Tensor,
     use_mask_gr: tf.Tensor,
     discr_h: HorizontalDiscr,
@@ -55,6 +61,8 @@ def power_law_cost(
     u_ref                       reference basal velocity (m/yr)
     N_ref                       reference effective pressure (same unit
                                 as N; pass 1.0 for Weertman)
+    q                           effective-pressure exponent (1.0 = linear
+                                Budd, 0.5 = sublinear Tsai, 0.0 = Weertman)
     rho_ratio                   rho_water / rho_ice (for grounding mask)
     use_mask_gr                 if True, zero tau_ref on floating ice
     discr_h                     horizontal discretisation
@@ -88,10 +96,10 @@ def power_law_cost(
     u_corr_b = ux_b * dbdx_h + uy_b * dbdy_h
     u_b = tf.sqrt(ux_b**2 + uy_b**2 + u_regu**2 + u_corr_b**2)
 
-    # Power-law cost
+    # Power-law cost with effective-pressure exponent q
     p = 1.0 + 1.0 / m
-    C_h = tau_ref_h / (N_ref * tf.pow(u_ref, 1.0 / m))
-    cost_h = C_h * N_h * tf.pow(u_b, p) / p
+    C_h = tau_ref_h / (tf.pow(N_ref, q) * tf.pow(u_ref, 1.0 / m))
+    cost_h = C_h * tf.pow(N_h, q) * tf.pow(u_b, p) / p
 
     # Integrate over horizontal quad points
     w_h = discr_h.w_h[tf.newaxis, :, tf.newaxis, tf.newaxis]

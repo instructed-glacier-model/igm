@@ -20,6 +20,7 @@ iceflow:
         exponent: 3.0
         u_ref: 1.0  # (m/yr)
         N_ref: 1.0
+        q_exponent: 1.0  # effective-pressure exponent (1.0=linear Budd, 0.5=Tsai sublinear)
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0

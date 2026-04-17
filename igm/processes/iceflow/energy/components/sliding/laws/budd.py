@@ -27,6 +27,7 @@ class BuddParams(tf.experimental.ExtensionType):
     exponent: float
     u_ref: float  # (m/yr)
     N_ref: float
+    q_exponent: float  # effective-pressure exponent (1.0=linear, 0.5=Tsai)
     rho_ratio: float
     use_mask_gr: bool
 
@@ -79,6 +80,7 @@ def cost_budd(
     u_regu = tf.cast(budd_params.regu, dtype)
     u_ref = tf.cast(budd_params.u_ref, dtype)
     N_ref = tf.cast(budd_params.N_ref, dtype)
+    q = tf.cast(budd_params.q_exponent, dtype)
     rho_ratio = tf.cast(budd_params.rho_ratio, dtype)
     use_mask_gr = tf.cast(budd_params.use_mask_gr, tf.bool)
 
@@ -87,6 +89,6 @@ def cost_budd(
     N = tf.where(N < tf.cast(1e-3, dtype), tf.cast(1e-3, dtype), N)
 
     return power_law_cost(
-        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref,
+        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref, q,
         rho_ratio, use_mask_gr, discr_h, V_b,
     )
