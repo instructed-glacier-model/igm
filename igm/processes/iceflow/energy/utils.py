@@ -30,9 +30,10 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
                 "❌ The 'floating' energy component requires 'water_level' in "
                 "cfg.processes.iceflow.unified.inputs. "
                 f"Current inputs: {unified_inputs}. "
-                "Add 'water_level' to that list. The field is auto-populated "
-                "as a uniform field from cfg.processes.thk.default_sealevel "
-                "if no water_level variable is found in the input NetCDF."
+                "Add 'water_level' to that list. The field is populated at "
+                "the inputs phase from `inputs.load_ncdf.water_level` (or the "
+                "equivalent for `local`) when `include: true`; otherwise it "
+                "must be present as a 2D variable in the input NetCDF."
             )
 
     # The Budd and Coulomb sliding laws read `effective_pressure` from

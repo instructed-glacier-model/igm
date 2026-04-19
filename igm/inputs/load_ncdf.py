@@ -90,7 +90,7 @@ def run(cfg, state):
 
     nc.close()
 
-    complete_data(state)
+    complete_data(state, water_level=cfg.inputs.load_ncdf.water_level)
 
     if cfg.inputs.load_ncdf.icemask_include:
         include_icemask(state, mask_shapefile=cfg.inputs.load_ncdf.icemask_shapefile, mask_invert=cfg.inputs.load_ncdf.icemask_invert)

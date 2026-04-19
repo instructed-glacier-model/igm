@@ -11,5 +11,8 @@ local:
     ymax: null
   icemask:
     include: False
-    shapefile: icemask.shp 
+    shapefile: icemask.shp
     invert: False
+  water_level:
+    include: False
+    value: 0.0

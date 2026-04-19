@@ -67,7 +67,7 @@ def run(cfg, state):
     # Example on how to convert units with xarray! 'data' is an xarray dataset...
     # x = data.Geopotential_height_isobaric.metpy.x.metpy.convert_units('meter').values
  
-    ds = complete_data(ds)
+    ds = complete_data(ds, water_level=cfg.inputs.local.water_level)
 
     for variable, array in ds.data_vars.items():
         if (array.ndim>0)|(variable in ["dx", "dy"]):
@@ -88,11 +88,19 @@ def run(cfg, state):
                                mask_invert=cfg.inputs.local.icemask.invert)
 
 
-def complete_data(ds: xr.Dataset) -> xr.Dataset:
+def complete_data(ds: xr.Dataset, water_level=None) -> xr.Dataset:
+    """Post-process an xarray Dataset loaded from NetCDF or TIFFs.
+
+    ``water_level`` is an optional sub-config with fields ``include`` and
+    ``value``. When ``include`` is True and ``water_level`` is not already
+    a variable of ``ds``, a uniform 2D DataArray equal to ``value`` is
+    added; it then flows to ``state.water_level`` alongside topg, thk,
+    etc. when the caller pushes ``ds`` onto state.
+    """
 
     # ? Are units automatically included in some of these or not? I think no...
     X, Y = np.meshgrid(ds.x, ds.y)
- 
+
     ds["dx"] = abs(ds.x.data[1] - ds.x.data[0])
     ds["dy"] = abs(ds.y.data[1] - ds.y.data[0])
     ds["X"] = xr.DataArray(X, dims=["y", "x"])
@@ -113,5 +121,14 @@ def complete_data(ds: xr.Dataset) -> xr.Dataset:
         ds["topg"] = ds["usurf"] - ds["thk"]
     elif "usurf" not in ds.data_vars:
         ds["usurf"] = ds["topg"] + ds["thk"]
+
+    # water_level: only populate when explicitly requested and not already
+    # present (loaded from NetCDF).
+    if (water_level is not None
+            and getattr(water_level, "include", False)
+            and "water_level" not in ds.data_vars):
+        ds["water_level"] = xr.DataArray(
+            np.ones_like(X) * float(water_level.value), dims=["y", "x"]
+        )
 
     return ds

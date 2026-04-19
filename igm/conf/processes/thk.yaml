@@ -1,9 +1,7 @@
 thk:
   slope_type: superbee
   ratio_density: 0.910
-  # Sentinel value: kept far below any plausible bedrock so the flotation
-  # term is inactive (lsurf = topg) unless the user provides a 2D
-  # `water_level` field in the input data, or explicitly overrides this
-  # value (e.g. set to 0.0 for a uniform-ocean marine setup).
-  default_sealevel: -1.0e+30
-
+  # water_level lives at the inputs phase, not here: set
+  # `inputs.load_ncdf.water_level.include: true` (or the equivalent for
+  # `local`) to create it. If `state.water_level` is not present, thk
+  # disables the flotation term (lsurf = topg).
