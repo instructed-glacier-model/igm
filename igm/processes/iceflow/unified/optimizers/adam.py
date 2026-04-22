@@ -132,6 +132,7 @@ class OptimizerAdam(Optimizer):
             self._update_step_state(
                 iter, U, V, theta, cost_avg, grad_u_norm_avg, grad_theta_norm_avg
             )
+            self._save_iteration(iter, cost_avg)
             halt_status = self._check_stopping()
             self._update_display()
 

@@ -27,5 +27,5 @@ Optimizers = {
     "trust_region": OptimizerTrustRegion,
 }
 
-from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status
+from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status, get_save_args
 from .utils import SyntheticCosts

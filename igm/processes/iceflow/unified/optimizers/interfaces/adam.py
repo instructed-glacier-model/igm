@@ -5,11 +5,15 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ...mappings import (
+    Mapping,
+    MappingDataAssimilation,
+    MappingCombinedDataAssimilation,
+)
 from ...halt import Halt, InterfaceHalt
 
 
@@ -20,6 +24,7 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg: DictConfig,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        save_args: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -51,6 +56,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
             "batch_size": cfg_unified.data_preparation.patches_per_batch,
+            **(save_args or {}),
         }
 
     @staticmethod

@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -20,6 +20,7 @@ class InterfaceMuon(InterfaceOptimizer):
         cfg: DictConfig,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        save_args: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
@@ -40,6 +41,7 @@ class InterfaceMuon(InterfaceOptimizer):
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
+            **(save_args or {}),
         }
 
     @staticmethod

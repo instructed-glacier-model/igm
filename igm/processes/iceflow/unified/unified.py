@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 
 from igm.common import State, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
-from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts
+from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts, get_save_args
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .solver import solve_iceflow
 from .utils import get_cost_fn
@@ -32,6 +32,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
         cfg=cfg,
         cost_fn=get_cost_fn(cfg, state),
         map=mapping,
+        save_args=get_save_args(cfg, state),
     )
     if "batch_size" in optimizer_args:
         framesizemax = cfg_unified.data_preparation.framesizemax

@@ -110,7 +110,7 @@ class OptimizerMuon(Optimizer):
         self.momentum = tf.constant(momentum, dtype=self.precision)
         self.ns_steps = ns_steps
         self.lr_1d = tf.constant(lr_1d, dtype=self.precision)
-        self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
+        self.iter_max = tf.Variable(iter_max)
         self.batch_size = tf.constant(batch_size, dtype=tf.int32)
 
         # Momentum buffers — allocated in minimize() before the tf.function
@@ -211,7 +211,7 @@ class OptimizerMuon(Optimizer):
             self._update_step_state(
                 iter, U, V, theta, cost_avg, grad_u_norm_avg, grad_theta_norm_avg
             )
-
+            self._save_iteration(iter, cost_avg)
             halt_status = self._check_stopping()
             self._update_display()
             self.map.on_step_end(iter)

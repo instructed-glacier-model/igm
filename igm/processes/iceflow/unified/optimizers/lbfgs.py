@@ -12,6 +12,7 @@ from .line_searches import LineSearches, ValueAndGradient
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 
+
 class OptimizerLBFGS(Optimizer):
     def __init__(
         self,
@@ -114,7 +115,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))   # cap effect of bad pairs
+            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs
             beta = rho * self._dot(y_i, r)
             beta = tf.cast(beta, r.dtype)
             alpha_i = alpha_list.read(i)
@@ -132,7 +133,7 @@ class OptimizerLBFGS(Optimizer):
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
-    
+
     def _constrain_pair(
         self,
         s: tf.Tensor,
@@ -144,13 +145,13 @@ class OptimizerLBFGS(Optimizer):
         g_new: Optional[tf.Tensor] = None,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
         return s, y
-    
+
     def _clip_alpha(
         self, alpha: tf.Tensor, theta_flat: tf.Tensor, p_flat: tf.Tensor
     ) -> tf.Tensor:
         # Unbounded default: no clipping
         return alpha
-    
+
     def _step_base_point(
         self,
         theta_flat: tf.Tensor,
@@ -173,7 +174,7 @@ class OptimizerLBFGS(Optimizer):
     ) -> Tuple[tf.Tensor, tf.Tensor]:
         # Unbounded default: no masking
         return s_list, y_list
-    
+
     @tf.function(reduce_retracing=True)
     def _update_memory(
         self,
@@ -202,7 +203,9 @@ class OptimizerLBFGS(Optimizer):
 
             return tf.cond(idx_memory < self.memory, append, shift)
 
-        return tf.cond(dot_ys > self.eps, update, lambda: (s_flat_mem, y_flat_mem, idx_memory))
+        return tf.cond(
+            dot_ys > self.eps, update, lambda: (s_flat_mem, y_flat_mem, idx_memory)
+        )
 
     @tf.function
     def _line_search(
@@ -292,7 +295,9 @@ class OptimizerLBFGS(Optimizer):
 
             # Curvature pair
             s, y = theta_flat - theta_prev, grad_theta_flat - grad_theta_prev
-            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat)
+            s, y = self._constrain_pair(
+                s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat
+            )
 
             # Update memory
             s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
@@ -309,6 +314,7 @@ class OptimizerLBFGS(Optimizer):
             self._update_step_state(
                 iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm
             )
+            self._save_iteration(iter, cost)
             halt_status = self._check_stopping()
             self._update_display()
 

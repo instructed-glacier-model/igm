@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -21,6 +21,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         cfg: DictConfig,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        save_args: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -49,6 +50,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            **(save_args or {}),
         }
 
     @staticmethod

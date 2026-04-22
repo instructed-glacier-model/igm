@@ -1,4 +1,4 @@
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, get_save_args
 from .adam import InterfaceAdam
 from .cg import InterfaceCG
 from .cg_newton import InterfaceCGNewton
