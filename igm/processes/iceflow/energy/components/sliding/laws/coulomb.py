@@ -9,7 +9,6 @@ from typing import Dict
 from ..sliding import SlidingComponent, mask_gr
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 
 
 class CoulombParams(tf.experimental.ExtensionType):
@@ -121,7 +120,7 @@ def _cost(
     h : tf.Tensor
         Ice thickness (m)
     N : tf.Tensor
-        Effective pressure (Mpa)
+        Effective pressure (MPa)
     s : tf.Tensor
         Upper-surface elevation (m)
     tau_ref : tf.Tensor
@@ -160,7 +159,7 @@ def _cost(
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
     V_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
     tau_ref_h = discr_h.interp_h(tau_ref)  # -> (batch, Nq_h, Ny-1, Nx-1)
-    N_h = discr_h.interp_h(N)  # -> (batch, Nq_h, Ny-1, Nx-1)
+    N_h = discr_h.interp_h(N)  # -> (batch, Nq_h, Ny-1, Nx-1); MPa
 
     # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
     ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)

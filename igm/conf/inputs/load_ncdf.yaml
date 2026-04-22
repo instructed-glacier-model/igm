@@ -10,3 +10,6 @@ load_ncdf:
   icemask_include: False
   icemask_shapefile: icemask.shp
   icemask_invert: False
+  water_level:
+    include: False
+    value: 0.0

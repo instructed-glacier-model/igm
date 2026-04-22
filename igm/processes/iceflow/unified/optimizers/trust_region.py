@@ -1552,11 +1552,6 @@ from ..halt import Halt, HaltStatus
 
 from dataclasses import dataclass
 
-# tf.config.optimizer.set_experimental_options({
-#     "disable_meta_optimizer": True,
-# })
-
-
 @dataclass
 class CGContext:
     """Context for CG solver to avoid passing many arguments."""
@@ -1606,6 +1601,7 @@ class OptimizerTrustRegion(Optimizer):
             **kwargs,
         )
 
+        tf.config.optimizer.set_experimental_options({"disable_meta_optimizer": True})
         self.name = "trust_region"
 
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)

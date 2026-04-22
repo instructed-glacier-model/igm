@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
- 
+
 import tensorflow as tf
 
 from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
@@ -12,13 +12,18 @@ def initialize(cfg, state):
 
     if not hasattr(state, "topg"):
         raise ValueError("The 'thk' module requires an initial topography ('state.topg') to be defined. Please define it through the preprocessing steps (not yet implemented)")
-        
-    # define the lower ice surface
-    if hasattr(state, "sealevel"):
-        # ! This is not clear which modules provides state.topg and allows us to use state.thk!!!
-        state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + state.sealevel)
+
+    # define the lower ice surface (flotation constraint applied when a
+    # water_level field is present on state -- set it at the inputs phase,
+    # e.g. via `inputs.load_ncdf.water_level.include: true`). Without
+    # water_level, flotation is inactive: lsurf = topg.
+    if hasattr(state, "water_level"):
+        state.lsurf = tf.maximum(
+            state.topg,
+            -cfg.processes.thk.ratio_density * state.thk + state.water_level,
+        )
     else:
-        state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + cfg.processes.thk.default_sealevel)
+        state.lsurf = tf.identity(state.topg)
 
     # define the upper ice surface
     state.usurf = state.lsurf + state.thk
@@ -44,11 +49,14 @@ def update(cfg, state):
         # Forward Euler with projection to keep ice thickness non-negative
         state.thk = tf.maximum(state.thk + state.dt * (state.smb - state.divflux), 0)
 
-        # define the lower ice surface
-        if hasattr(state, "sealevel"):
-            state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + state.sealevel)
+        # define the lower ice surface (flotation when water_level is present)
+        if hasattr(state, "water_level"):
+            state.lsurf = tf.maximum(
+                state.topg,
+                -cfg.processes.thk.ratio_density * state.thk + state.water_level,
+            )
         else:
-            state.lsurf = tf.maximum(state.topg,-cfg.processes.thk.ratio_density*state.thk + cfg.processes.thk.default_sealevel)
+            state.lsurf = tf.identity(state.topg)
 
         # define the upper ice surface
         state.usurf = state.lsurf + state.thk

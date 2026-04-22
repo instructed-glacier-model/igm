@@ -1,5 +1,7 @@
 thk:
   slope_type: superbee
   ratio_density: 0.910
-  default_sealevel: 0.0
-
+  # water_level lives at the inputs phase, not here: set
+  # `inputs.load_ncdf.water_level.include: true` (or the equivalent for
+  # `local`) to create it. If `state.water_level` is not present, thk
+  # disables the flotation term (lsurf = topg).
