@@ -143,7 +143,7 @@ def regu_thk_v2(cfg,state):
  
     if cfg.processes.data_assimilation.optimization.fix_opti_normalization_issue:
         if anis_factor == 1:
-            R_1 = 0.5 * tf.reduce_mean(tf.square(bx)) + tf.reduce_mean(tf.square(by))
+            R_1 = 0.5 * (tf.reduce_mean(tf.square(bx)) + tf.reduce_mean(tf.square(by)))
             R_2 = 0.5 * rect * tf.reduce_mean(tf.square(bxx) + 2 * tf.square(bxy) + tf.square(byy))
         else:
             ux, uy = state.flowdirx, state.flowdiry
