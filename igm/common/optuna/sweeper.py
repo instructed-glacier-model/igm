@@ -185,6 +185,7 @@ class IGMOptunaSweeper(Sweeper):
                 batch_trials.append(trial)
 
                 overrides = list(base_overrides)
+                sampled = {}  # all sampled values, including virtual params
                 for param in optimize_cfg["parameters"]:
                     name = param["name"]
                     if param["type"] == "float":
@@ -199,6 +200,7 @@ class IGMOptunaSweeper(Sweeper):
                             name,
                             param["low"],
                             param["high"],
+                            step=param.get("step", 1),
                             log=param.get("log", False),
                         )
                     elif param["type"] == "categorical":
@@ -207,7 +209,20 @@ class IGMOptunaSweeper(Sweeper):
                         raise ValueError(
                             f"Unsupported param type: {param['type']}"
                         )
-                    overrides.append(f"{name}={value}")
+                    sampled[name] = value
+                    if not param.get("virtual", False):
+                        overrides.append(f"{name}={value}")
+
+                # Apply conditional_overrides based on sampled virtual params
+                for cond in optimize_cfg.get("conditional_overrides", []):
+                    when = cond.get("when", {})
+                    if all(sampled.get(k) == v for k, v in when.items()):
+                        for key, val in cond.get("set", {}).items():
+                            overrides.append(f"{key}={val}")
+                        for mirror_name, targets in cond.get("mirror", {}).items():
+                            if mirror_name in sampled:
+                                for tgt in targets:
+                                    overrides.append(f"{tgt}={sampled[mirror_name]}")
 
                 batch_overrides_list.append(overrides)
 
@@ -233,7 +248,8 @@ class IGMOptunaSweeper(Sweeper):
                     cwd=str(cwd),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     env=self._build_env(optimize_cfg, 0),
                 )
 
@@ -263,7 +279,8 @@ class IGMOptunaSweeper(Sweeper):
                         cwd=str(cwd),
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        text=True,
+                        encoding="utf-8",
+                    errors="replace",
                         env=self._build_env(optimize_cfg, idx),
                     )
 

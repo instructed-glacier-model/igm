@@ -91,11 +91,11 @@ def report_results(study, output_dir, objective_names=None):
             writer.writeheader()
             for t in trials:
                 row = {"number": t.number, "state": t.state.name}
-                if is_multi_objective and objective_names and t.values:
-                    for name, val in zip(objective_names, t.values):
+                if is_multi_objective and objective_names:
+                    for name, val in zip(objective_names, t.values or [None] * len(objective_names)):
                         row[name] = val
                 else:
-                    row["value"] = t.value if not is_multi_objective else t.values
+                    row["value"] = t.value
                 row.update(t.params)
                 writer.writerow(row)
         print(f"\nResults written to {csv_path}")
