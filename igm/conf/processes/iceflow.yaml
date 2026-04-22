@@ -142,6 +142,62 @@ iceflow:
       stages: []
     line_search: hager-zhang
     inputs: [thk, usurf, arrhenius, slidingco, dX]
+    composite:
+      mask_gr:
+        method: flotation
+        smoothing: 100.0
+        split_x: null  # metres; required when method: x_split (e.g. 400000 for 400 km)
+      gr:
+        mapping: network
+        inputs: [thk, usurf, arrhenius, slidingco, dX]
+        normalization:
+          method: adaptive
+        network:
+          architecture: FNO2
+          pretrained: false
+          output_scale: 1.0
+          width: 32
+          modes1: 8
+          modes2: 8
+          padding: 9
+          use_grid: true
+          nb_layers: 16
+          nb_out_filter: 32
+          conv_ker_size: 3
+          dropout_rate: 0.0
+          dahunet:
+            backend: "cnn"
+            features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+        physics_features:
+          mode: grounded
+      fl:
+        mapping: network
+        inputs: [thk, usurf, arrhenius, slidingco, dX]
+        normalization:
+          method: adaptive
+        network:
+          architecture: FNO2
+          pretrained: false
+          output_scale: 1.0
+          width: 32
+          modes1: 8
+          modes2: 8
+          padding: 9
+          use_grid: true
+          nb_layers: 16
+          nb_out_filter: 32
+          conv_ker_size: 3
+          dropout_rate: 0.0
+          dahunet:
+            backend: "cnn"
+            features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+        physics_features:
+          mode: floating
+      stages:
+        - active: all
+          optimizer: adam
+          nbit_init: 1000
+          nbit: 100
     normalization:
       method: adaptive
       fixed:
@@ -169,6 +225,17 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: CNN
+      modes1: 8       # FNO2 / DahuNet-fno: number of Fourier modes (dim 1)
+      modes2: 8       # FNO2 / DahuNet-fno: number of Fourier modes (dim 2)
+      width: 32       # FNO2 / DahuNet-fno: channel width
+      nb_layers: 16
+      nb_blocks: 4
+      nb_out_filter: 32
+      conv_ker_size: 3
+      dropout_rate: 0.0
+      dahunet:
+        backend: "cnn"                                      # "cnn" | "fno" | "mlp"
+        features: [dsdx, dsdy, grad_s, u_sia, u_weertman]  # any subset of FEATURES keys
     adaptive_patching:
       strategy: none           # none | topk | nms | maxpool | tfnms
       max_retrain_patches: 10  # K: max patches per retraining step
@@ -176,7 +243,7 @@ iceflow:
       forgetting_prevention: true  # add 1 random ice-covered patch
       scoring: max             # max | mean — reduction within each patch
     data_preparation:
-      framesizemax: 1000
+      framesizemax: 100000
       patches_per_batch: 1
     halt:
       freq: 1
@@ -202,3 +269,9 @@ iceflow:
     display:
       print_cost: false
       print_cost_freq: 1
+    save:
+      enabled: false
+      cost_file: ""
+      vel_ref_file: ""
+      vel_ref_name: "velsurf_mag"
+      vel_error_file: ""

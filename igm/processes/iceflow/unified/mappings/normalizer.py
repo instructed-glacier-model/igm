@@ -66,8 +66,10 @@ def hotelling_T2(
 ) -> tf.Tensor:
     """Computes the equivalent Hotelling T squared distance between the previous and current distributions (mean only) to detect data drift."""
 
+    dtype = previous_means.dtype
+    current_means = tf.cast(current_means, dtype)
     mean_drifts = tf.abs(previous_means - current_means) / (
-        tf.sqrt(previous_variances) + 1e-13
+        tf.sqrt(previous_variances) + tf.cast(1e-13, dtype)
     )
     T_squared = float(n) * tf.reduce_sum(mean_drifts**2)
 
@@ -85,6 +87,9 @@ def is_distribution_shifted(mapping, inputs, init: bool = False, threshold=1.0) 
 
     means_computed, variances_computed = mapping.input_normalizer.compute_stats(inputs)
     means, variances = mapping.input_normalizer.mean, mapping.input_normalizer.variance
+    target_dtype = means.dtype
+    means_computed = tf.cast(means_computed, target_dtype)
+    variances_computed = tf.cast(variances_computed, target_dtype)
 
     n = tf.size(inputs) // inputs.shape[-1]
     score = hotelling_T2(means, variances, means_computed, n)
