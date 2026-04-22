@@ -11,13 +11,6 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
 
-tf.config.optimizer.set_experimental_options(
-    {
-        "disable_meta_optimizer": True,
-    }
-)
-
-
 class OptimizerNewton(Optimizer):
     def __init__(
         self,
@@ -47,6 +40,7 @@ class OptimizerNewton(Optimizer):
             ord_grad_theta,
             **kwargs,
         )
+        tf.config.optimizer.set_experimental_options({"disable_meta_optimizer": True})
         self.name = "newton"
         self.line_search = LineSearches[line_search_method]()
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)

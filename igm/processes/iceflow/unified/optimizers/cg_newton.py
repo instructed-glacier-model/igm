@@ -13,11 +13,6 @@ from .line_searches import LineSearches, ValueAndGradient
 
 from dataclasses import dataclass
 
-# tf.config.optimizer.set_experimental_options({
-#     "disable_meta_optimizer": True,
-# })
-
-
 @dataclass
 class CGContext:
     """Context for CG solver to avoid passing many arguments."""
@@ -65,6 +60,7 @@ class OptimizerCGNewton(Optimizer):
             **kwargs,
         )
 
+        tf.config.optimizer.set_experimental_options({"disable_meta_optimizer": True})
         self.name = "cg_newton"
         self.line_search = LineSearches[line_search_method]()
         self.cost_fn = cost_fn
