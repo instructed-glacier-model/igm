@@ -1,0 +1,13 @@
+calving_rate:
+
+  law: water_depth                       # zero | water_depth | eigen | thickness_threshold
+
+  #   zero                -> c = 0
+  #   water_depth         -> c = k * D_w                         Brown/Meier/Post 1982
+  #   eigen               -> c = K2 * max(e1,0) * max(e2,0)      Levermann 2012
+  #   thickness_threshold -> c = c_max where thk < Hcr    
+
+  k: 5.0                                 # 1/yr; water_depth
+  K2: 1.0e3                              # m*yr; eigen proportionality constant
+  Hcr: 250.0                             # m; thickness_threshold cutoff 
+  c_max: 20000.0                         # m/yr; safety cap on the output field
