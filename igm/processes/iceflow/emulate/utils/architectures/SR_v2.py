@@ -322,10 +322,11 @@ class SIADecompNetV2(tf.keras.Model):
     # ----------------------------------------------------------------------
     def _make_head_body(
         self, name: str, n_layers: int, filters: int
-    ) -> List[tf.keras.layers.Layer]:
+    ) -> tf.keras.Sequential:
         """
-        Build ``n_layers`` Conv2D(filters, 3×3) + GELU pairs for one head.
-        Returns a flat list [conv1, act1, conv2, act2, ...].
+        Build ``n_layers`` Conv2D(filters, 3×3) + GELU pairs for one head,
+        returned as a ``tf.keras.Sequential``.
+
         """
         body: List[tf.keras.layers.Layer] = []
         for i in range(n_layers):
@@ -343,15 +344,13 @@ class SIADecompNetV2(tf.keras.Model):
                     tf.nn.gelu, name=f"{name}_gelu{i + 1}"
                 )
             )
-        return body
+        return tf.keras.Sequential(body, name=f"{name}_body")
 
     @staticmethod
     def _apply_head_body(
-        body: List[tf.keras.layers.Layer], x: tf.Tensor
+        body: tf.keras.Sequential, x: tf.Tensor
     ) -> tf.Tensor:
-        for layer in body:
-            x = layer(x)
-        return x
+        return body(x)
 
     # ----------------------------------------------------------------------
     # Reconstruction manifest
