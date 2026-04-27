@@ -1,0 +1,98 @@
+time_relaxation:
+
+  # ----------------------------------------------------------------- #
+  # Forward relaxation time loop. The whole loop is run inside        #
+  # initialize(); the outer IGM update loop exits without further     #
+  # iterations.                                                       #
+  # ----------------------------------------------------------------- #
+  time:
+    start: 0.0
+    end: 100.0
+    # In control.field=thk mode `step` is the maximum dt (analogous to
+    # time.step_max); the actual dt is CFL-adapted from the velocity
+    # field. In control.field=topg mode `step` is the fixed dt.
+    step: 1.0
+    save: 10.0
+    cfl: 0.3            # CFL number used in control.field=thk mode only
+    
+  # ----------------------------------------------------------------- #
+  # COST — what residual the relaxation drives to zero.               #
+  #   amb_balance    : ||divflux - amb||  with  amb = smb - dhdt_obs  #
+  #                    (apparent mass balance / inverse-flow target)  #
+  #   surface_match  : ||usurf - usurf_obs||  via  smb = α(usurf_obs - usurf) #
+  # ----------------------------------------------------------------- #
+  cost:
+    target: amb_balance
+
+    amb_balance:
+      # Time-dependent simple SMB used iff state.smb is absent. Same
+      # convention as smb_simple: row 0 is a header, then rows of
+      # (time, gradabl, gradacc, ela, accmax).
+      smb_simple_array: []
+      # Optional outward expansion of icemask for amb extrapolation.
+      mask_buffer: 3
+      # Crop final geometry back to the original icemask.
+      crop_to_original: true
+
+    surface_match:
+      alpha: 0.25
+      smb_min: -20.0
+      smb_max: 20.0
+      out_of_mask_smb: -10.0
+      update_freq: 1.0
+
+  # ----------------------------------------------------------------- #
+  # CONTROL — which geometry field is updated to drive the cost down. #
+  #   topg : aletsch-style; thk + topg move, usurf nearly fixed       #
+  #          (theta small). Bed inversion. Compatible with            #
+  #          cost.target=amb_balance only.                            #
+  #   thk  : svalbard-style; topg fixed; delegates to igm.processes   #
+  #          .thk (calving-front aware via cfg.processes.thk).        #
+  #          Compatible with both cost targets.                       #
+  # ----------------------------------------------------------------- #
+  control:
+    field: topg
+    topg:
+      beta: 0.2
+      theta: 0.3
+      max_thk: 2000.0
+
+  # ----------------------------------------------------------------- #
+  # FRICTION — secondary inversion (cost = ||v - v_obs||,             #
+  # control = slidingco). Runs each `t_fr_update` years.              #
+  # ----------------------------------------------------------------- #
+  friction:
+    method: none           # additive | log_mult | none
+    t_fr_update: 10.0
+    t_fr_start: 0.0
+    additive:
+      max_vel_ratio: 0.65
+    log_mult:
+      gamma: 0.3
+      sliding_exponent: 3.0
+      max_log_step: 0.5
+      smoothing_sigma: 3.0
+    slidingco_min: 1.0e-4
+    slidingco_max: 1.0
+
+  # ----------------------------------------------------------------- #
+  # Auxiliary IGM processes called each step inside the loop.         #
+  # Each entry must be the name of a module under igm.processes.      #
+  # ----------------------------------------------------------------- #
+  aux_processes: []
+
+  # ----------------------------------------------------------------- #
+  # Diagnostics & final NetCDF dump                                   #
+  # ----------------------------------------------------------------- #
+  output:
+    misfits_csv: misfits.csv
+    save_result_in_ncdf: ""
+    vars_to_save:
+      - thk
+      - topg
+      - usurf
+      - icemask
+      - slidingco
+      - arrhenius
+      - divflux
+      - amb
