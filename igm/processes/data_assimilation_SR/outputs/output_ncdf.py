@@ -19,6 +19,7 @@ def update_ncdf_optimize(cfg, state, it):
 
     has_costs = hasattr(state, "da_cost_total")
     has_cost_history = hasattr(state, "da_cost_total_hist")
+    has_retrain_iter_num = hasattr(state, "retrain_iter_num")
 
     if "velbase_mag" in cfg.processes.data_assimilation_SR.output.vars_to_save:
         state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
@@ -74,6 +75,11 @@ def update_ncdf_optimize(cfg, state, it):
             C.long_name = "DA regularization cost"
             C[0] = state.da_cost_reg
 
+        if has_retrain_iter_num:
+            C = nc.createVariable("retrain_iter_num", np.dtype("int32").char, ("iterations",))
+            C.long_name = "Retraining iteration number"
+            C[0] = int(state.retrain_iter_num)
+
         if has_cost_history:
             hist_iter = np.asarray(state.da_cost_hist_iter, dtype=np.int32)
             hist_total = np.asarray(state.da_cost_total_hist, dtype=np.float32)
@@ -113,6 +119,9 @@ def update_ncdf_optimize(cfg, state, it):
             nc.variables["da_cost_total"][d] = state.da_cost_total
             nc.variables["da_cost_data"][d] = state.da_cost_data
             nc.variables["da_cost_reg"][d] = state.da_cost_reg
+
+        if has_retrain_iter_num:
+            nc.variables["retrain_iter_num"][d] = int(state.retrain_iter_num)
 
         if has_cost_history:
             hist_iter = np.asarray(state.da_cost_hist_iter, dtype=np.int32)

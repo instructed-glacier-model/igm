@@ -43,6 +43,7 @@ class DataAssimilationRuntime:
     retraining: Any = None
     frozen_cost_history: Optional[DACostHistory] = None
     next_snapshot_iter: int = 0
+    retrain_iter_num: int = 0
 
 
 def build_cost_and_objective(cfg, state, da_map):
@@ -160,6 +161,7 @@ def _push_state_and_maybe_write_ncdf(
 ) -> None:
     da.map.update_state_fields(state)
     evaluate_iceflow(cfg, state)
+    state.retrain_iter_num = da.retrain_iter_num
     if write_ncdf:
         update_ncdf_optimize(cfg, state, int(iteration))
 

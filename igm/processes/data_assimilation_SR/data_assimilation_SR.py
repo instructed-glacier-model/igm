@@ -140,7 +140,8 @@ def update(cfg, state) -> None:
     reset_retraining_run_state(da.retraining)
 
     run_da_phase(cfg, state, da)
-    for _ in range(da.retrain_iter):
+    for retrain_iter_num in range(da.retrain_iter):
+        da.retrain_iter_num = retrain_iter_num
         run_retraining_phase(cfg, state, da)
         run_da_phase(cfg, state, da)
 
