@@ -123,11 +123,11 @@ def update_emulator(
 
         for i in tf.range(X.shape[0]):
 
-            with tf.GradientTape(persistent=True) as tape:
+            with tf.GradientTape() as tape:
 
                 if parameters.lr_decay < 1:
                     new_lr = bag["lr"] * (
-                        parameters.lr_decay ** (int(iteration) / 1000)
+                        parameters.lr_decay ** (tf.cast(iteration, tf.int32) / 1000)
                     )
                     bag["opti_retrain"].learning_rate.assign(
                         tf.cast(new_lr, tf.float32)
@@ -161,8 +161,6 @@ def update_emulator(
             bag["opti_retrain"].apply_gradients(
                 zip(gradients, bag["iceflow_model"].trainable_variables)
             )
-
-            del tape
 
             if parameters.print_cost:
                 tf.print("Iteration", iteration + 1, "/", bag["nbit"], end=" ")

@@ -4,6 +4,7 @@ from .data_preprocessing import (
     pertubate_X,
     prepare_X,
     split_into_patches_X,
+    split_field_into_patches,
 )
 
 from .velocities import (

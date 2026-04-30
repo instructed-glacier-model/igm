@@ -39,7 +39,6 @@ def run(cfg, state):
                 vars()[var] = np.squeeze(nc.variables[var][I]).astype("float32")
             else:
                 vars()[var] = np.squeeze(nc.variables[var]).astype("float32")
-            vars()[var] = np.where(vars()[var] > 10**15, np.nan, vars()[var])
 
 
 

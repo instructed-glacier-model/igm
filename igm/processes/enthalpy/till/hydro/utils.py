@@ -17,7 +17,7 @@ def update_h_water_till(cfg: DictConfig, state: State) -> tf.Tensor:
     clamped to valid bounds, with zero water in ice-free areas.
 
     Returns:
-        Updated till water layer thickness (m).
+        Updated till water layer thickness (m water).
     """
     h_water_till = state.h_water_till
     basal_melt_rate = state.basal_melt_rate
@@ -25,12 +25,23 @@ def update_h_water_till(cfg: DictConfig, state: State) -> tf.Tensor:
     dt = state.dt
 
     cfg_hydro = cfg.processes.enthalpy.till.hydro
+    cfg_physics = cfg.processes.iceflow.physics
+    cfg_drainage = cfg.processes.enthalpy.drainage
 
     drainage_rate = cfg_hydro.drainage_rate
     h_water_till_max = cfg_hydro.h_water_till_max
+    rho_ice = cfg_physics.ice_density
+    rho_water = cfg_drainage.water_density
 
     return update_h_water_till_tf(
-        h_water_till, h_water_till_max, basal_melt_rate, drainage_rate, h_ice, dt
+        h_water_till,
+        h_water_till_max,
+        basal_melt_rate,
+        drainage_rate,
+        h_ice,
+        rho_ice,
+        rho_water,
+        dt,
     )
 
 
@@ -41,23 +52,27 @@ def update_h_water_till_tf(
     basal_melt_rate: tf.Tensor,
     drainage_rate: tf.Tensor,
     h_ice: tf.Tensor,
+    rho_ice: tf.Tensor,
+    rho_water: tf.Tensor,
     dt: tf.Tensor,
 ) -> tf.Tensor:
     """
     TensorFlow function to update till water layer thickness.
 
     Args:
-        h_water_till: Current till water layer thickness (m).
-        h_water_till_max: Maximum till water layer thickness (m).
-        basal_melt_rate: Basal melt rate (m yr^-1).
-        drainage_rate: Till drainage rate (m yr^-1).
+        h_water_till: Current till water layer thickness (m water).
+        h_water_till_max: Maximum till water layer thickness (m water).
+        basal_melt_rate: Basal melt rate (m ice yr^-1).
+        drainage_rate: Till drainage rate (m water yr^-1).
         h_ice: Ice thickness field (m).
+        rho_ice: Ice density (kg m^-3).
+        rho_water: Water density (kg m^-3).
         dt: Time step (yr).
 
     Returns:
-        Updated till water layer thickness (m).
+        Updated till water layer thickness (m water).
     """
-    h_water_till += dt * (basal_melt_rate - drainage_rate)
+    h_water_till += dt * (rho_ice / rho_water * basal_melt_rate - drainage_rate)
     h_water_till = tf.clip_by_value(h_water_till, 0.0, h_water_till_max)
     return tf.where(h_ice > 0.0, h_water_till, 0.0)
 

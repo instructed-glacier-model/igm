@@ -19,7 +19,7 @@ def correct_vertical_velocity(
 
     Args:
         W: Vertical velocity field (m yr^-1).
-        basal_melt_rate: Basal melt rate field (m yr^-1).
+        basal_melt_rate: Basal melt rate field (m ice yr^-1).
         correct_w_for_melt: Whether to apply the correction.
 
     Returns:

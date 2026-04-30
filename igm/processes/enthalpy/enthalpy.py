@@ -26,19 +26,19 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Initialize enthalpy fields
     initialize_enthalpy_fields(cfg, state)
 
-    # Compute T_pmp, E_pmp
-    compute_pmp(cfg, state)
+    # Compute E_pmp
+    E_pmp, _ = compute_pmp(cfg, state)
 
     # Compute (T, omega) from E
-    compute_temperature(cfg, state)
+    T, omega = compute_temperature(cfg, state, E_pmp)
 
-    # Compute A = A(T. omega)
-    compute_arrhenius(cfg, state)
+    # Compute A = A(T, omega) (state.arrhenius)
+    compute_arrhenius(cfg, state, T, omega)
 
-    # Compute N
+    # Compute N (state.N)
     compute_hydro(cfg, state)
 
-    # Compute phi, tauc, slidingco
+    # Compute phi, tauc, slidingco (state.tauc, state.phi)
     compute_friction(cfg, state)
 
 
@@ -49,32 +49,30 @@ def update(cfg: DictConfig, state: State) -> None:
 
     # (i) SOURCE & BOUNDARY TERMS
 
-    # Compute T_s, E_s
-    compute_surface(cfg, state)
+    # Surface enthalpy BC from air temperature
+    E_s, _ = compute_surface(cfg, state)
 
-    # Compute T_pmp, E_pmp
-    compute_pmp(cfg, state)
+    # Pressure melting point enthalpy
+    E_pmp, _ = compute_pmp(cfg, state)
 
-    # Compute strain_heat, frictional_heat
-    compute_dissipation(cfg, state)
+    # Volumetric strain heating and basal frictional heating
+    strain_heat, friction_heat = compute_dissipation(cfg, state)
 
-    # (ii) SOLVE FOR ENTHALPY
-
-    # Update E and basal_melt_rate
-    update_enthalpy(cfg, state)
+    # (ii) SOLVE FOR ENTHALPY (state.E, state.basal_melt_rate)
+    update_enthalpy(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
 
     # (iii) DERIVE QUANTITIES
 
-    # Compute (T, omega) from E
-    compute_temperature(cfg, state)
+    # Temperature and water content
+    T, omega = compute_temperature(cfg, state, E_pmp)
 
-    # Compute A = A(T. omega)
-    compute_arrhenius(cfg, state)
+    # Vertically-averaged Arrhenius factor (state.arrhenius)
+    compute_arrhenius(cfg, state, T, omega)
 
-    # Update h_w and compute N
+    # Effective pressure from till hydrology (state.h_water_till, state.N)
     update_hydro(cfg, state)
 
-    # Compute phi, tauc, slidingco
+    # Till friction and yield stress (state.tauc, state.phi)
     compute_friction(cfg, state)
 
 

@@ -45,6 +45,7 @@ class InterfaceNetwork(InterfaceMapping):
                 )
                 iceflow_model, manifest = load_emulator_artifact(artifact_dir, cfg)
                 mapping_output_scale = float(manifest.output_scale)
+
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
@@ -61,6 +62,7 @@ class InterfaceNetwork(InterfaceMapping):
 
                 iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
                 _attach_config_normalizer(cfg, iceflow_model)
+
             else:
                 iceflow_model = build_emulator_from_cfg(
                     cfg,

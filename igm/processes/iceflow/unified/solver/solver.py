@@ -5,88 +5,105 @@
 
 from omegaconf import DictConfig
 import tensorflow as tf
-from typing import List, Tuple
 
 from igm.common import State
-
 from ..optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_state_to_X,
+    split_field_into_patches,
 )
-
 from igm.utils.math.precision import normalize_precision
-from igm.processes.iceflow.unified.mappings import Mappings
-from igm.processes.iceflow.emulate.utils.normalizations import FixedAffineLayer
-from igm.processes.iceflow.unified.mappings.normalizer import (
-    IdentityNormalizer,
-    NetworkNormalizer,
-)
+
+from ..mappings.normalizer import is_distribution_shifted
+from .patch_selection import select_patches
 
 
-def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
-
+def get_status(
+    cfg: DictConfig,
+    state: State,
+    init: bool = False,
+    distribution_shifted: bool = False,
+) -> Status:
     cfg_unified = cfg.processes.iceflow.unified
     nbit_warmup = cfg_unified.nbit_warmup
     retrain_freq = cfg_unified.retrain_freq
 
     if init:
-        status = Status.INIT
+        return Status.INIT
     elif state.it <= nbit_warmup:
-        status = Status.WARM_UP
+        return Status.WARM_UP
     elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
-        status = Status.DEFAULT
-    elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
-        status = Status.DEFAULT
-    else:
-        status = Status.IDLE
+        return Status.DEFAULT
+    elif state.it > 0 and distribution_shifted:
+        print(
+            "Retraining due to distribution shift!"
+        )  # temporary measure to make debugging more clear for users
+        return Status.DEFAULT
+    # elif state.it > 0 and cfg_unified.mapping == "identity": # in theory, we might want to require solving at each time step for identity
+    # return Status.DEFAULT
 
-    return status
+    return Status.IDLE
 
 
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
-    """Returns [N, H, W, C] patches (sampler handles batching/augmentation)."""
+    """Returns [N, ly, lx, C] non-overlapping patches, same strategy as emulated approach."""
     X = fieldin_state_to_X(cfg, state)
+    framesizemax = cfg.processes.iceflow.unified.data_preparation.framesizemax
+    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+    return tf.cast(split_field_into_patches(X, framesizemax), dtype)
 
-    # dtype = normalize_precision(cfg.processes.iceflow.numerics.precision) # ! confirm double precision is working properly
 
-    # Create patches using the patching object
-    patches = state.iceflow.patching.generate_patches(X)
+def should_normalize(cfg: DictConfig) -> bool:
+    """Covers the 3 main situations in which the NN has its inputs normalized (or not).
+    1. If we are using the identity mapping, do NOT NORMALIZE.
+    2. If we are using any type of fixed or none transformation, DO NOT NORMALIZE.
+    3. If we are using Sebastian's pretraining, do NOT NORMALIZE.
+    """
+    is_network = cfg.processes.iceflow.unified.mapping.lower() == "network"
+    is_fixed_normalization = (
+        cfg.processes.iceflow.unified.normalization.method.lower() in ("fixed", "none")
+    )
+    is_pretraining_SR = "pretraining" in cfg.processes.keys()
+    is_pretrained_GJ = cfg.processes.iceflow.unified.network.pretrained
 
-    return patches
+    if (
+        not is_network
+        or is_fixed_normalization
+        or is_pretraining_SR
+        or is_pretrained_GJ
+    ):
+        return False
+
+    return True
 
 
 def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
-    # Get status: should we optimize again?
-    status = get_status(cfg, state, init)
-
     # Get optimizer
+    cfg_unified = cfg.processes.iceflow.unified
     optimizer = state.iceflow.optimizer
 
     # Set optimizer parameters
     set_optimizer_params = InterfaceOptimizers[optimizer.name].set_optimizer_params
+    inputs = get_solver_inputs_from_state(cfg, state)
+    mapping = getattr(optimizer.map, "network", optimizer.map)
+
+    is_should_normalize = should_normalize(cfg)
+
+    distribution_shifted = (
+        is_distribution_shifted(mapping, inputs, init, cfg_unified.retrain_threshold)
+        if is_should_normalize
+        else False
+    )
+
+    status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # TODO: Clean up this if statement
-    # AND...  include the compute stats and set stats in the status function instead (in general, we should think about this whole function)
-    if hasattr(optimizer.map, "network"):
-        mapping = optimizer.map.network
-    else:
-        mapping = optimizer.map
+    # Adaptive patch selection: filter patches by |dh/dt| if enabled
+    if do_solve and status == Status.DEFAULT:
+        inputs = select_patches(cfg, state, inputs)
 
     # Optimize and save cost
     if do_solve:
-        inputs = get_solver_inputs_from_state(cfg, state)
-
-        if ( # this became a bit of a mess now... 
-            cfg.processes.iceflow.unified.mapping == "network" # per thomas' request
-            and (
-                (not cfg.processes.iceflow.unified.network.pretrained)
-                or cfg.processes.iceflow.unified.network.old_format # as discussed with brandon
-            )
-        ):
-            # # Compute and set stats can be linked inside the class, so we can get rid of the liskov violation here (when means in one transformation is not means in another)
-            means, variances = mapping.input_normalizer.compute_stats(inputs)
-            mapping.input_normalizer.set_stats(means, variances)
 
         state.cost = optimizer.minimize(inputs)

@@ -18,6 +18,7 @@ dtype = tf.float32
 
 # Physical constants
 rho_ice = tf.constant(910.0, dtype=dtype)
+rho_water = tf.constant(1000.0, dtype=dtype)
 g = tf.constant(9.81, dtype=dtype)
 
 
@@ -31,10 +32,18 @@ def test_h_water_till_melt() -> None:
     dt = tf.constant(1.0, dtype=dtype)
 
     h_new = update_h_water_till_tf(
-        h_water_till, h_water_till_max, basal_melt_rate, drainage_rate, h_ice, dt
+        h_water_till,
+        h_water_till_max,
+        basal_melt_rate,
+        drainage_rate,
+        h_ice,
+        rho_ice,
+        rho_water,
+        dt,
     )
 
-    np.testing.assert_allclose(h_new.numpy()[0, 0], 0.6, rtol=1e-5)
+    expected = 0.5 + (rho_ice.numpy() / rho_water.numpy()) * 0.1 * 1.0
+    np.testing.assert_allclose(h_new.numpy()[0, 0], expected, rtol=1e-5)
 
 
 def test_h_water_till_drainage() -> None:
@@ -47,7 +56,14 @@ def test_h_water_till_drainage() -> None:
     dt = tf.constant(1.0, dtype=dtype)
 
     h_new = update_h_water_till_tf(
-        h_water_till, h_water_till_max, basal_melt_rate, drainage_rate, h_ice, dt
+        h_water_till,
+        h_water_till_max,
+        basal_melt_rate,
+        drainage_rate,
+        h_ice,
+        rho_ice,
+        rho_water,
+        dt,
     )
 
     np.testing.assert_allclose(h_new.numpy()[0, 0], 0.8, rtol=1e-5)
@@ -63,7 +79,14 @@ def test_h_water_till_max() -> None:
     dt = tf.constant(1.0, dtype=dtype)
 
     h_new = update_h_water_till_tf(
-        h_water_till, h_water_till_max, basal_melt_rate, drainage_rate, h_ice, dt
+        h_water_till,
+        h_water_till_max,
+        basal_melt_rate,
+        drainage_rate,
+        h_ice,
+        rho_ice,
+        rho_water,
+        dt,
     )
 
     np.testing.assert_allclose(h_new.numpy()[0, 0], 2.0, rtol=1e-5)
@@ -79,7 +102,14 @@ def test_h_water_till_ice_free() -> None:
     dt = tf.constant(1.0, dtype=dtype)
 
     h_new = update_h_water_till_tf(
-        h_water_till, h_water_till_max, basal_melt_rate, drainage_rate, h_ice, dt
+        h_water_till,
+        h_water_till_max,
+        basal_melt_rate,
+        drainage_rate,
+        h_ice,
+        rho_ice,
+        rho_water,
+        dt,
     )
 
     np.testing.assert_allclose(h_new.numpy()[0, 0], 0.0, atol=1e-10)

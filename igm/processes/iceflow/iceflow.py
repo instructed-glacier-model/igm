@@ -62,7 +62,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
 
-    if cfg.processes.iceflow.do_pretraining is True:
+    if "pretraining" in cfg.processes.keys():
         print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
         return
 
@@ -88,8 +88,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
-    if cfg.processes.iceflow.do_pretraining is True:
+    if "pretraining" in cfg.processes.keys():
         return
+
     # Logger
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
@@ -113,7 +114,7 @@ def update(cfg: DictConfig, state: State) -> None:
 
 def finalize(cfg: DictConfig, state: State) -> None:
     """Finalize the iceflow module."""
-    if cfg.processes.iceflow.do_pretraining is True:
+    if "pretraining" in cfg.processes.keys():
         return
 
     # Save emulated model

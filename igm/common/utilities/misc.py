@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 from typing import Tuple
 
+
 def download_unzip_and_store(url, folder_path) -> None:
     """
     Use wget to download a ZIP file and unzip its contents to a specified folder.
@@ -40,11 +41,15 @@ def download_unzip_and_store(url, folder_path) -> None:
     else:
         logging.info(f"The data already exists at '{folder_path}'")
 
+
 class TeeStream:
     """Tees a stream to both terminal and a file, with no formatting overhead."""
+
     def __init__(self, original_stream, file_path, mode="w"):
         self.original_stream = original_stream
-        self.file = open(file_path, mode, encoding="utf-8", buffering=1)  # line-buffered
+        self.file = open(
+            file_path, mode, encoding="utf-8", buffering=1
+        )  # line-buffered
 
     def write(self, message):
         self.original_stream.write(message)
@@ -60,8 +65,9 @@ class TeeStream:
     def close(self):
         self.file.close()
 
+
 def add_logger(cfg, state) -> None:
-    
+
     logger = logging.getLogger("igm")
     logger.setLevel(cfg.core.igm_logging_level)
 
@@ -83,35 +89,43 @@ def add_logger(cfg, state) -> None:
     logger.addHandler(file_handler)
 
     state.logger = logger
-    
+
     # Tee stdout/stderr directly to file - no logger overhead
     sys.stdout = TeeStream(sys.__stdout__, "terminal.log")
-    sys.stderr = TeeStream(sys.__stderr__, "terminal.log", mode="a")  # append so both go to same file
+    sys.stderr = TeeStream(
+        sys.__stderr__, "terminal.log", mode="a"
+    )  # append so both go to same file
+
 
 def get_igm_version() -> Tuple[str, str]:
     try:
         version = importlib.metadata.version("igm")
-        source = 'PyPi'
+        source = "PyPi"
         return (source, version)
     except importlib.metadata.PackageNotFoundError:
         pass
 
     try:
         igm_root = Path(__file__).resolve().parent
-        hash = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=igm_root,
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
-        source = 'git'
+        hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=igm_root,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        source = "git"
         return (source, hash)
     except Exception:
         pass
 
     return ("unknown", "unknown")
 
+
 def write_igm_version(output_dir: Path) -> None:
     source, version = get_igm_version()
-    with open(output_dir / "version.txt", "a", encoding="utf-8") as f:
+    with open(output_dir / "version.txt", "w", encoding="utf-8") as f:
         f.write(f"source: {source}\n")
         f.write(f"version: {version}\n")

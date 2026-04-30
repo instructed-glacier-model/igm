@@ -88,7 +88,7 @@ def evaluator_iceflow(
     uvelsurf, vvelsurf = get_velsurf(U, V, kwargs["V_s"])
     ubar, vbar = get_velbar(U, V, kwargs["V_bar"])
 
-    return {
+    result = {
         "U": U,
         "V": V,
         "uvelbase": uvelbase,
@@ -98,6 +98,7 @@ def evaluator_iceflow(
         "ubar": ubar,
         "vbar": vbar,
     }
+    return {k: tf.cast(v, tf.float32) for k, v in result.items()}
 
 
 def evaluate_iceflow(cfg: DictConfig, state: State) -> None:

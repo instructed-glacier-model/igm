@@ -16,7 +16,8 @@ def load_yaml_as_cfg(yaml_filename):
     return DictToObj(yaml_dict)  # Convert to object
 
 
-def load_yaml_recursive(base_dir):
+def load_yaml_recursive(base_dir, exclude=None):
+    excluded = set(exclude or [])
     config = {}
     for root, _, files in os.walk(base_dir):
         for file in files:
@@ -26,6 +27,8 @@ def load_yaml_recursive(base_dir):
                 keys = (
                     relative_path.replace(".yaml", "").replace(".yml", "").split(os.sep)
                 )
+                if os.sep.join(keys) in excluded:
+                    continue
 
                 # Load the YAML file
                 yaml_conf = OmegaConf.load(full_path)

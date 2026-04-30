@@ -19,6 +19,8 @@ dtype = tf.float32
 
 # Physical constants
 L_ice = tf.constant(334000.0, dtype=dtype)
+rho_ice = tf.constant(910.0, dtype=dtype)
+rho_water = tf.constant(1000.0, dtype=dtype)
 omega_threshold_1 = tf.constant(0.01, dtype=dtype)
 omega_threshold_2 = tf.constant(0.02, dtype=dtype)
 omega_threshold_3 = tf.constant(0.03, dtype=dtype)
@@ -117,6 +119,8 @@ def test_fraction_drained_zero() -> None:
         omega_threshold_1,
         omega_threshold_2,
         omega_threshold_3,
+        rho_ice,
+        rho_water,
         dz,
         dt,
     )
@@ -147,6 +151,8 @@ def test_fraction_drained_positive() -> None:
         omega_threshold_1,
         omega_threshold_2,
         omega_threshold_3,
+        rho_ice,
+        rho_water,
         dz,
         dt,
     )
@@ -173,6 +179,8 @@ def test_fraction_drained_shape() -> None:
         omega_threshold_1,
         omega_threshold_2,
         omega_threshold_3,
+        rho_ice,
+        rho_water,
         dz,
         dt,
     )

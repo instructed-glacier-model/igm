@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
@@ -10,7 +11,7 @@ from igm.common import State
 from .utils import compute_fraction_drained
 
 
-def update_drainage(cfg: DictConfig, state: State) -> None:
+def update_drainage(cfg: DictConfig, state: State, E_pmp: tf.Tensor) -> None:
     """
     Update enthalpy field by draining excess water from the ice column.
 
@@ -18,7 +19,10 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
     water to the basal melt rate. Skips drainage if dt is zero or drainage
     is disabled in configuration.
 
-    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    Args:
+        E_pmp: Pressure melting point enthalpy (J kg^-1).
+
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
     """
     cfg_physics = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
@@ -43,16 +47,18 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
 
     fraction_drained, h_drained = compute_fraction_drained(
         state.E,
-        state.E_pmp,
+        E_pmp,
         L_ice,
         omega_target,
         omega_threshold_1,
         omega_threshold_2,
         omega_threshold_3,
+        rho_ice,
+        rho_water,
         dz,
         state.dt,
     )
 
-    state.E -= fraction_drained * L_ice
+    state.E -= (rho_water / rho_ice) * fraction_drained * L_ice
 
-    state.basal_melt_rate += (rho_ice / rho_water) * h_drained / state.dt
+    state.basal_melt_rate += (rho_water / rho_ice) * h_drained / state.dt

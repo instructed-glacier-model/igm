@@ -377,3 +377,329 @@ class FNO2(tf.keras.Model):
         x = self.fc2(x)  # [B, H, W, output_channels]
 
         return x
+
+# TensorFlow CNO2d — converted from the PyTorch CNO2d tutorial code
+# (ETH Zurich, AI in the Sciences and Engineering).
+#
+# Interface mirrors FNO2 / CNN: accepts [B, H, W, C_in] (channels-last),
+# uses cfg-based configuration, optional input_normalizer.
+#
+# Performance notes:
+#   - Channels-last (NHWC) throughout — no transpose overhead
+#   - All spatial sizes are Python ints (static shapes for XLA)
+#   - Layer collections stored as named Keras-tracked attributes
+#   - Bilinear resize for XLA compatibility
+#   - No BatchNorm / no training flag — matches FNO2 usage
+
+import tensorflow as tf
+import numpy as np
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+def _ceil_to_multiple(n, divisor):
+    """Round *n* up to the nearest multiple of *divisor*."""
+    return int(np.ceil(n / divisor) * divisor)
+
+
+# =============================================================================
+# Bandlimited activation: upsample 2x -> LeakyReLU -> resample
+# =============================================================================
+
+class CNOActivation(tf.keras.layers.Layer):
+
+    def __init__(self, in_h, in_w, out_h, out_w, **kwargs):
+        super().__init__(**kwargs)
+        self._up_size = [2 * int(in_h), 2 * int(in_w)]
+        self._out_size = [int(out_h), int(out_w)]
+
+    def call(self, x):
+        x = tf.image.resize(x, self._up_size, method="bilinear")
+        x = tf.nn.leaky_relu(x)
+        x = tf.image.resize(x, self._out_size, method="bilinear")
+        return x
+
+
+# =============================================================================
+# CNOBlock:  Conv2D -> CNOActivation
+# =============================================================================
+
+class CNOBlock(tf.keras.layers.Layer):
+
+    def __init__(self, out_channels, in_h, in_w, out_h, out_w, **kwargs):
+        super().__init__(**kwargs)
+        self.convolution = tf.keras.layers.Conv2D(
+            int(out_channels), kernel_size=3, padding="same",
+            dtype=tf.float32,
+        )
+        self.act = CNOActivation(in_h, in_w, out_h, out_w)
+
+    def call(self, x):
+        return self.act(self.convolution(x))
+
+
+# =============================================================================
+# LiftProjectBlock:  CNOBlock -> Conv2D
+# =============================================================================
+
+class LiftProjectBlock(tf.keras.layers.Layer):
+
+    def __init__(self, out_channels, size_h, size_w,
+                 latent_dim=64, **kwargs):
+        super().__init__(**kwargs)
+        self.inter_block = CNOBlock(
+            out_channels=latent_dim,
+            in_h=size_h, in_w=size_w, out_h=size_h, out_w=size_w,
+        )
+        self.convolution = tf.keras.layers.Conv2D(
+            int(out_channels), kernel_size=3, padding="same",
+            dtype=tf.float32,
+        )
+
+    def call(self, x):
+        return self.convolution(self.inter_block(x))
+
+
+# =============================================================================
+# ResidualBlock:  Conv -> Activation -> Conv + skip
+# =============================================================================
+
+class ResidualBlock(tf.keras.layers.Layer):
+
+    def __init__(self, channels, size_h, size_w, **kwargs):
+        super().__init__(**kwargs)
+        ch = int(channels)
+        self.convolution1 = tf.keras.layers.Conv2D(
+            ch, kernel_size=3, padding="same", dtype=tf.float32,
+        )
+        self.convolution2 = tf.keras.layers.Conv2D(
+            ch, kernel_size=3, padding="same", dtype=tf.float32,
+        )
+        self.act = CNOActivation(size_h, size_w, size_h, size_w)
+
+    def call(self, x):
+        out = self.act(self.convolution1(x))
+        out = self.convolution2(out)
+        return x + out
+
+
+# =============================================================================
+# ResNet:  stack of ResidualBlocks
+# =============================================================================
+
+class ResNet(tf.keras.layers.Layer):
+
+    def __init__(self, channels, size_h, size_w, num_blocks, **kwargs):
+        super().__init__(**kwargs)
+        self.blocks = [
+            ResidualBlock(channels, size_h, size_w)
+            for _ in range(int(num_blocks))
+        ]
+
+    def call(self, x):
+        for blk in self.blocks:
+            x = blk(x)
+        return x
+
+
+# =============================================================================
+# CNO2d
+# =============================================================================
+
+class CNO2d(tf.keras.Model):
+    """Continuous Neural Operator (2-D), TensorFlow / XLA-compatible.
+
+    Parameters from ``cfg`` (Hydra / OmegaConf):
+        cfg.processes.iceflow.unified.network.N_layers           (default 3)
+        cfg.processes.iceflow.unified.network.N_res              (default 4)
+        cfg.processes.iceflow.unified.network.N_res_neck         (default 4)
+        cfg.processes.iceflow.unified.network.channel_multiplier (default 16)
+
+    I/O convention (channels-last, same as FNO2 / CNN):
+        input  -> [B, H, W, C_in]
+        output -> [B, H, W, C_out]   (same H, W as input)
+    """
+
+    def __init__(
+        self, cfg, nb_inputs, nb_outputs, input_normalizer=None,
+        name="CNO2D", **kwargs,
+    ):
+        super().__init__(name=name, **kwargs)
+
+        cfg_unified = cfg.processes.iceflow.unified
+        cfg_numerics = cfg.processes.iceflow.numerics
+
+        N_layers = int(getattr(cfg_unified.network, "N_layers", 3))
+        N_res = int(getattr(cfg_unified.network, "N_res", 4))
+        N_res_neck = int(getattr(cfg_unified.network, "N_res_neck", 4))
+        channel_multiplier = int(getattr(cfg_unified.network, "channel_multiplier", 16))
+        use_grid = bool(getattr(cfg_unified.network, "use_grid", True))
+
+        Nz = cfg_numerics.Nz
+
+        self.N_layers = N_layers
+        self.lift_dim = channel_multiplier // 2
+        self.in_dim = int(nb_inputs)
+        self.out_dim = int(nb_outputs)
+        self.channel_multiplier = channel_multiplier
+        self.use_grid = use_grid
+        self.input_normalizer = input_normalizer
+
+        self._N_res = N_res
+        self._N_res_neck = N_res_neck
+        self._built_cno = False
+
+        # Channel evolution
+        encoder_features = [self.lift_dim]
+        for i in range(N_layers):
+            encoder_features.append(2 ** i * channel_multiplier)
+
+        decoder_features_in = list(encoder_features[1:])
+        decoder_features_in.reverse()
+        decoder_features_out = list(encoder_features[:-1])
+        decoder_features_out.reverse()
+        for i in range(1, N_layers):
+            decoder_features_in[i] = 2 * decoder_features_in[i]
+
+        self._encoder_features = encoder_features
+        self._decoder_features_in = decoder_features_in
+        self._decoder_features_out = decoder_features_out
+
+    # ------------------------------------------------------------------
+    def _build_cno_layers(self, H, W):
+        """Build all sublayers with static Python-int spatial sizes."""
+        N = self.N_layers
+        ef = self._encoder_features
+        dfo = self._decoder_features_out
+
+        eff_in = self.in_dim + (2 if self.use_grid else 0)
+
+        divisor = 2 ** N
+        pH = _ceil_to_multiple(H, divisor)
+        pW = _ceil_to_multiple(W, divisor)
+        self._padded_H = pH
+        self._padded_W = pW
+
+        enc_h = [pH // (2 ** i) for i in range(N + 1)]
+        enc_w = [pW // (2 ** i) for i in range(N + 1)]
+        dec_h = [pH // (2 ** (N - i)) for i in range(N + 1)]
+        dec_w = [pW // (2 ** (N - i)) for i in range(N + 1)]
+        self._enc_h = enc_h
+        self._enc_w = enc_w
+        self._dec_h = dec_h
+        self._dec_w = dec_w
+
+        # Lift & Project
+        self.lift = LiftProjectBlock(out_channels=ef[0], size_h=pH, size_w=pW)
+        self.project = LiftProjectBlock(
+            out_channels=self.out_dim, size_h=pH, size_w=pW,
+        )
+
+        # Encoder
+        for i in range(N):
+            setattr(self, f"enc_{i}", CNOBlock(
+                out_channels=ef[i + 1],
+                in_h=enc_h[i], in_w=enc_w[i],
+                out_h=enc_h[i + 1], out_w=enc_w[i + 1],
+            ))
+
+        # ED expansion
+        for i in range(N + 1):
+            setattr(self, f"ed_{i}", CNOBlock(
+                out_channels=ef[i],
+                in_h=enc_h[i], in_w=enc_w[i],
+                out_h=dec_h[N - i], out_w=dec_w[N - i],
+            ))
+
+        # Decoder
+        for i in range(N):
+            setattr(self, f"dec_{i}", CNOBlock(
+                out_channels=dfo[i],
+                in_h=dec_h[i], in_w=dec_w[i],
+                out_h=dec_h[i + 1], out_w=dec_w[i + 1],
+            ))
+
+        # ResNets
+        for l in range(N):
+            setattr(self, f"resnet_{l}", ResNet(
+                channels=ef[l], size_h=enc_h[l], size_w=enc_w[l],
+                num_blocks=self._N_res,
+            ))
+
+        self.resnet_neck = ResNet(
+            channels=ef[N], size_h=enc_h[N], size_w=enc_w[N],
+            num_blocks=self._N_res_neck,
+        )
+
+        self._built_cno = True
+
+        # Dummy pass to initialize weights
+        dummy = tf.zeros((1, pH, pW, eff_in), dtype=tf.float32)
+        self._forward_body(dummy)
+
+    # ------------------------------------------------------------------
+    def _get_grid(self, x):
+        shape = tf.shape(x)
+        bsz, sx, sy = shape[0], shape[1], shape[2]
+        gx = tf.reshape(tf.linspace(0.0, 1.0, sx), [1, sx, 1, 1])
+        gx = tf.tile(gx, [bsz, 1, sy, 1])
+        gy = tf.reshape(tf.linspace(0.0, 1.0, sy), [1, 1, sy, 1])
+        gy = tf.tile(gy, [bsz, sx, 1, 1])
+        return tf.concat([gx, gy], axis=-1)
+
+    # ------------------------------------------------------------------
+    def _forward_body(self, x):
+        N = self.N_layers
+
+        x = self.lift(x)
+        skip = []
+
+        for i in range(N):
+            skip.append(getattr(self, f"resnet_{i}")(x))
+            x = getattr(self, f"enc_{i}")(x)
+
+        x = self.resnet_neck(x)
+
+        for i in range(N):
+            if i == 0:
+                x = getattr(self, f"ed_{N - i}")(x)
+            else:
+                x = tf.concat([x, getattr(self, f"ed_{N - i}")(skip[-i])],
+                              axis=-1)
+            x = getattr(self, f"dec_{i}")(x)
+
+        x = tf.concat([x, getattr(self, f"ed_0")(skip[0])], axis=-1)
+        x = self.project(x)
+
+        return x
+
+    # ------------------------------------------------------------------
+    def call(self, inputs):
+        x = inputs
+        if x.dtype != tf.float32:
+            x = tf.cast(x, tf.float32)
+
+        if self.input_normalizer is not None:
+            x = self.input_normalizer(x)
+
+        if self.use_grid:
+            x = tf.concat([x, self._get_grid(x)], axis=-1)
+
+        if not self._built_cno:
+            H = int(x.shape[1]) if x.shape[1] is not None else int(tf.shape(x)[1])
+            W = int(x.shape[2]) if x.shape[2] is not None else int(tf.shape(x)[2])
+            self._build_cno_layers(H, W)
+
+        orig_H = tf.shape(x)[1]
+        orig_W = tf.shape(x)[2]
+        pad_h = self._padded_H - orig_H
+        pad_w = self._padded_W - orig_W
+        x = tf.pad(x, [[0, 0], [0, pad_h], [0, pad_w], [0, 0]],
+                    mode="REFLECT")
+
+        x = self._forward_body(x)
+
+        x = x[:, :orig_H, :orig_W, :]
+        return x

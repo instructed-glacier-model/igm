@@ -6,10 +6,6 @@ force_max_velbar:
   Type: float
   Description: "Upper-bound value for the velocities; applied if strictly positive."
   Units: m y^{-1}
-do_pretraining:
-  Type: boolean
-  Description: "If true, the iceflow process is skipped to allow pretraining of the ice-flow emulator."
-  Units: dimless
 physics:
   energy_components:
     Type: list
@@ -20,6 +16,10 @@ physics:
       Type: string
       Description: "Type of sliding law."
       Units: dimless
+    use_mask_gr:
+      Type: boolean
+      Description: "If True, zero out basal shear stress in floating areas."
+      Units: dimless
     weertman:
       regu:
         Type: float
@@ -29,6 +29,10 @@ physics:
         Type: float
         Description: "Weertman exponent."
         Units: dimless
+      u_ref:
+        Type: float
+        Description: "Reference velocity for the Weertman sliding law."
+        Units: m y^{-1}
     coulomb:
       regu:
         Type: float
@@ -38,6 +42,10 @@ physics:
         Type: float
         Description: "Coulomb exponent."
         Units: dimless
+      u_ref:
+        Type: float
+        Description: "Reference velocity for the Coulomb sliding law."
+        Units: m y^{-1}
       mu:
         Type: float
         Description: "Till coefficient."
@@ -50,6 +58,14 @@ physics:
       exponent:
         Type: float
         Description: "Budd exponent."
+        Units: dimless
+      u_ref:
+        Type: float
+        Description: "Reference velocity for the Budd sliding law."
+        Units: m y^{-1}
+      N_ref:
+        Type: float
+        Description: "Reference effective pressure for the Budd sliding law."
         Units: dimless 
   gravity_cst:
     Type: float
@@ -78,10 +94,6 @@ physics:
   exp_glen:
     Type: float
     Description: "Glen's flow law exponent."
-    Units: dimless
-  exp_weertman:
-    Type: float
-    Description: "Weertman's law exponent."
     Units: dimless
   regu_glen:
     Type: float
@@ -183,7 +195,7 @@ emulator:
     Description: "Decay learning-rate parameter for the training of the emulator."
     Units: dimless
   warm_up_it:
-    Type: integer
+    Type: float
     Description: "Number of iterations for a warm-up period, allowing intense initial training."
     Units: dimless
   nbit_init:
@@ -321,8 +333,26 @@ unified:
     Type: list
     Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we, no_slip, periodic_ns_global, periodic_we_global, no_slip_global."
     Units: dimless
+  bc:
+    dirichlet:
+      left:
+        Type: float
+        Description: "Value enforced on the DOFs of the velocity at the left (west) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Units: m y^{-1}
+      right:
+        Type: float
+        Description: "Value enforced on the DOFs of the velocity at the right (east) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Units: m y^{-1}
+      top:
+        Type: float
+        Description: "Value enforced on the DOFs of the velocity at the top (north) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Units: m y^{-1}
+      bottom:
+        Type: float
+        Description: "Value enforced on the DOFs of the velocity at the bottom (south) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Units: m y^{-1}
   optimizer:
-    Type: list
+    Type: string
     Description: "Type of optimizer used to solve the ice flow."
     Units: dimless
   nbit:
@@ -340,6 +370,10 @@ unified:
   retrain_freq:
     Type: integer
     Description: "Frequency at which the ice flow is solved."
+    Units: dimless
+  retrain_threshold:
+    Type: float
+    Description: "Threshold (expressed as a z-score) above which the ice flow is re-solved."
     Units: dimless
   adam:
     lr:
@@ -371,6 +405,90 @@ unified:
       Type: float
       Description: "Minimal value for the step size in the line search."
       Units: dimless
+  cg_newton:
+    cg_tol:
+      Type: float
+      Description: "Tolerance for the conjugate-gradient linear solver in the CG-Newton optimizer."
+      Units: dimless
+    cg_max_iter:
+      Type: integer
+      Description: "Maximum number of conjugate-gradient iterations in the CG-Newton optimizer."
+      Units: dimless
+    truncated:
+      Type: boolean
+      Description: "Use truncated (inexact) Newton steps in the CG-Newton optimizer."
+      Units: dimless
+    damping:
+      Type: float
+      Description: "Damping added to the Hessian diagonal for regularization in the CG-Newton optimizer."
+      Units: dimless
+  trust_region:
+    cg_max_iter:
+      Type: integer
+      Description: "Maximum number of conjugate-gradient iterations for the trust-region sub-problem."
+      Units: dimless
+    cg_tol:
+      Type: float
+      Description: "Tolerance for the conjugate-gradient linear solver in the trust-region optimizer."
+      Units: dimless
+    delta_init:
+      Type: float
+      Description: "Initial trust-region radius."
+      Units: dimless
+    delta_max:
+      Type: float
+      Description: "Maximum trust-region radius."
+      Units: dimless
+    eta:
+      Type: float
+      Description: "Minimum ratio of actual to predicted reduction for accepting a step in the trust-region optimizer."
+      Units: dimless
+    damping:
+      Type: float
+      Description: "Damping added to the Hessian diagonal for regularization in the trust-region optimizer."
+      Units: dimless
+  muon:
+    lr:
+      Type: float
+      Description: "Learning rate for matrix parameters (conv kernels, Dense kernels) in the Muon optimizer."
+      Units: dimless
+    momentum:
+      Type: float
+      Description: "Nesterov momentum coefficient for the Muon optimizer."
+      Units: dimless
+    ns_steps:
+      Type: integer
+      Description: "Number of Newton-Schulz iterations used to orthogonalize the gradient update in the Muon optimizer."
+      Units: dimless
+    lr_1d:
+      Type: float
+      Description: "Learning rate for rank-1 parameters (biases) in the Muon optimizer; these receive plain Nesterov SGD."
+      Units: dimless
+  soap:
+    lr:
+      Type: float
+      Description: "Adam learning rate for the SOAP optimizer."
+      Units: dimless
+    beta1:
+      Type: float
+      Description: "Adam first-moment decay coefficient for the SOAP optimizer."
+      Units: dimless
+    beta2:
+      Type: float
+      Description: "Adam second-moment decay coefficient for the SOAP optimizer; also used to update the Kronecker preconditioner factors."
+      Units: dimless
+    eps:
+      Type: float
+      Description: "Epsilon for numerical stability in the Adam update of the SOAP optimizer."
+      Units: dimless
+    precond_freq:
+      Type: integer
+      Description: "Number of iterations between eigendecompositions of the Kronecker preconditioner factors in the SOAP optimizer."
+      Units: dimless
+    damping:
+      Type: float
+      Description: "Regularization added to the Kronecker preconditioner factors before eigendecomposition in the SOAP optimizer."
+      Units: dimless
   sequential:
     stages:
       Type: list
@@ -384,58 +502,86 @@ unified:
     Type: list
     Description: "Input fields of the mapping for the ice flow."
     Units: dimless
-  scaling:
+  normalization:
     method:
       Type: string
-      Description: "Type of method used for the scaling of the inputs."
+      Description: "Type of method used for the normalization of the inputs: adaptive, fixed."
       Units: dimless
-    manual:
-      inputs_scales:
+    fixed:
+      inputs_offsets:
         thk:
           Type: float
-          Description: "Manual scale of the input thk."
+          Description: "Fixed offset for the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual scale of the input usurf."
+          Description: "Fixed offset for the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual scale of the input arrhenius."
+          Description: "Fixed offset for the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual scale of the input slidingco."
+          Description: "Fixed offset for the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual scale of the input dX."
+          Description: "Fixed offset for the input dX."
+          Units: m
+        X:
+          Type: float
+          Description: "Fixed offset for the input X."
+          Units: m
+        Y:
+          Type: float
+          Description: "Fixed offset for the input Y."
           Units: m
       inputs_variances:
         thk:
           Type: float
-          Description: "Manual variance of the input thk."
+          Description: "Fixed variance for the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual variance of the input usurf."
+          Description: "Fixed variance for the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual variance of the input arrhenius."
+          Description: "Fixed variance for the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual variance of the input slidingco."
+          Description: "Fixed variance for the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual variance of the input dX."
+          Description: "Fixed variance for the input dX."
+          Units: m
+        X:
+          Type: float
+          Description: "Fixed variance for the input X."
+          Units: m
+        Y:
+          Type: float
+          Description: "Fixed variance for the input Y."
           Units: m
   network:
+    debug_mode:
+      Type: boolean
+      Description: "Enable debug mode for the optimizer."
+      Units: dimless
+    debug_freq:
+      Type: integer
+      Description: "Frequency of debug output."
+      Units: dimless
     pretrained:
       Type: boolean
       Description: "Use a pretrained network instead of starting from scratch."
+      Units: dimless
+    pretrained_path:
+      Type: string
+      Description: "Path to the pretrained network; taken from the library if empty."
       Units: dimless
     print_summary:
       Type: boolean
@@ -450,37 +596,13 @@ unified:
       Description: "Type of network."
       Units: dimless
   data_preparation:
-    patch_size:
+    framesizemax:
       Type: integer
-      Description: "Size of a patch."
+      Description: "Maximum patch size; the domain is split into non-overlapping patches no larger than this value to avoid GPU memory overload."
       Units: dimless
-    overlap:
-      Type: float
-      Description: "Fraction of overlap between the patches."
-      Units: dimless
-    batch_size:
+    patches_per_batch:
       Type: integer
-      Description: "Size of batch."
-      Units: dimless
-    rotation_probability:
-      Type: float
-      Description: "Probability of rotation."
-      Units: dimless
-    flip_probability:
-      Type: float
-      Description: "Probability of flip."
-      Units: dimless
-    noise_type:
-      Type: string
-      Description: "Type of noise."
-      Units: dimless
-    noise_scale:
-      Type: float
-      Description: "Scale of the noise."
-      Units: dimless
-    target_samples:
-      Type: integer
-      Description: "Target for the number of samples."
+      Description: "Number of patches processed per mini-batch during optimization."
       Units: dimless
   halt:
     freq:

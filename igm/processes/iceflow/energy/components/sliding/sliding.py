@@ -5,6 +5,7 @@
 
 from typing import Any, Dict
 from omegaconf import DictConfig
+import tensorflow as tf
 
 from ..energy import EnergyComponent
 
@@ -15,6 +16,12 @@ class SlidingComponent(EnergyComponent):
     pass
 
 
+def mask_gr(h: tf.Tensor, topg: tf.Tensor, rho_ratio: tf.Tensor) -> tf.Tensor:
+    """Compute grounding mask: 1 where grounded, 0 where floating."""
+    phi = h + rho_ratio * topg
+    return tf.cast(phi > 0.0, dtype=h.dtype)
+
+
 def get_sliding_params_args(cfg: DictConfig) -> Dict[str, Any]:
     """Extract friction parameters from configuration."""
 
@@ -22,4 +29,8 @@ def get_sliding_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
     law = cfg_physics.sliding.law
 
-    return dict(cfg_physics.sliding[law])
+    args = dict(cfg_physics.sliding[law])
+    args["rho_ratio"] = cfg_physics.water_density / cfg_physics.ice_density
+    args["use_mask_gr"] = cfg_physics.sliding.use_mask_gr
+
+    return args

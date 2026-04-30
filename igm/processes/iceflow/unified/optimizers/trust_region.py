@@ -59,16 +59,16 @@
 # #         self.damping = tf.constant(damping, dtype=self.precision)
 # #         self.cg_max_iter = cg_max_iter
 # #         self.cg_tol = tf.constant(cg_tol, dtype=self.precision)
-        
+
 # #         # Trust region parameters
 # #         self.delta = tf.Variable(delta_init, dtype=self.precision)
 # #         self.delta_max = tf.constant(delta_max, dtype=self.precision)
 # #         self.eta = tf.constant(eta, dtype=self.precision)
-        
+
 # #         # Diagnostic settings
 # #         self.diagnostics = diagnostics
 # #         self.diagnostics_freq = diagnostics_freq
-        
+
 # #         # Preconditioner settings
 # #         self.use_preconditioner = True
 # #         self.precond_floor = tf.constant(1e-8, dtype=self.precision)
@@ -84,7 +84,7 @@
 # #     # ============================================================
 
 # #     def _cost_and_grad(
-# #         self, 
+# #         self,
 # #         inputs: tf.Tensor,
 # #         cost_fn: Callable,
 # #     ):
@@ -112,7 +112,7 @@
 # #         """
 # #         Compute (H + damping I) v using nested GradientTapes.
 # #         """
-        
+
 # #         nU = tf.size(U)
 # #         vU = tf.reshape(v_flat[:nU], tf.shape(U))
 # #         vV = tf.reshape(v_flat[nU:], tf.shape(V))
@@ -123,9 +123,9 @@
 # #                 inner_tape.watch((U, V))
 # #                 c = cost_fn(U, V, inputs)
 # #             gU, gV = inner_tape.gradient(c, (U, V))
-            
+
 # #             gv = tf.reduce_sum(gU * vU) + tf.reduce_sum(gV * vV)
-        
+
 # #         HvU, HvV = outer_tape.gradient(gv, (U, V))
 
 # #         Hv_flat = tf.concat(
@@ -153,37 +153,37 @@
 # #         """
 # #         cost, _, _, grad_U, grad_V = self._cost_and_grad(inputs, cost_fn)
 # #         g_flat = tf.concat([tf.reshape(grad_U, [-1]), tf.reshape(grad_V, [-1])], axis=0)
-        
+
 # #         v = tf.random.normal(tf.shape(g_flat), dtype=self.precision)
 # #         v = v / tf.norm(v)
-        
+
 # #         alpha = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
 # #         beta = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
-        
+
 # #         v_old = tf.zeros_like(v)
 # #         beta_old = tf.constant(0.0, dtype=self.precision)
-        
+
 # #         for j in tf.range(n_iter):
 # #             w = self._hvp(inputs, U, V, v, cost_fn, damping)
-            
+
 # #             alpha_j = tf.reduce_sum(w * v)
 # #             w = w - alpha_j * v - beta_old * v_old
-            
+
 # #             beta_j = tf.norm(w)
-            
+
 # #             alpha = alpha.write(j, alpha_j)
 # #             beta = beta.write(j, beta_j)
-            
+
 # #             v_old = v
 # #             v = w / (beta_j + 1e-16)
 # #             beta_old = beta_j
-        
+
 # #         alpha_vals = alpha.stack()
 # #         beta_vals = beta.stack()
-        
+
 # #         lambda_max = tf.reduce_max(alpha_vals + 2.0 * beta_vals)
 # #         lambda_min = tf.reduce_min(alpha_vals - 2.0 * beta_vals)
-        
+
 # #         return lambda_min, lambda_max
 
 # #     # ============================================================
@@ -205,7 +205,7 @@
 # #         Hg = self._hvp(inputs, U, V, g_flat, cost_fn, damping)
 # #         gHg = tf.reduce_sum(g_flat * Hg)
 # #         gg = tf.reduce_sum(g_flat * g_flat)
-        
+
 # #         return gHg / (gg + 1e-16)
 
 # #     # ============================================================
@@ -228,24 +228,24 @@
 # #         """
 # #         Solve trust region subproblem using preconditioned Steihaug-Tong CG.
 # #         """
-        
+
 # #         # Initialize preconditioner on first call
 # #         if self.precond_diag is None:
 # #             n_total = tf.size(g_flat)
 # #             self.precond_diag = tf.ones(n_total, dtype=self.precision)
-        
+
 # #         # Compute diagonal preconditioner if needed
 # #         def compute_precond():
 # #             n_samples = 10
 # #             n_total = tf.size(g_flat)
 # #             diag_est = tf.zeros(n_total, dtype=self.precision)
-            
+
 # #             for _ in tf.range(n_samples):
 # #                 z = tf.random.uniform((n_total,), dtype=self.precision)
 # #                 z = tf.where(z < 0.5, -tf.ones_like(z), tf.ones_like(z))
 # #                 Hz = self._hvp(inputs, U, V, z, cost_fn, tf.constant(0.0, dtype=self.precision))
 # #                 diag_est += z * Hz
-            
+
 # #             diag_est = diag_est / tf.cast(n_samples, self.precision)
 # #             diag_abs = tf.maximum(tf.abs(diag_est), self.precond_floor)
 # #             self.precond_needs_update.assign(False)
@@ -259,7 +259,7 @@
 # #             compute_precond,
 # #             keep_precond
 # #         )
-        
+
 # #         # Update the stored preconditioner
 # #         self.precond_diag = precond
 
@@ -268,7 +268,7 @@
 # #         z = precond * r  # Apply preconditioner
 # #         p = -z
 # #         rz = tf.reduce_sum(r * z)
-        
+
 # #         initial_residual = tf.sqrt(rz)
 # #         converged = tf.constant(False)
 # #         hit_boundary = tf.constant(False)
@@ -278,20 +278,20 @@
 # #             should_continue = tf.logical_not(
 # #                 tf.logical_or(converged, tf.logical_or(hit_boundary, neg_curvature))
 # #             )
-            
+
 # #             if should_continue:
 # #                 converged = rz <= cg_tol
-                
+
 # #                 if tf.logical_not(converged):
 # #                     Ap = self._hvp(inputs, U, V, p, cost_fn, damping)
 # #                     pAp = tf.reduce_sum(p * Ap)
-                    
+
 # #                     if verbose and i % 5 == 0:
 # #                         rel_residual = tf.sqrt(rz) / (initial_residual + 1e-16)
 # #                         x_norm = tf.norm(x)
-# #                         tf.print("  PCG iter:", i, "| rel_res:", rel_residual, 
+# #                         tf.print("  PCG iter:", i, "| rel_res:", rel_residual,
 # #                                 "| ||x||:", x_norm, "| δ:", delta, "| p^T Ap:", pAp)
-                    
+
 # #                     if pAp <= 0.0:
 # #                         if verbose:
 # #                             tf.print("  NEGATIVE CURVATURE detected")
@@ -301,7 +301,7 @@
 # #                     else:
 # #                         alpha = rz / pAp
 # #                         x_new = x + alpha * p
-                        
+
 # #                         if tf.norm(x_new) >= delta:
 # #                             if verbose:
 # #                                 tf.print("  TRUST REGION BOUNDARY hit")
@@ -324,14 +324,14 @@
 # #         return x
 
 # #     def _find_boundary_step(
-# #         self, 
-# #         x: tf.Tensor, 
-# #         p: tf.Tensor, 
+# #         self,
+# #         x: tf.Tensor,
+# #         p: tf.Tensor,
 # #         delta: tf.Tensor
 # #     ) -> tf.Tensor:
 # #         """
 # #         Find tau >= 0 such that ||x + tau*p|| = delta.
-        
+
 # #         This solves: ||x + tau*p||^2 = delta^2
 # #         Expanding: (x^T x) + 2*tau*(x^T p) + tau^2*(p^T p) = delta^2
 # #         This is a quadratic in tau: a*tau^2 + b*tau + c = 0
@@ -339,11 +339,11 @@
 # #         a = tf.reduce_sum(p * p)
 # #         b = 2.0 * tf.reduce_sum(x * p)
 # #         c = tf.reduce_sum(x * x) - delta * delta
-        
+
 # #         # Solve quadratic, take positive root
 # #         discriminant = b * b - 4.0 * a * c
 # #         tau = (-b + tf.sqrt(tf.maximum(discriminant, 0.0))) / (2.0 * a)
-        
+
 # #         return tf.maximum(tau, 0.0)
 
 # #     # ============================================================
@@ -365,16 +365,16 @@
 # #         """
 # #         Compute ratio of actual to predicted reduction:
 # #             rho = (f_old - f_new) / (m_old - m_new)
-        
+
 # #         where m(p) = f + g^T p + 0.5 p^T H p is the quadratic model.
 # #         """
 # #         actual_reduction = f_old - f_new
-        
+
 # #         # Predicted reduction: -g^T p - 0.5 p^T H p
 # #         Hp = self._hvp(inputs, U, V, p_flat, cost_fn, damping)
-# #         predicted_reduction = -(tf.reduce_sum(g_flat * p_flat) + 
+# #         predicted_reduction = -(tf.reduce_sum(g_flat * p_flat) +
 # #                                0.5 * tf.reduce_sum(p_flat * Hp))
-        
+
 # #         rho = actual_reduction / (predicted_reduction + 1e-16)
 # #         return rho
 
@@ -383,7 +383,7 @@
 # #     # ============================================================
 
 # #     def _get_grad(
-# #         self, 
+# #         self,
 # #         inputs: tf.Tensor,
 # #         cost_fn: Callable,
 # #         damping: tf.Tensor,
@@ -404,7 +404,7 @@
 # #         )
 
 # #         step_flat = self._cg_trust_region(
-# #             inputs, U, V, g_flat, cost_fn, damping, delta, 
+# #             inputs, U, V, g_flat, cost_fn, damping, delta,
 # #             cg_max_iter, cg_tol, verbose
 # #         )
 
@@ -473,29 +473,29 @@
 
 # #             if run_diagnostics:
 # #                 tf.print("\n========== DIAGNOSTICS AT ITERATION", iter, "==========")
-                
+
 # #                 lambda_min, lambda_max = self._lanczos_eigenvalues(
 # #                     input, U, V, cost_fn, damping, n_iter=20
 # #                 )
 # #                 tf.print("Estimated eigenvalues: λ_min =", lambda_min, ", λ_max =", lambda_max)
-                
+
 # #                 cond_number = lambda_max / (tf.abs(lambda_min) + 1e-16)
 # #                 tf.print("Estimated condition number: κ(H) =", cond_number)
-                
+
 # #                 if lambda_min > 0.0:
 # #                     tf.print("Status: STRONGLY CONVEX (λ_min > 0)")
 # #                 elif lambda_min > -1e-6:
 # #                     tf.print("Status: NEARLY SINGULAR or FLAT (λ_min ≈ 0)")
 # #                 else:
 # #                     tf.print("Status: INDEFINITE (λ_min < 0) - possible saddle point")
-                
+
 # #                 grad_curv = self._gradient_curvature(input, U, V, g_flat, cost_fn, damping)
 # #                 tf.print("Curvature along gradient: g^T H g / ||g||^2 =", grad_curv)
-                
+
 # #                 grad_norm = tf.norm(g_flat)
 # #                 tf.print("Gradient norm: ||g|| =", grad_norm)
 # #                 tf.print("Trust region radius: δ =", self.delta)
-                
+
 # #                 tf.print("=" * 60, "\n")
 
 # #             # Solve trust region subproblem
@@ -505,67 +505,67 @@
 # #             )
 
 # #             p_flat = self.map.flatten_theta(step_theta)
-            
+
 # #             # Try the step
 # #             theta_new, _ = self._apply_step(theta_flat, p_flat)
 # #             self.map.set_theta(self.map.unflatten_theta(theta_new))
-            
+
 # #             # Evaluate cost at new point
 # #             cost_new, _, _, _, _ = self._cost_and_grad(input, cost_fn)
-            
+
 # #             # Compute ratio of actual to predicted reduction
 # #             rho = self._compute_rho(
-# #                 cost_old, cost_new, g_flat, p_flat, 
+# #                 cost_old, cost_new, g_flat, p_flat,
 # #                 input, U, V, cost_fn, damping
 # #             )
-            
+
 # #             if run_diagnostics:
 # #                 tf.print("Trust region ratio ρ =", rho)
-            
+
 # #             # Update trust region radius based on rho
 # #             p_norm = tf.norm(p_flat)
-            
+
 # #             # Shrink if poor agreement
 # #             new_delta = tf.cond(
 # #                 rho < 0.25,
 # #                 lambda: 0.25 * self.delta,
 # #                 lambda: self.delta
 # #             )
-            
+
 # #             # Expand if good agreement and hit boundary
 # #             new_delta = tf.cond(
 # #                 tf.logical_and(rho > 0.75, p_norm >= 0.9 * self.delta),
 # #                 lambda: tf.minimum(2.0 * new_delta, self.delta_max),
 # #                 lambda: new_delta
 # #             )
-            
+
 # #             self.delta.assign(new_delta)
-            
+
 # #             if run_diagnostics:
 # #                 if rho < 0.25:
 # #                     tf.print("  Shrinking δ -> ", self.delta)
 # #                 elif rho > 0.75 and p_norm >= 0.9 * self.delta:
 # #                     tf.print("  Expanding δ -> ", self.delta)
-            
+
 # #             # Accept or reject step
 # #             accept_step = rho > self.eta
-            
+
 # #             theta_flat = tf.cond(
 # #                 accept_step,
 # #                 lambda: theta_new,
 # #                 lambda: theta_flat
 # #             )
-            
+
 # #             cost = tf.cond(
 # #                 accept_step,
 # #                 lambda: cost_new,
 # #                 lambda: cost_old
 # #             )
-            
+
 # #             # Restore parameters if rejected
 # #             if tf.logical_not(accept_step):
 # #                 self.map.set_theta(self.map.unflatten_theta(theta_flat))
-            
+
 # #             if run_diagnostics:
 # #                 if accept_step:
 # #                     tf.print("  Step ACCEPTED")
@@ -584,7 +584,7 @@
 # #             self._update_display()
 
 # #             iter_last = iter
-            
+
 # #             if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
 # #                 break
 
@@ -1005,16 +1005,16 @@
 #         self.damping = tf.constant(damping, dtype=self.precision)
 #         self.cg_max_iter = cg_max_iter
 #         self.cg_tol = tf.constant(cg_tol, dtype=self.precision)
-        
+
 #         # Trust region parameters
 #         self.delta = tf.Variable(delta_init, dtype=self.precision)
 #         self.delta_max = tf.constant(delta_max, dtype=self.precision)
 #         self.eta = tf.constant(eta, dtype=self.precision)
-        
+
 #         # Diagnostic settings
 #         self.diagnostics = diagnostics
 #         self.diagnostics_freq = diagnostics_freq
-        
+
 #         # Preconditioner settings
 #         self.use_preconditioner = True
 #         self.precond_floor = tf.constant(1e-8, dtype=self.precision)
@@ -1030,7 +1030,7 @@
 #     # ============================================================
 
 #     def _cost_and_grad(
-#         self, 
+#         self,
 #         inputs: tf.Tensor,
 #         cost_fn: Callable,
 #     ):
@@ -1058,7 +1058,7 @@
 #         """
 #         Compute (H + damping I) v using nested GradientTapes.
 #         """
-        
+
 #         nU = tf.size(U)
 #         vU = tf.reshape(v_flat[:nU], tf.shape(U))
 #         vV = tf.reshape(v_flat[nU:], tf.shape(V))
@@ -1069,9 +1069,9 @@
 #                 inner_tape.watch((U, V))
 #                 c = cost_fn(U, V, inputs)
 #             gU, gV = inner_tape.gradient(c, (U, V))
-            
+
 #             gv = tf.reduce_sum(gU * vU) + tf.reduce_sum(gV * vV)
-        
+
 #         HvU, HvV = outer_tape.gradient(gv, (U, V))
 
 #         Hv_flat = tf.concat(
@@ -1099,37 +1099,37 @@
 #         """
 #         cost, _, _, grad_U, grad_V = self._cost_and_grad(inputs, cost_fn)
 #         g_flat = tf.concat([tf.reshape(grad_U, [-1]), tf.reshape(grad_V, [-1])], axis=0)
-        
+
 #         v = tf.random.normal(tf.shape(g_flat), dtype=self.precision)
 #         v = v / tf.norm(v)
-        
+
 #         alpha = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
 #         beta = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
-        
+
 #         v_old = tf.zeros_like(v)
 #         beta_old = tf.constant(0.0, dtype=self.precision)
-        
+
 #         for j in tf.range(n_iter):
 #             w = self._hvp(inputs, U, V, v, cost_fn, damping)
-            
+
 #             alpha_j = tf.reduce_sum(w * v)
 #             w = w - alpha_j * v - beta_old * v_old
-            
+
 #             beta_j = tf.norm(w)
-            
+
 #             alpha = alpha.write(j, alpha_j)
 #             beta = beta.write(j, beta_j)
-            
+
 #             v_old = v
 #             v = w / (beta_j + 1e-16)
 #             beta_old = beta_j
-        
+
 #         alpha_vals = alpha.stack()
 #         beta_vals = beta.stack()
-        
+
 #         lambda_max = tf.reduce_max(alpha_vals + 2.0 * beta_vals)
 #         lambda_min = tf.reduce_min(alpha_vals - 2.0 * beta_vals)
-        
+
 #         return lambda_min, lambda_max
 
 #     # ============================================================
@@ -1151,7 +1151,7 @@
 #         Hg = self._hvp(inputs, U, V, g_flat, cost_fn, damping)
 #         gHg = tf.reduce_sum(g_flat * Hg)
 #         gg = tf.reduce_sum(g_flat * g_flat)
-        
+
 #         return gHg / (gg + 1e-16)
 
 #     # ============================================================
@@ -1174,24 +1174,24 @@
 #         """
 #         Solve trust region subproblem using preconditioned Steihaug-Tong CG.
 #         """
-        
+
 #         # Initialize preconditioner on first call
 #         if self.precond_diag is None:
 #             n_total = tf.size(g_flat)
 #             self.precond_diag = tf.ones(n_total, dtype=self.precision)
-        
+
 #         # Compute diagonal preconditioner if needed
 #         def compute_precond():
 #             n_samples = 10
 #             n_total = tf.size(g_flat)
 #             diag_est = tf.zeros(n_total, dtype=self.precision)
-            
+
 #             for _ in tf.range(n_samples):
 #                 z = tf.random.uniform((n_total,), dtype=self.precision)
 #                 z = tf.where(z < 0.5, -tf.ones_like(z), tf.ones_like(z))
 #                 Hz = self._hvp(inputs, U, V, z, cost_fn, tf.constant(0.0, dtype=self.precision))
 #                 diag_est += z * Hz
-            
+
 #             diag_est = diag_est / tf.cast(n_samples, self.precision)
 #             diag_abs = tf.maximum(tf.abs(diag_est), self.precond_floor)
 #             self.precond_needs_update.assign(False)
@@ -1205,7 +1205,7 @@
 #             compute_precond,
 #             keep_precond
 #         )
-        
+
 #         # Update the stored preconditioner
 #         self.precond_diag = precond
 
@@ -1214,7 +1214,7 @@
 #         z = precond * r  # Apply preconditioner
 #         p = -z
 #         rz = tf.reduce_sum(r * z)
-        
+
 #         initial_residual = tf.sqrt(rz)
 #         converged = tf.constant(False)
 #         hit_boundary = tf.constant(False)
@@ -1224,20 +1224,20 @@
 #             should_continue = tf.logical_not(
 #                 tf.logical_or(converged, tf.logical_or(hit_boundary, neg_curvature))
 #             )
-            
+
 #             if should_continue:
 #                 converged = rz <= cg_tol
-                
+
 #                 if tf.logical_not(converged):
 #                     Ap = self._hvp(inputs, U, V, p, cost_fn, damping)
 #                     pAp = tf.reduce_sum(p * Ap)
-                    
+
 #                     if verbose and i % 5 == 0:
 #                         rel_residual = tf.sqrt(rz) / (initial_residual + 1e-16)
 #                         x_norm = tf.norm(x)
-#                         tf.print("  PCG iter:", i, "| rel_res:", rel_residual, 
+#                         tf.print("  PCG iter:", i, "| rel_res:", rel_residual,
 #                                 "| ||x||:", x_norm, "| δ:", delta, "| p^T Ap:", pAp)
-                    
+
 #                     if pAp <= 0.0:
 #                         if verbose:
 #                             tf.print("  NEGATIVE CURVATURE detected")
@@ -1247,7 +1247,7 @@
 #                     else:
 #                         alpha = rz / pAp
 #                         x_new = x + alpha * p
-                        
+
 #                         if tf.norm(x_new) >= delta:
 #                             if verbose:
 #                                 tf.print("  TRUST REGION BOUNDARY hit")
@@ -1270,14 +1270,14 @@
 #         return x
 
 #     def _find_boundary_step(
-#         self, 
-#         x: tf.Tensor, 
-#         p: tf.Tensor, 
+#         self,
+#         x: tf.Tensor,
+#         p: tf.Tensor,
 #         delta: tf.Tensor
 #     ) -> tf.Tensor:
 #         """
 #         Find tau >= 0 such that ||x + tau*p|| = delta.
-        
+
 #         This solves: ||x + tau*p||^2 = delta^2
 #         Expanding: (x^T x) + 2*tau*(x^T p) + tau^2*(p^T p) = delta^2
 #         This is a quadratic in tau: a*tau^2 + b*tau + c = 0
@@ -1285,11 +1285,11 @@
 #         a = tf.reduce_sum(p * p)
 #         b = 2.0 * tf.reduce_sum(x * p)
 #         c = tf.reduce_sum(x * x) - delta * delta
-        
+
 #         # Solve quadratic, take positive root
 #         discriminant = b * b - 4.0 * a * c
 #         tau = (-b + tf.sqrt(tf.maximum(discriminant, 0.0))) / (2.0 * a)
-        
+
 #         return tf.maximum(tau, 0.0)
 
 #     # ============================================================
@@ -1311,16 +1311,16 @@
 #         """
 #         Compute ratio of actual to predicted reduction:
 #             rho = (f_old - f_new) / (m_old - m_new)
-        
+
 #         where m(p) = f + g^T p + 0.5 p^T H p is the quadratic model.
 #         """
 #         actual_reduction = f_old - f_new
-        
+
 #         # Predicted reduction: -g^T p - 0.5 p^T H p
 #         Hp = self._hvp(inputs, U, V, p_flat, cost_fn, damping)
-#         predicted_reduction = -(tf.reduce_sum(g_flat * p_flat) + 
+#         predicted_reduction = -(tf.reduce_sum(g_flat * p_flat) +
 #                                0.5 * tf.reduce_sum(p_flat * Hp))
-        
+
 #         rho = actual_reduction / (predicted_reduction + 1e-16)
 #         return rho
 
@@ -1329,7 +1329,7 @@
 #     # ============================================================
 
 #     def _get_grad(
-#         self, 
+#         self,
 #         inputs: tf.Tensor,
 #         cost_fn: Callable,
 #         damping: tf.Tensor,
@@ -1350,7 +1350,7 @@
 #         )
 
 #         step_flat = self._cg_trust_region(
-#             inputs, U, V, g_flat, cost_fn, damping, delta, 
+#             inputs, U, V, g_flat, cost_fn, damping, delta,
 #             cg_max_iter, cg_tol, verbose
 #         )
 
@@ -1419,29 +1419,29 @@
 
 #             if run_diagnostics:
 #                 tf.print("\n========== DIAGNOSTICS AT ITERATION", iter, "==========")
-                
+
 #                 lambda_min, lambda_max = self._lanczos_eigenvalues(
 #                     input, U, V, cost_fn, damping, n_iter=20
 #                 )
 #                 tf.print("Estimated eigenvalues: λ_min =", lambda_min, ", λ_max =", lambda_max)
-                
+
 #                 cond_number = lambda_max / (tf.abs(lambda_min) + 1e-16)
 #                 tf.print("Estimated condition number: κ(H) =", cond_number)
-                
+
 #                 if lambda_min > 0.0:
 #                     tf.print("Status: STRONGLY CONVEX (λ_min > 0)")
 #                 elif lambda_min > -1e-6:
 #                     tf.print("Status: NEARLY SINGULAR or FLAT (λ_min ≈ 0)")
 #                 else:
 #                     tf.print("Status: INDEFINITE (λ_min < 0) - possible saddle point")
-                
+
 #                 grad_curv = self._gradient_curvature(input, U, V, g_flat, cost_fn, damping)
 #                 tf.print("Curvature along gradient: g^T H g / ||g||^2 =", grad_curv)
-                
+
 #                 grad_norm = tf.norm(g_flat)
 #                 tf.print("Gradient norm: ||g|| =", grad_norm)
 #                 tf.print("Trust region radius: δ =", self.delta)
-                
+
 #                 tf.print("=" * 60, "\n")
 
 #             # Solve trust region subproblem
@@ -1451,67 +1451,67 @@
 #             )
 
 #             p_flat = self.map.flatten_theta(step_theta)
-            
+
 #             # Try the step
 #             theta_new, _ = self._apply_step(theta_flat, p_flat)
 #             self.map.set_theta(self.map.unflatten_theta(theta_new))
-            
+
 #             # Evaluate cost at new point
 #             cost_new, _, _, _, _ = self._cost_and_grad(input, cost_fn)
-            
+
 #             # Compute ratio of actual to predicted reduction
 #             rho = self._compute_rho(
-#                 cost_old, cost_new, g_flat, p_flat, 
+#                 cost_old, cost_new, g_flat, p_flat,
 #                 input, U, V, cost_fn, damping
 #             )
-            
+
 #             if run_diagnostics:
 #                 tf.print("Trust region ratio ρ =", rho)
-            
+
 #             # Update trust region radius based on rho
 #             p_norm = tf.norm(p_flat)
-            
+
 #             # Shrink if poor agreement
 #             new_delta = tf.cond(
 #                 rho < 0.25,
 #                 lambda: 0.25 * self.delta,
 #                 lambda: self.delta
 #             )
-            
+
 #             # Expand if good agreement and hit boundary
 #             new_delta = tf.cond(
 #                 tf.logical_and(rho > 0.75, p_norm >= 0.9 * self.delta),
 #                 lambda: tf.minimum(2.0 * new_delta, self.delta_max),
 #                 lambda: new_delta
 #             )
-            
+
 #             self.delta.assign(new_delta)
-            
+
 #             if run_diagnostics:
 #                 if rho < 0.25:
 #                     tf.print("  Shrinking δ -> ", self.delta)
 #                 elif rho > 0.75 and p_norm >= 0.9 * self.delta:
 #                     tf.print("  Expanding δ -> ", self.delta)
-            
+
 #             # Accept or reject step
 #             accept_step = rho > self.eta
-            
+
 #             theta_flat = tf.cond(
 #                 accept_step,
 #                 lambda: theta_new,
 #                 lambda: theta_flat
 #             )
-            
+
 #             cost = tf.cond(
 #                 accept_step,
 #                 lambda: cost_new,
 #                 lambda: cost_old
 #             )
-            
+
 #             # Restore parameters if rejected
 #             if tf.logical_not(accept_step):
 #                 self.map.set_theta(self.map.unflatten_theta(theta_flat))
-            
+
 #             if run_diagnostics:
 #                 if accept_step:
 #                     tf.print("  Step ACCEPTED")
@@ -1530,7 +1530,7 @@
 #             self._update_display()
 
 #             iter_last = iter
-            
+
 #             if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
 #                 break
 
@@ -1551,7 +1551,6 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 
 from dataclasses import dataclass
-
 
 @dataclass
 class CGContext:
@@ -1602,6 +1601,7 @@ class OptimizerTrustRegion(Optimizer):
             **kwargs,
         )
 
+        tf.config.optimizer.set_experimental_options({"disable_meta_optimizer": True})
         self.name = "trust_region"
 
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
@@ -1651,8 +1651,6 @@ class OptimizerTrustRegion(Optimizer):
     ) -> tf.Tensor:
         """Compute (H + damping I) v using reverse-over-reverse Hessian-vector product."""
 
-        print("TRACING", "_hvp")
-        
         theta = self.map.get_theta()
 
         with tf.GradientTape() as outer_tape:
@@ -1694,7 +1692,6 @@ class OptimizerTrustRegion(Optimizer):
         On negative curvature or boundary hit, moves to the trust region boundary.
         """
 
-        print("TRACING", "_cg_trust_region")
         ctx = CGContext(inputs=inputs, cost_fn=cost_fn, damping=damping)
 
         x = tf.zeros_like(g_flat)
@@ -1775,7 +1772,6 @@ class OptimizerTrustRegion(Optimizer):
     ) -> Tuple[tf.Tensor, List[tf.Tensor | tf.Variable], List[tf.Tensor | tf.Variable]]:
         """Compute cost and gradients (function and parameter space)."""
 
-        print("TRACING", "_get_grad")
         cost, grad_u, grad_theta = self._cost_and_grad(inputs, cost_fn)
 
         return cost, grad_u, grad_theta
@@ -1792,11 +1788,8 @@ class OptimizerTrustRegion(Optimizer):
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-        first_batch = self.sampler(inputs)
-        if first_batch.shape[0] != 1:
-            raise NotImplementedError("Trust Region requires a single batch.")
 
-        input = first_batch[0, :, :, :, :]
+        input = inputs[0:1, :, :, :]
 
         cost_fn = self.cost_fn
         damping = self.damping
@@ -1848,7 +1841,9 @@ class OptimizerTrustRegion(Optimizer):
             rho = actual_red / (pred_red + 1e-16)
 
             # Handle NaN/Inf: treat as a very bad step
-            rho = tf.where(tf.math.is_finite(rho), rho, tf.constant(-1.0, dtype=self.precision))
+            rho = tf.where(
+                tf.math.is_finite(rho), rho, tf.constant(-1.0, dtype=self.precision)
+            )
 
             # Update trust region radius
             p_norm = tf.norm(p_flat)

@@ -6,7 +6,7 @@
 import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent
+from ..sliding import SlidingComponent, mask_gr
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
@@ -19,6 +19,8 @@ class BuddParams(tf.experimental.ExtensionType):
     exponent: float
     u_ref: float  # (m/yr)
     N_ref: float
+    rho_ratio: float
+    use_mask_gr: bool
 
 
 class Budd(SlidingComponent):
@@ -63,8 +65,25 @@ def cost_budd(
     u_regu = tf.cast(budd_params.regu, dtype)
     u_ref = tf.cast(budd_params.u_ref, dtype)
     N_ref = tf.cast(budd_params.N_ref, dtype)
+    rho_ratio = tf.cast(budd_params.rho_ratio, dtype)
+    use_mask_gr = tf.cast(budd_params.use_mask_gr, tf.bool)
 
-    return _cost(U, V, h, s, tau_ref, dx, m, u_regu, u_ref, N_ref, discr_h, V_b)
+    return _cost(
+        U,
+        V,
+        h,
+        s,
+        tau_ref,
+        dx,
+        m,
+        u_regu,
+        u_ref,
+        N_ref,
+        rho_ratio,
+        use_mask_gr,
+        discr_h,
+        V_b,
+    )
 
 
 @tf.function()
@@ -79,6 +98,8 @@ def _cost(
     u_regu: tf.Tensor,
     u_ref: tf.Tensor,
     N_ref: tf.Tensor,
+    rho_ratio: tf.Tensor,
+    use_mask_gr: tf.Tensor,
     discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:
@@ -111,6 +132,10 @@ def _cost(
         Budd exponent (-)
     u_regu : tf.Tensor
         Regularization parameter for velocity magnitude (m/year)
+    rho_ratio : tf.Tensor
+        Water density / ice density ratio (-)
+    use_mask_gr : tf.Tensor
+        If True, zero out basal shear stress in floating areas (-)
     discr_h: HorizontalDiscr
         Horizontal discretization class (-)
     V_b : tf.Tensor
@@ -121,6 +146,11 @@ def _cost(
     tf.Tensor
         Budd sliding cost in MPa m/year
     """
+
+    # Apply grounding mask to basal shear stress
+    if use_mask_gr:
+        topg = s - h
+        tau_ref = tau_ref * mask_gr(h, topg, rho_ratio)
 
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)

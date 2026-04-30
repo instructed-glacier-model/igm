@@ -48,7 +48,7 @@ enthalpy:
   drainage:
     water_density: 1000.0
     drain_ice_column: True
-    omega_target: 0.01
+    omega_target: 0.00
     omega_threshold_1: 0.01
     omega_threshold_2: 0.02
     omega_threshold_3: 0.03    

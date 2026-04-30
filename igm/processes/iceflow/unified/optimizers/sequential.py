@@ -87,7 +87,6 @@ class OptimizerSequential(Optimizer):
 
             self._print_stage_header(stage, optimizer.name)
 
-            optimizer.sampler = self.sampler
             cost = optimizer.minimize(inputs)
 
             iter_stage = cost.shape[0]

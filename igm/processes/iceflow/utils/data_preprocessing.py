@@ -73,6 +73,31 @@ def pertubate_X(cfg, X):
     return tf.concat(XX, axis=0)
 
 
+def split_field_into_patches(X: tf.Tensor, framesizemax: int) -> tf.Tensor:
+    """
+    Split a [H, W, C] field into non-overlapping patches [N, ly, lx, C].
+
+    Uses the same grid-division strategy as the emulated split_into_patches_X:
+    - sy = H // framesizemax + 1 strips in y
+    - sx = W // framesizemax + 1 strips in x
+    - each tile is ly = H // sy  by  lx = W // sx  pixels
+    - patches are guaranteed to be smaller than framesizemax
+    """
+    ny = int(X.shape[0])
+    nx = int(X.shape[1])
+    sy = ny // framesizemax + 1
+    sx = nx // framesizemax + 1
+    ly = ny // sy
+    lx = nx // sx
+
+    patches = []
+    for j in range(sy):
+        for i in range(sx):
+            patches.append(X[j * ly : (j + 1) * ly, i * lx : (i + 1) * lx, :])
+
+    return tf.stack(patches, axis=0)  # [sy*sx, ly, lx, C]
+
+
 def fieldin_state_to_X(cfg, state) -> tf.Tensor:
     """This is a bit confusing variable naming. Essentially, it takes the inputs specified in the config files, checks they are in state, and then returns a stacked tensor.
     Previously, this was called 'get_fieldin' but typically field_in is a dictionary - not a stacked tensor - hence the confusion.

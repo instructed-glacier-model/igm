@@ -1,0 +1,32 @@
+mode:
+  Type: string
+  Units: dimless
+  Description: "Rendering mode: '2d' for matplotlib planview, '3d' for PyVista GPU."
+update_freq:
+  Type: int
+  Units: dimless
+  Description: "Update the dashboard every N save events."
+figsize:
+  Type: list
+  Units: inches
+  Description: "Figure width in inches (2D only); height is auto-computed from domain aspect ratio."
+dpi:
+  Type: int
+  Units: dimless
+  Description: "Figure resolution in dots per inch (2D only)."
+vel_max:
+  Type: float
+  Units: m/a
+  Description: "Maximum value for the velocity colorbar."
+thk_max:
+  Type: float
+  Units: m
+  Description: "Maximum value for the thickness colorbar."
+save_frames:
+  Type: boolean
+  Units: dimless
+  Description: "Save PNG frames at each update step (2D only)."
+window_size:
+  Type: list
+  Units: pixels
+  Description: "Window size in pixels (3D only)."

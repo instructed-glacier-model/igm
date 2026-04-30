@@ -12,7 +12,7 @@ import tensorflow as tf
 import igm
 from igm.common import State
 from igm.common.runner.configuration.loader import load_yaml_recursive
-from igm.processes.enthalpy import enthalpy
+from igm.processes.enthalpy import enthalpy, compute_variables_enthalpy_state
 
 
 def _load_config():
@@ -104,6 +104,10 @@ def setup_experiment_b(Nz_E: int = 500):
     cfg.processes.enthalpy.numerics.vert_spacing = 1
     _configure_enthalpy_solver(cfg, refreezing=False)
 
+    # Exp B parameters (Table A1, Kleiner et al. 2015): beta=0, L=3.35e5
+    cfg.processes.enthalpy.thermal.beta = 0.0
+    cfg.processes.enthalpy.thermal.L_ice = 3.35e5
+
     # Initialize state
     state = _init_state(Ny, Nx, H=H, dt=1.0, T_air=-3.0)
     state.basal_heat_flux = tf.zeros((Ny, Nx))
@@ -144,6 +148,7 @@ def run_simulation_a(cfg, state, dt: float):
         state.air_temp.assign(T_surface * tf.ones((1, 2, 2)))
 
         enthalpy.update(cfg, state)
+        compute_variables_enthalpy_state(cfg, state)
 
         results["time"].append(t)
         results["T_base"].append(state.T[0, 0, 0].numpy() - 273.15)
@@ -177,9 +182,12 @@ def run_simulation_b(cfg, state, max_iter: int = 1500, tol: float = 1e-3):
                 break
             prev_E = state.E.numpy().copy()
             if it % 100 == 0:
+                compute_variables_enthalpy_state(cfg, state)
                 print(
                     f"  Iteration {it}: T_base={state.T[0, 0, 0].numpy() - 273.15:.2f}C"
                 )
+
+    compute_variables_enthalpy_state(cfg, state)
 
 
 def extract_results_b(state):

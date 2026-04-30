@@ -1,0 +1,9 @@
+live_dashboard:
+  mode: "2d"              # "2d" (matplotlib planview) or "3d" (PyVista GPU)
+  update_freq: 1          # update every N save events (1 = every save)
+  figsize: [14, 9]        # figure size in inches (2d mode only)
+  dpi: 100                # figure resolution (2d mode only)
+  vel_max: 500.0          # velocity colorbar max (m/a)
+  thk_max: 800.0          # thickness colorbar max (m)
+  save_frames: false      # also save PNG frames
+  window_size: [1200, 800] # 3d mode window size

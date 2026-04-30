@@ -44,6 +44,8 @@ def compute_fraction_drained(
     omega_threshold_1: tf.Tensor,
     omega_threshold_2: tf.Tensor,
     omega_threshold_3: tf.Tensor,
+    rho_ice: tf.Tensor,
+    rho_water: tf.Tensor,
     dz: tf.Tensor,
     dt: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -61,11 +63,13 @@ def compute_fraction_drained(
         omega_threshold_1: First water content threshold (-).
         omega_threshold_2: Second water content threshold (-).
         omega_threshold_3: Third water content threshold (-).
+        rho_ice: Ice density (kg m^-3).
+        rho_water: Water density (kg m^-3).
         dz: Vertical grid spacing field (m).
         dt: Time step (yr).
 
     Returns:
-        Tuple of drained water fraction (-) and drained water thickness (m).
+        Tuple of drained water fraction (-) and drained water thickness (m water).
     """
     # Water content
     omega = tf.maximum((E - E_pmp) / L_ice, 0.0)
@@ -83,7 +87,9 @@ def compute_fraction_drained(
         )
         * dt
     )
-    fraction_drained = tf.clip_by_value(fraction_drained, 0.0, omega - omega_target)
+    fraction_drained = tf.clip_by_value(
+        fraction_drained, 0.0, (omega - omega_target) * rho_ice / rho_water
+    )
     fraction_drained = tf.where(DRAINED, fraction_drained, 0.0)
 
     # Drained water thickness

@@ -1,11 +1,11 @@
 iceflow:
   method: emulated
-  do_pretraining: false
   force_max_velbar: 0.0
   physics:
     energy_components: [viscosity, gravity, sliding]
     sliding:
       law: weertman
+      use_mask_gr: false
       weertman:
         regu: 1.0e-10
         exponent: 3.0
@@ -57,7 +57,7 @@ iceflow:
     warm_up_it: -10000000000.0
     nbit_init: 1
     nbit: 1
-    framesizemax: 750
+    framesizemax: 1000
     split_patch_method: sequential
     pretrained: true
     name: ''
@@ -94,15 +94,18 @@ iceflow:
     bcs: []
     bc:
       dirichlet:
-        left: 0
-        right: 0
-        top: 0
-        bottom: 0
+        left: 0.0
+        right: 0.0
+        top: 0.0
+        bottom: 0.0
     optimizer: adam
     nbit: 1
     nbit_init: 1
     nbit_warmup: -1
     retrain_freq: 10
+    retrain_threshold: 1.0e+10 # for now it corresponds to a z-score (1.0e+10 is default as its quite high and will default to the retrain_freq most likely)
+    newton:
+      damping: 1e-6
     adam:
       lr: 2.0e-05
       lr_init: 0.0001
@@ -116,8 +119,26 @@ iceflow:
       cg_tol: 1e-10
       cg_max_iter: 100
       truncated: true
-    hessian:
       damping: 1e-6
+    trust_region:
+      cg_max_iter: 100
+      cg_tol: 1e-12
+      delta_init: 1e2
+      delta_max: 1e10
+      eta: 0.15
+      damping: 1e-6
+    muon:
+      lr: 2.0e-02
+      momentum: 0.95
+      ns_steps: 5
+      lr_1d: 3.0e-04
+    soap:
+      lr: 3.0e-04
+      beta1: 0.95
+      beta2: 0.999
+      eps: 1.0e-08
+      precond_freq: 10
+      damping: 1.0e-08
     sequential:
       stages: []
     line_search: hager-zhang
@@ -147,18 +168,17 @@ iceflow:
       pretrained: true
       pretrained_path: ""
       print_summary: false
-      old_format: false
       output_scale: 1.0
       architecture: CNN
+    adaptive_patching:
+      strategy: none           # none | topk | nms | maxpool | tfnms
+      max_retrain_patches: 10  # K: max patches per retraining step
+      min_dhdt: 0.1            # threshold (m/yr): skip patches below this
+      forgetting_prevention: true  # add 1 random ice-covered patch
+      scoring: max             # max | mean — reduction within each patch
     data_preparation:
-      patch_size: 1000
-      overlap: 0.0
-      batch_size: 1
-      rotation_probability: 0.0
-      flip_probability: 0.0
-      noise_type: none
-      noise_scale: 0.0
-      target_samples: 1
+      framesizemax: 1000
+      patches_per_batch: 1
     halt:
       freq: 1
       success: []

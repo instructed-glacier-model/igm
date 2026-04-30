@@ -7,11 +7,24 @@ import tensorflow as tf
 from typing import Tuple
 from .bc import BoundaryCondition, TV
 
-class DirichletBoundary(BoundaryCondition):
-    """Dirichlet boundary condition on specified edges."""
 
-    def __init__(self, left: float = None, right: float = None,
-                 top: float = None, bottom: float = None):
+class DirichletBoundary(BoundaryCondition):
+    """Dirichlet boundary condition on specified edges.
+
+    Note: the values set here are applied directly to the degrees of freedom (DOFs)
+    of the velocity representation, not to the velocity field itself. For nodal bases
+    (e.g., Lagrange, Molho, SSA) the DOFs coincide with pointwise velocity values,
+    but for other (e.g., modal) bases non-zero values will not have a straightforward
+    physical interpretation.
+    """
+
+    def __init__(
+        self,
+        left: float = None,
+        right: float = None,
+        top: float = None,
+        bottom: float = None,
+    ):
         """
         Parameters
         ----------
@@ -31,7 +44,7 @@ class DirichletBoundary(BoundaryCondition):
 
     def apply(self, U: TV, V: TV) -> Tuple[TV, TV]:
         """Apply Dirichlet boundary conditions on specified edges.
-        
+
         U, V shape: [batch, Nz, Ny, Nx]
         """
         if self.left is not None:

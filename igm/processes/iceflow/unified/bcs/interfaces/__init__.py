@@ -12,5 +12,5 @@ InterfaceBoundaryConditions = {
     "periodic_ns_global": InterfacePeriodicNSGlobal,
     "periodic_we_global": InterfacePeriodicWEGlobal,
     "no_inflow": InterfaceNoInflow,
-    "dirichlet": InterfaceDirichletBoundary
+    "dirichlet": InterfaceDirichletBoundary,
 }

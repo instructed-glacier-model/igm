@@ -11,7 +11,9 @@ from igm.common import State
 from .utils import compute_arrhenius_3d
 
 
-def compute_arrhenius(cfg: DictConfig, state: State) -> None:
+def compute_arrhenius(
+    cfg: DictConfig, state: State, T: tf.Tensor, omega: tf.Tensor
+) -> None:
     """
     Compute the vertically-averaged Arrhenius factor for ice flow.
 
@@ -22,6 +24,10 @@ def compute_arrhenius(cfg: DictConfig, state: State) -> None:
     This approach is physically motivated since B is proportional to viscosity,
     and averaging viscosity is more appropriate than averaging the rate factor.
 
+    Args:
+        T: Temperature field (K).
+        omega: Water content fraction (-).
+
     Updates state.arrhenius (MPa^-n yr^-1).
     """
     cfg_physics = cfg.processes.iceflow.physics
@@ -30,7 +36,7 @@ def compute_arrhenius(cfg: DictConfig, state: State) -> None:
     weights = state.iceflow.discr_v.enthalpy.weights
 
     # Compute 3D Arrhenius factor with enhancement
-    A = E * compute_arrhenius_3d(cfg, state)
+    A = E * compute_arrhenius_3d(cfg, state, T, omega)
 
     # Average over B = A^(-1/n) and convert back
     B = tf.pow(A, -1.0 / n)
