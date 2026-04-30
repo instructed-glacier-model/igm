@@ -29,9 +29,19 @@ def optimize_update(cfg, state, cost, i):
 
     for f in cfg.processes.data_assimilation.control_list:
         if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
-            vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
+            new_value = tf.sqrt(vars(state)[f] / sc[f])
         else:
-            vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
+            new_value = vars(state)[f] / sc[f]
+
+        # Reuse the same tf.Variable across iterations so the (Keras 3) Adam
+        # optimizer keeps recognizing it. Recreating it each step yields a new
+        # variable identity and Keras 3's apply_gradients rejects unknown vars.
+        key = f + "_sc"
+        existing = vars(state).get(key)
+        if isinstance(existing, tf.Variable) and existing.shape == new_value.shape:
+            existing.assign(new_value)
+        else:
+            vars(state)[key] = tf.Variable(new_value)
 
     with tf.GradientTape() as t:
 
