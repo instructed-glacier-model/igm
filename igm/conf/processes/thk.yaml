@@ -17,3 +17,11 @@ thk:
     promote_iters: 5                   # passes of partial-cell -> full promotion per outer step
     calve_cliff: true                  # drain thk at front full cells -> actual retreat mechanism
 
+  level_set:                           # Bondzio 2016 / ISSM
+    only_near_front: false             # Gaussian-damp calving forcing away from psi=0
+    band_cells: 3                      # width of that Gaussian, in cells
+    reinit_freq: 5                     # Sussman reinit every N outer steps (0 = never)
+    reinit_iter: 5                     # pseudo-time iterations per reinit
+    reinit_iter_initial: 50            # iterations for the initial psi build from +/-dx mask
+    phi_eps: 1.0e-3                    # floor on phi when recovering thk = M / phi
+    cap_partial: false                 # clip partial-cell thk to interior mean (lossy)

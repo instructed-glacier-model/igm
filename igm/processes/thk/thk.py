@@ -38,7 +38,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-# import cf_level_set
+import cf_level_set
 import cf_sub_grid
 from utils import update_surfaces
 
@@ -53,7 +53,7 @@ def initialize(cfg, state):
     p = cfg.processes.thk
 
     if p.calving_front and p.method == "level_set":
-#        cf_level_set.initialize(cfg, state)
+        cf_level_set.initialize(cfg, state)
         raise ValueError(
                 f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
                 f"Please use 'sub_grid' instead."
@@ -93,7 +93,7 @@ def update(cfg, state):
             )
 
         elif p.method == "level_set":
-#            cf_level_set.update(cfg, state)
+            cf_level_set.update(cfg, state)
             raise ValueError(
                     f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
                     f"Please use 'sub_grid' instead."
