@@ -1,340 +1,497 @@
 #!/usr/bin/env python3
 
-"""
-Data assimilation by time relaxation.
+# Copyright (C) 2021-2026 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
-A forward relaxation loop is run *inside* ``initialize``. At each
-step the surface mass balance (SMB) is adapted to fit a chosen
-target, while one geometric field (bed ``topg`` or thickness
-``thk``) is used as the control variable. An independent friction
-inversion can adjust ``slidingco`` to match observed surface
-velocities. After the loop, ``state.t`` is cleared so the outer
-IGM loop exits without further iterations.
+"""Generic relaxation-based data assimilation.
 
-Two orthogonal switches define the geometric inversion:
+A relaxation run is a list of independent ``steps``. Each step is an
+orthogonal triple
 
-* ``cost.target``   : ``amb_balance`` | ``surface_match``
-* ``control.field`` : ``topg``        | ``thk``
+    (residual, update law, control)
 
-Plus an independent friction inversion (cost = ||v - v_obs||,
-control = ``slidingco``) controlled by ``friction.method``
-(``additive`` | ``log_mult`` | ``none``).
+with optional modifiers (mask, cadence, start/end time, smoother,
+control bounds, geometry policy). Inside one outer time loop:
 
-The combo (``cost.target=amb_balance``, ``control.field=topg``)
-corresponds to the method published in:
+    1. forward_model.update                     (e.g. iceflow)
+    2. aux_processes update                     (configurable list)
+    3. ensure derived fields                    (velsurf_mag, divflux)
+    4. advance time                             (CFL-limited iff a step writes a geometry control)
+    5. for each step that is due:
+           r := residual
+           r := mask_aware_smooth(r) if requested
+           ΔC = update_law(C, r, dt)
+           C ← clip(C + ΔC,  control.bounds)
+           apply geometry_policy if writing thk / topg / usurf
+    6. snapshot (output hooks + misfit CSV)
 
-  Ward van Pelt and Thomas Frank, *The Cryosphere* 19, 1, 2025.
-  https://tc.copernicus.org/articles/19/1/2025/
-
-This routine derives from the original implementation by Thomas Frank.
+state.t is deleted at exit so the outer IGM loop short-circuits.
 
 """
 
 import importlib
-import warnings
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
-from scipy import ndimage as nd
-from scipy.ndimage import gaussian_filter
 
 from igm.utils.grad.compute_divflux import compute_divflux
-from igm.processes.iceflow import initialize as iceflow_initialize
-from igm.processes.iceflow import update as iceflow_update
 
 
-# --------------------------------------------------------------------- #
-#  Public API                                                           #
-# --------------------------------------------------------------------- #
+# ===================================================================== #
+#  Residuals                                                            #
+# ===================================================================== #
+#
+#   linear     r = T - M
+#   relative   r = (T - M) / max(|T|, eps)
+#   log_ratio  r = log(max(M, eps) / max(T, eps))
+#
 
-def initialize(cfg, state):
-    p = cfg.processes.time_relaxation
-
-    _validate_combo(p)
-
-    _prepare_geometry(state)
-
-    aux_modules = _load_aux_modules(p.aux_processes)
-    for m in aux_modules:
-        m.initialize(cfg, state)
-
-    iceflow_initialize(cfg, state)
-
-    if p.control.field == "thk":
-        from igm.processes import thk as thk_module
-        thk_module.initialize(cfg, state)
-    else:
-        thk_module = None
-
-    _prepare_targets(state)
-    _prepare_cost(p, state)
-
-    _run_forward_loop(cfg, p, state, aux_modules, thk_module)
-
-    if p.output.save_result_in_ncdf:
-        _write_final_ncdf(p, state)
-
-    _cleanup_loop_state(state)
+def _resid_linear(T, M, eps):
+    return T - M
 
 
-def update(cfg, state):
-    pass
+def _resid_relative(T, M, eps):
+    return (T - M) / tf.maximum(tf.abs(T), tf.cast(eps, T.dtype))
 
 
-def finalize(cfg, state):
-    pass
+def _resid_log_ratio(T, M, eps):
+    e = tf.cast(eps, T.dtype)
+    return tf.math.log(tf.maximum(M, e) / tf.maximum(T, e))
 
 
-# --------------------------------------------------------------------- #
-#  Initialization helpers                                               #
-# --------------------------------------------------------------------- #
-
-_VALID_COSTS = ("amb_balance", "surface_match")
-_VALID_CONTROLS = ("topg", "thk")
-
-
-def _validate_combo(p):
-    if p.cost.target not in _VALID_COSTS:
-        raise ValueError(
-            f"time_relaxation cost.target must be one of {_VALID_COSTS}, "
-            f"got {p.cost.target!r}."
-        )
-    if p.control.field not in _VALID_CONTROLS:
-        raise ValueError(
-            f"time_relaxation control.field must be one of {_VALID_CONTROLS}, "
-            f"got {p.control.field!r}."
-        )
-    if p.cost.target == "surface_match" and p.control.field == "topg":
-        raise ValueError(
-            "time_relaxation: (cost.target=surface_match, control.field=topg) "
-            "has no canonical kernel. Use control.field='thk' (svalbard-style "
-            "surface-nudge mass conservation) or cost.target='amb_balance'."
-        )
+_RESIDUALS = {
+    "linear":    _resid_linear,
+    "relative":  _resid_relative,
+    "log_ratio": _resid_log_ratio,
+}
 
 
-def _load_aux_modules(names):
-    return [importlib.import_module(f"igm.processes.{n}") for n in names]
+# ===================================================================== #
+#  Update laws                                                          #
+# ===================================================================== #
+#
+# All laws share the signature  (C, r, α, dt) -> C_new  and accept an
+# optional r_max that clips r to [-r_max, +r_max] before applying.
+#
+#   additive              C ← C + α · r · dt
+#   multiplicative        C ← C · exp(α · r · dt)            (exact ODE)
+#   multiplicative_linear C ← C · (1 + α · r · dt)           (Pollard-style)
+#   replace               C ← α · r                          (absolute write; dt ignored)
+#
+# `dt` is the *effective* time over which the residual integrates. For
+# per-step kernels (cadence = 0) it is the outer-loop state.dt; for
+# cadenced kernels (cadence > 0) it is 1.0, so α is interpreted as a
+# pure per-application gain (matches the legacy "every N years, apply
+# this multiplier" convention used by the friction kernels).
+#
+
+def _upd_additive(C, r, alpha, dt, r_max=None):
+    if r_max is not None:
+        r = tf.clip_by_value(r, -r_max, r_max)
+    return C + alpha * r * dt
 
 
-def _prepare_geometry(state):
-    """Make sure (thk, topg, usurf, icemask) are mutually consistent."""
-    if not hasattr(state, "icemask"):
-        state.icemask = tf.ones_like(state.usurf)
-
-    if not hasattr(state, "thk"):
-        if not hasattr(state, "topg"):
-            state.thk = tf.zeros_like(state.icemask)
-            state.topg = state.usurf
-        else:
-            state.thk = state.usurf - state.topg
-    elif not hasattr(state, "topg"):
-        state.topg = state.usurf - state.thk * state.icemask
-    else:
-        state.thk = state.thk * state.icemask
-        state.topg = state.usurf - state.thk
-
-    state.usurf = tf.maximum(state.usurf, 0.0)
-    state.icemask = tf.where(state.usurf <= 0.0, 0.0, state.icemask)
+def _upd_multiplicative(C, r, alpha, dt, r_max=None):
+    if r_max is not None:
+        r = tf.clip_by_value(r, -r_max, r_max)
+    return C * tf.exp(alpha * r * dt)
 
 
-def _prepare_targets(state):
-    """Snapshot observations BEFORE the loop overwrites the model fields,
-    so per-iteration misfits can be computed against the original
-    targets."""
-    if not hasattr(state, "usurf_obs"):
-        state.usurf_obs = tf.identity(state.usurf)
-    if not hasattr(state, "thk_obs"):
-        state.thk_obs = tf.identity(state.thk)
-    if not hasattr(state, "dhdt_obs") and hasattr(state, "dhdt"):
-        state.dhdt_obs = tf.identity(state.dhdt)
-    if hasattr(state, "uvelsurfobs") and hasattr(state, "vvelsurfobs"):
-        if not hasattr(state, "velsurf_magobs"):
-            state.velsurf_magobs = tf.sqrt(
-                state.uvelsurfobs ** 2 + state.vvelsurfobs ** 2
-            )
+def _upd_multiplicative_linear(C, r, alpha, dt, r_max=None):
+    if r_max is not None:
+        r = tf.clip_by_value(r, -r_max, r_max)
+    return C * (tf.ones_like(C) + alpha * r * dt)
 
 
-def _prepare_cost(p, state):
-    """Build state.amb (and optionally state.mask_buffer) for amb_balance,
-    or initialize the smb / throttle clock for surface_match."""
-    target = p.cost.target
-
-    if target == "amb_balance":
-        a = p.cost.amb_balance
-        if not hasattr(state, "smb"):
-            arr = list(a.smb_simple_array)
-            if len(arr) <= 1:
-                raise ValueError(
-                    "time_relaxation cost.target='amb_balance' requires either "
-                    "state.smb to be available or a non-empty "
-                    "cost.amb_balance.smb_simple_array."
-                )
-            smbpar = np.array(arr[1:], dtype=np.float32)
-            smb = state.usurf - smbpar[:, 3]
-            smb *= tf.where(tf.less(smb, 0.0), smbpar[:, 1], smbpar[:, 2])
-            state.smb = tf.clip_by_value(smb, -100.0, smbpar[:, 4])
-        if not hasattr(state, "dhdt"):
-            state.dhdt = tf.zeros_like(state.smb)
-
-        state.amb = (state.smb - state.dhdt) * state.icemask
-
-        net_amb = float(tf.reduce_sum(tf.abs(state.amb)).numpy())
-        if net_amb > 0.0:
-            warnings.warn(
-                f"[time_relaxation] |sum(amb)| = {net_amb:.3e} is non-zero. "
-                "Apparent mass-balance imbalance violates steady-state "
-                "for non-calving glaciers."
-            )
-
-        if int(a.mask_buffer) > 0:
-            _create_buffer_with_smb(int(a.mask_buffer), state)
-        else:
-            state.mask_buffer = tf.zeros_like(state.icemask)
-
-    elif target == "surface_match":
-        if not hasattr(state, "smb"):
-            state.smb = tf.zeros_like(state.usurf)
-        state.amb = tf.zeros_like(state.usurf)
-        state.mask_buffer = tf.zeros_like(state.icemask)
-        state.tlast_mb = tf.Variable(-1.0e5, dtype=tf.float32)
+def _upd_replace(C, r, alpha, dt, r_max=None):
+    """Absolute write C := α·r (dt is ignored). Pair with residual.kind=linear
+    for legacy 'smb := α·(usurf_obs − usurf)' style surface_match."""
+    if r_max is not None:
+        r = tf.clip_by_value(r, -r_max, r_max)
+    return alpha * r
 
 
-# --------------------------------------------------------------------- #
-#  Forward time loop                                                    #
-# --------------------------------------------------------------------- #
+_UPDATE_LAWS = {
+    "additive":              _upd_additive,
+    "multiplicative":        _upd_multiplicative,
+    "multiplicative_linear": _upd_multiplicative_linear,
+    "replace":               _upd_replace,
+}
 
-def _run_forward_loop(cfg, p, state, aux_modules, thk_module):
-    """Forward time-stepping loop.
 
-    With control.field=thk we use CFL-adaptive dt (mirrors
-    igm.processes.time.update). With control.field=topg the kernel is
-    not a true mass-conservation step and dt is fixed.
+# ===================================================================== #
+#  Smoother (TF-only, mask-aware Gaussian)                              #
+# ===================================================================== #
+
+def _gaussian_kernel_1d(sigma, dtype):
+    radius = max(1, int(np.ceil(3.0 * float(sigma))))
+    x = tf.range(-radius, radius + 1, dtype=dtype)
+    g = tf.exp(-0.5 * (x / tf.cast(sigma, dtype)) ** 2)
+    return g / tf.reduce_sum(g), radius
+
+
+def _gauss_filter_2d(field2d, sigma):
+    """Separable Gaussian via two 1D conv2d passes; reflective padding."""
+    g, radius = _gaussian_kernel_1d(sigma, field2d.dtype)
+    f = field2d[tf.newaxis, ..., tf.newaxis]               # [1, H, W, 1]
+    pad = [[0, 0], [radius, radius], [radius, radius], [0, 0]]
+    f = tf.pad(f, pad, mode="REFLECT")
+    kx = g[tf.newaxis, :, tf.newaxis, tf.newaxis]          # [1, K, 1, 1]
+    ky = g[:, tf.newaxis, tf.newaxis, tf.newaxis]          # [K, 1, 1, 1]
+    f = tf.nn.conv2d(f, kx, strides=[1, 1, 1, 1], padding="VALID")
+    f = tf.nn.conv2d(f, ky, strides=[1, 1, 1, 1], padding="VALID")
+    return f[0, ..., 0]
+
+
+def _smooth(field2d, sigma, mask=None, mask_aware=True):
+    if sigma is None or float(sigma) <= 0.0:
+        return field2d
+    if mask is not None and mask_aware:
+        num = _gauss_filter_2d(field2d * mask, sigma)
+        den = _gauss_filter_2d(mask, sigma)
+        out = num / tf.maximum(den, tf.cast(1e-6, field2d.dtype))
+        return tf.where(mask > 0.5, out, field2d)
+    return _gauss_filter_2d(field2d, sigma)
+
+
+# ===================================================================== #
+#  Mask resolution                                                      #
+# ===================================================================== #
+
+def _resolve_mask(state, spec):
+    """Return a float mask (1.0/0.0) or None if no masking is requested.
+
+    spec accepts: None, "none", or a state attribute name. Anything more
+    complex (composite masks) should be precomputed by an upstream module
+    so the relaxation driver stays simple.
     """
-    t_start = float(p.time.start)
-    t_end = float(p.time.end)
-    step_max = float(p.time.step)
-    t_save_int = float(p.time.save)
-    cfl = float(getattr(p.time, "cfl", 0.3))
-    use_cfl = (p.control.field == "thk")
+    if spec is None or spec == "none" or spec == "":
+        return None
+    if not isinstance(spec, str):
+        raise ValueError(
+            f"time_relaxation: mask spec must be a state attribute name or None, "
+            f"got {spec!r}. Precompute composite masks in an upstream module."
+        )
+    if not hasattr(state, spec):
+        raise RuntimeError(
+            f"time_relaxation: mask references state.{spec} which is not present."
+        )
+    m = getattr(state, spec)
+    return tf.cast(tf.cast(m, tf.float32) > 0.5, tf.float32)
 
-    save_times = []
+
+# ===================================================================== #
+#  Step config                                                          #
+# ===================================================================== #
+
+@dataclass
+class _Step:
+    name: str
+    # residual
+    residual_kind: str
+    target: str
+    current: str
+    eps: float
+    # update
+    update_kind: str
+    alpha: float
+    r_max: Optional[float]
+    apply_mode: str                # "per_step" | "per_application"
+    # control
+    control_field: str
+    control_bounds: Optional[Tuple[float, float]]
+    control_outside_mask: Optional[float]
+    control_floor_at: Optional[str]    # state attr; new_C ← max(new_C, state.<attr>)
+    control_ceil_at: Optional[str]     # state attr; new_C ← min(new_C, state.<attr>)
+    # modifiers
+    mask_spec: Any
+    cadence: float
+    start_time: float
+    end_time: float
+    smoother_sigma: float
+    smoother_mask_aware: bool
+    geometry_policy: str
+    shares_residual_with: Optional[str]
+    # internal clock — initialised at loop start; never None during the loop
+    last_applied_time: Optional[tf.Variable] = None
+
+
+def _build_steps(steps_cfg):
+    """Build _Step objects from cfg blocks.
+
+    Notes on config access:
+      * ``s["update"]`` (not ``s.update``) — ``update`` collides with the
+        ``dict.update`` method that DictConfig inherits, so attribute access
+        returns the method rather than the YAML block.
+      * Optional keys read via ``.get(name, default)``.
+    """
+    steps = []
+    for s in steps_cfg:
+        res = s["residual"]
+        upd = s["update"]                              # bracket: see note above
+        ctl = s["control"]
+
+        bounds = ctl.get("bounds", None)
+        if bounds is not None:
+            bounds = (float(bounds[0]), float(bounds[1]))
+        outside_mask = ctl.get("outside_mask", None)
+        outside_mask = float(outside_mask) if outside_mask is not None else None
+        floor_at = ctl.get("floor_at", None)
+        ceil_at = ctl.get("ceil_at", None)
+
+        smoother = s.get("smoother", None)
+        sigma = float(smoother.get("sigma", 0.0)) if smoother is not None else 0.0
+        mask_aware = bool(smoother.get("mask_aware", True)) if smoother is not None else True
+        r_max_raw = upd.get("r_max", None)
+
+        cadence = float(s.get("cadence", 0.0))
+        # Default apply mode: per_application iff cadenced, per_step otherwise.
+        apply_mode = str(upd.get("apply",
+                                 "per_application" if cadence > 0.0 else "per_step"))
+
+        steps.append(_Step(
+            name=str(s["name"]),
+            residual_kind=str(res["kind"]),
+            target=str(res["target"]),
+            current=str(res.get("current", "")),
+            eps=float(res.get("eps", 1.0e-3)),
+            update_kind=str(upd.get("kind", "additive")),
+            alpha=float(upd.get("alpha", 0.0)),
+            r_max=(float(r_max_raw) if r_max_raw is not None else None),
+            apply_mode=apply_mode,
+            control_field=str(ctl["field"]),
+            control_bounds=bounds,
+            control_outside_mask=outside_mask,
+            control_floor_at=(str(floor_at) if floor_at is not None else None),
+            control_ceil_at=(str(ceil_at) if ceil_at is not None else None),
+            mask_spec=s.get("mask", None),
+            cadence=cadence,
+            start_time=float(s.get("start_time", -1.0e30)),
+            end_time=float(s.get("end_time", 1.0e30)),
+            smoother_sigma=sigma,
+            smoother_mask_aware=mask_aware,
+            geometry_policy=str(s.get("geometry_policy", "none")),
+            shares_residual_with=s.get("shares_residual_with", None),
+        ))
+
+    # Cross-reference validation
+    names = {s.name for s in steps}
+    for s in steps:
+        if s.shares_residual_with and s.shares_residual_with not in names:
+            raise ValueError(
+                f"time_relaxation step {s.name!r}: shares_residual_with refers to "
+                f"unknown step {s.shares_residual_with!r}."
+            )
+        if s.update_kind not in _UPDATE_LAWS:
+            raise ValueError(
+                f"time_relaxation step {s.name!r}: update.kind must be one of "
+                f"{sorted(_UPDATE_LAWS)}, got {s.update_kind!r}."
+            )
+        if s.residual_kind not in _RESIDUALS:
+            raise ValueError(
+                f"time_relaxation step {s.name!r}: residual.kind must be one of "
+                f"{sorted(_RESIDUALS)}, got {s.residual_kind!r}."
+            )
+        if s.apply_mode not in ("per_step", "per_application"):
+            raise ValueError(
+                f"time_relaxation step {s.name!r}: update.apply must be 'per_step' "
+                f"or 'per_application', got {s.apply_mode!r}."
+            )
+    return steps
+
+
+def _step_due(s, t):
+    """A step is due if t is in [start_time, end_time] and either the step
+    is per-iteration (cadence ≤ 0) or one full cadence has elapsed since
+    the last application (last_applied_time is initialised to t_start)."""
+    if t < s.start_time or t > s.end_time:
+        return False
+    if s.cadence <= 0.0:
+        return True
+    return (t - float(s.last_applied_time.numpy())) >= s.cadence
+
+
+# ===================================================================== #
+#  Apply one step                                                       #
+# ===================================================================== #
+
+def _compute_residual(s, state):
+    if not hasattr(state, s.target):
+        raise RuntimeError(
+            f"time_relaxation step {s.name!r}: residual.target {s.target!r} is not "
+            "on state. For target='amb', add an SMB module (e.g. smb_simple) to "
+            "pre_processes and ensure the input NetCDF carries a `dhdt` field — "
+            "_ensure_derived will then compute state.amb automatically."
+        )
+    T = getattr(state, s.target)
+    if not hasattr(state, s.current):
+        raise RuntimeError(
+            f"time_relaxation step {s.name!r}: residual.current {s.current!r} is "
+            "not on state."
+        )
+    M = getattr(state, s.current)
+    return _RESIDUALS[s.residual_kind](T, M, s.eps)
+
+
+def _apply_step(s, state, dt, residual_cache):
+    # 1. residual (possibly shared)
+    if s.shares_residual_with and s.shares_residual_with in residual_cache:
+        r = residual_cache[s.shares_residual_with]
+    else:
+        r = _compute_residual(s, state)
+        residual_cache[s.name] = r
+
+    # 2. NaN safety — observation fields (e.g. uvelsurfobs) commonly have
+    # no-data regions; propagate them as zero residual so the control is
+    # not nudged where there's no observation.
+    r = tf.where(tf.math.is_finite(r), r, tf.zeros_like(r))
+
+    # 3. mask
+    mask = _resolve_mask(state, s.mask_spec)
+    if mask is not None:
+        r = r * mask
+
+    # 4. smoother
+    if s.smoother_sigma > 0.0:
+        r = _smooth(r, s.smoother_sigma, mask=mask,
+                    mask_aware=s.smoother_mask_aware)
+
+    # 5. update law
+    if not hasattr(state, s.control_field):
+        raise RuntimeError(
+            f"time_relaxation step {s.name!r}: control.field "
+            f"{s.control_field!r} is not on state."
+        )
+    C = getattr(state, s.control_field)
+    fn = _UPDATE_LAWS[s.update_kind]
+    alpha = tf.cast(s.alpha, C.dtype)
+
+    # dt_eff:
+    #   per_step         → outer-loop dt (current state.dt)
+    #   per_application  → 1.0  (α is interpreted as a per-application gain;
+    #                            this matches the legacy "every t_fr_update
+    #                            years, multiply by (1+r)" friction formula)
+    if s.apply_mode == "per_step":
+        dt_eff = tf.cast(dt, C.dtype)
+    else:
+        dt_eff = tf.cast(1.0, C.dtype)
+
+    r_t = tf.cast(r, C.dtype)
+    r_max = tf.cast(s.r_max, C.dtype) if s.r_max is not None else None
+    new_C = fn(C, r_t, alpha, dt_eff, r_max=r_max)
+
+    # 5. clip — first per-pixel field bounds (floor_at / ceil_at), then
+    # the scalar bounds. floor_at/ceil_at let the user enforce e.g. the
+    # legacy `usurf >= topg` constraint of Frank/van Pelt.
+    if s.control_floor_at is not None:
+        floor_field = getattr(state, s.control_floor_at)
+        new_C = tf.maximum(new_C, tf.cast(floor_field, new_C.dtype))
+    if s.control_ceil_at is not None:
+        ceil_field = getattr(state, s.control_ceil_at)
+        new_C = tf.minimum(new_C, tf.cast(ceil_field, new_C.dtype))
+    if s.control_bounds is not None:
+        lo, hi = s.control_bounds
+        new_C = tf.clip_by_value(new_C, tf.cast(lo, new_C.dtype),
+                                        tf.cast(hi, new_C.dtype))
+
+    # 6. outside-mask fill (e.g. legacy out_of_mask_smb)
+    if s.control_outside_mask is not None and mask is not None:
+        new_C = tf.where(
+            mask > 0.5,
+            new_C,
+            tf.cast(s.control_outside_mask, new_C.dtype) * tf.ones_like(new_C),
+        )
+
+    # 7. write
+    setattr(state, s.control_field, new_C)
+
+    # 8. geometry policy
+    _apply_geometry_policy(state, s.geometry_policy)
+
+    # 9. clock
+    s.last_applied_time.assign(state.t)
+
+
+def _apply_geometry_policy(state, policy):
+    """Restore the (thk, topg, usurf) constraint after a step that wrote one of them.
+
+    none              do nothing (caller is responsible for consistency)
+    recompute_usurf   usurf ← topg + thk          (use after writing thk or topg)
+    recompute_topg    topg ← usurf − thk          (use after writing usurf)
+                      then thk re-clipped to non-negative
+    """
+    if policy == "none":
+        return
+    if policy == "recompute_usurf":
+        state.usurf = state.topg + state.thk
+    elif policy == "recompute_topg":
+        state.topg = state.usurf - state.thk
+        state.thk = tf.maximum(state.usurf - state.topg, 0.0)
+    else:
+        raise ValueError(
+            f"time_relaxation: unknown geometry_policy {policy!r}. "
+            "Use one of: none, recompute_usurf, recompute_topg."
+        )
+
+
+# ===================================================================== #
+#  Derived fields & time stepping                                       #
+# ===================================================================== #
+
+def _ensure_derived(state):
+    """Refresh fields that residuals commonly reference and that depend on
+    the forward model's just-updated velocities (velsurf_mag, divflux).
+    Always recompute — the previous iteration's values are stale.
+
+    Also exposes the apparent mass balance ``state.amb = state.smb −
+    state.dhdt_obs`` (masked by ``state.icemask`` if present), so that
+    Frank–van Pelt-style steps with ``residual.target: amb`` work
+    out-of-the-box once an upstream SMB module (e.g. ``smb_simple``) and
+    a ``dhdt_obs`` field (snapshotted from the input ``dhdt``) are
+    available. ``state.amb`` is recomputed every iteration in case the
+    SMB module updates ``state.smb`` over time.
+    """
+    if hasattr(state, "uvelsurf") and hasattr(state, "vvelsurf"):
+        state.velsurf_mag = tf.sqrt(state.uvelsurf ** 2 + state.vvelsurf ** 2)
+    if hasattr(state, "ubar") and hasattr(state, "vbar") and hasattr(state, "thk"):
+        state.divflux = compute_divflux(
+            state.ubar, state.vbar, state.thk, state.dx, state.dx
+        )
+    if hasattr(state, "smb") and hasattr(state, "dhdt_obs"):
+        amb = state.smb - state.dhdt_obs
+        if hasattr(state, "icemask"):
+            amb = amb * state.icemask
+        state.amb = amb
+
+
+def _build_save_times(t_start, t_end, t_save):
+    times = []
     k = 0
     while True:
-        ts = t_start + k * t_save_int
+        ts = t_start + k * t_save
         if ts > t_end + 1e-6:
             break
-        save_times.append(round(ts, 6))
+        times.append(round(ts, 6))
         k += 1
-    if not save_times or save_times[-1] < t_end - 1e-6:
-        save_times.append(round(t_end, 6))
-
-    state.t = tf.Variable(t_start, dtype=tf.float32)
-    state.dt = tf.Variable(step_max, dtype=tf.float32)
-    state.saveresult = False
-    state.itsave = -1
-
-    fric_method = p.friction.method
-    fric_active = fric_method != "none" and float(p.friction.t_fr_update) > 0.0
-    if fric_active:
-        if not hasattr(state, "velsurf_magobs"):
-            raise RuntimeError(
-                "time_relaxation friction nudge active but no "
-                "velsurf_magobs / (uvelsurfobs, vvelsurfobs) provided."
-            )
-        state.tlast_fr = tf.Variable(t_start, dtype=tf.float32)
-
-    output_hooks = _collect_output_hooks(cfg)
-    misfit_path = str(p.output.misfits_csv) if p.output.misfits_csv else ""
-    if misfit_path:
-        _misfits_init(misfit_path)
-
-    i = 0
-    while True:
-        state.it = i
-
-        # Step 1: cost-driven SMB refresh (surface_match only).
-        if p.cost.target == "surface_match":
-            _refresh_surface_match_smb(p, state)
-            state.amb = state.smb  # diagnostic alias
-
-        # Step 2: auxiliary processes (e.g. effective_pressure).
-        for m in aux_modules:
-            m.update(cfg, state)
-
-        # Step 3: iceflow.
-        iceflow_update(cfg, state)
-
-        # Step 4: advance time (mirrors igm.processes.time.update).
-        _advance_time(state, save_times, step_max, cfl, use_cfl)
-
-        # Step 5: control-field update.
-        if p.control.field == "topg":
-            _apply_topg_control(p, state, i, t_end)
-        elif p.control.field == "thk":
-            if p.cost.target == "amb_balance":
-                state.smb = state.amb  # feed apparent MB into mass conservation
-            thk_module.update(cfg, state)
-            if not hasattr(state, "divflux"):
-                state.divflux = compute_divflux(
-                    state.ubar, state.vbar, state.thk, state.dx, state.dx
-                )
-            state.dhdt = state.dt * (state.amb - state.divflux)
-
-        # Step 6: friction nudge.
-        if (i > 0 and fric_active
-                and float(state.t.numpy()) >= float(p.friction.t_fr_start)):
-            if (state.t - state.tlast_fr) >= float(p.friction.t_fr_update):
-                if fric_method == "additive":
-                    _update_friction_additive(p, state)
-                elif fric_method == "log_mult":
-                    _update_friction_log_mult(p, state)
-                else:
-                    raise ValueError(
-                        f"time_relaxation friction.method must be "
-                        f"'additive', 'log_mult' or 'none', "
-                        f"got {fric_method!r}."
-                    )
-                state.tlast_fr.assign(state.t)
-
-        # Step 7: snapshot.
-        if state.saveresult:
-            for hook in output_hooks:
-                hook(cfg, state)
-            if misfit_path:
-                _misfits_log(state, misfit_path)
-
-        if float(state.t.numpy()) >= t_end - 1e-6:
-            break
-        i += 1
-
-
-def _refresh_surface_match_smb(p, state):
-    s = p.cost.surface_match
-    update_freq = float(s.update_freq)
-    if (state.t - state.tlast_mb) < update_freq:
-        return
-    raw = float(s.alpha) * (state.usurf_obs - state.usurf)
-    smb = tf.clip_by_value(raw, float(s.smb_min), float(s.smb_max))
-    if hasattr(state, "icemask"):
-        smb = tf.where(state.icemask > 0.5, smb, float(s.out_of_mask_smb))
-    state.smb = smb
-    state.tlast_mb.assign(state.t)
+    if not times or times[-1] < t_end - 1e-6:
+        times.append(round(t_end, 6))
+    return times
 
 
 def _advance_time(state, save_times, step_max, cfl, use_cfl):
-    """Replaces igm.processes.time.update inside the relaxation loop."""
-    if use_cfl:
+    if use_cfl and hasattr(state, "ubar") and hasattr(state, "vbar"):
         velomax = tf.maximum(
             tf.reduce_max(tf.abs(state.ubar)),
             tf.reduce_max(tf.abs(state.vbar)),
         )
-        if float(velomax.numpy()) > 0.0:
-            dt_target = tf.minimum(
-                cfl * state.dx / velomax, tf.constant(step_max, dtype=tf.float32)
-            )
-            dt_target = float(dt_target.numpy())
-        else:
-            dt_target = step_max
+        vmax = float(velomax.numpy())
+        dt_target = (
+            float(tf.minimum(cfl * state.dx / velomax,
+                             tf.constant(step_max, dtype=tf.float32)).numpy())
+            if vmax > 0.0 else step_max
+        )
     else:
         dt_target = step_max
 
@@ -355,290 +512,251 @@ def _advance_time(state, save_times, step_max, cfl, use_cfl):
         state.t.assign(state.t + state.dt)
 
 
-# --------------------------------------------------------------------- #
-#  Control-field kernels                                                #
-# --------------------------------------------------------------------- #
-
-def _apply_topg_control(p, state, i, t_end):
-    """Aletsch-style bed inversion: thk and topg move; usurf nearly fixed.
-
-    Defined only for cost.target='amb_balance'. The kernel integrates
-    F = (amb - divflux) into thk (and into topg via the usurf-fixed
-    constraint), so at steady state divflux = amb, equivalently
-    dhdt = dhdt_obs.
-    """
-    g = p.control.topg
-    divflux = compute_divflux(
-        state.ubar, state.vbar, state.thk, state.dx, state.dx
-    )
-    state.divflux = divflux
-    state.dhdt = state.dt * (state.amb - divflux)
-
-    if i > 0:
-        beta = float(g.beta)
-        theta = float(g.theta)
-        state.thk = tf.minimum(
-            tf.maximum(state.thk + state.dhdt * beta * state.icemask, 0.0),
-            float(g.max_thk),
-        )
-        state.topg = tf.where(
-            (state.icemask == 1) & (state.usurf > 0.0),
-            state.usurf - state.thk,
-            state.topg,
-        )
-        state.usurf = tf.maximum(
-            tf.maximum(0.0, state.topg),
-            state.usurf
-            + state.dhdt * theta * beta * state.icemask
-            * (1.0 - state.mask_buffer),
-        )
-        state.thk = tf.where(
-            (state.icemask == 1) & (state.usurf > 0.0),
-            state.usurf - state.topg,
-            0.0,
-        )
-        state.usurf = tf.where(
-            (state.icemask == 0) & (state.topg < 0.0), 0.0, state.usurf
-        )
-
-        if (p.cost.target == "amb_balance"
-                and bool(p.cost.amb_balance.crop_to_original)
-                and round(float(state.t.numpy()), 6) == round(t_end, 6)):
-            original_mask = state.icemask - state.mask_buffer
-            state.thk = state.thk * original_mask
-            state.topg = tf.where(original_mask == 1, state.topg, state.usurf)
-            state.icemask = original_mask
-
-
-# --------------------------------------------------------------------- #
-#  Friction kernels                                                     #
-# --------------------------------------------------------------------- #
-
-def _update_friction_additive(p, state):
-    f = p.friction
-    velsurf = tf.sqrt(state.uvelsurf ** 2 + state.vvelsurf ** 2)
-    vel_mismatch = tf.clip_by_value(
-        (velsurf - state.velsurf_magobs) / state.velsurf_magobs,
-        -float(f.additive.max_vel_ratio),
-        float(f.additive.max_vel_ratio),
-    )
-    vel_mismatch = tf.where(
-        tf.math.is_nan(vel_mismatch)
-        | (state.velsurf_magobs < 1.0)
-        | (state.icemask == 0),
-        0.0,
-        vel_mismatch,
-    )
-    state.slidingco = tf.clip_by_value(
-        state.slidingco * (1.0 + vel_mismatch),
-        float(f.slidingco_min),
-        float(f.slidingco_max),
-    )
-
-
-def _update_friction_log_mult(p, state):
-    f = p.friction
-    lm = f.log_mult
-    velsurf = tf.sqrt(state.uvelsurf ** 2 + state.vvelsurf ** 2)
-    gamma = float(lm.gamma)
-    exponent = float(lm.sliding_exponent)
-    max_log_step = float(lm.max_log_step)
-    sigma = float(lm.smoothing_sigma)
-
-    safe_vobs = tf.maximum(state.velsurf_magobs, 1.0)
-    safe_v = tf.maximum(velsurf, 1.0)
-    log_ratio = tf.math.log(safe_v / safe_vobs)
-
-    valid = tf.math.is_finite(log_ratio) & (state.velsurf_magobs >= 1.0)
-    if hasattr(state, "icemask"):
-        valid = valid & (state.icemask > 0.5)
-    log_ratio = tf.where(valid, log_ratio, 0.0)
-
-    if sigma > 0.0:
-        lr_np = log_ratio.numpy()
-        w_np = valid.numpy().astype(np.float32)
-        num = gaussian_filter(lr_np * w_np, sigma=sigma, mode="nearest")
-        den = gaussian_filter(w_np, sigma=sigma, mode="nearest")
-        lr_sm = np.where(den > 1e-6, num / np.maximum(den, 1e-6), 0.0)
-        lr_sm = np.where(w_np > 0.5, lr_sm, 0.0).astype(np.float32)
-        log_ratio = tf.convert_to_tensor(lr_sm)
-
-    log_update = gamma * exponent * log_ratio
-    log_update = tf.clip_by_value(log_update, -max_log_step, max_log_step)
-
-    state.slidingco = tf.clip_by_value(
-        state.slidingco * tf.exp(log_update),
-        float(f.slidingco_min),
-        float(f.slidingco_max),
-    )
-
-
-# --------------------------------------------------------------------- #
-#  Mask buffer (amb extrapolation outside the original icemask)         #
-# --------------------------------------------------------------------- #
-
-def _create_buffer_with_smb(buffer_width, state):
-    state.mask_buffer = tf.convert_to_tensor(
-        _internal_buffer(buffer_width, 1 - state.icemask.numpy()),
-        dtype=tf.float32,
-    )
-    try:
-        usurf_np = state.usurf.numpy()
-        amb_np = state.amb.numpy()
-        neg = amb_np < 0
-        amb_slope, amb_intercept = np.polyfit(usurf_np[neg], amb_np[neg], deg=1)
-        amb_fit = amb_intercept + amb_slope * state.usurf
-        state.amb = tf.where(
-            (amb_fit < 0.0) & (state.mask_buffer == 1), amb_fit, state.amb
-        )
-    except Exception:
-        print(
-            "[time_relaxation] amb extrapolation in the buffer failed; "
-            "setting negative amb in buffer to 0 instead."
-        )
-        state.amb = tf.where(
-            (state.amb < 0.0) & (state.mask_buffer == 1), 0.0, state.amb
-        )
-    state.icemask = state.icemask + state.mask_buffer
-
-
-def _internal_buffer(bw, mask):
-    mask_iter = mask == 1
-    mask_bw = ~mask_iter
-    k = np.ones((3, 3), dtype=int)
-    for _ in range(bw):
-        boundary = nd.binary_dilation(mask_bw, k) & ~mask_bw
-        mask_bw = mask_bw | boundary
-    return (mask_bw.astype(np.int32) + mask_iter.astype(np.int32)) - 1
-
-
-# --------------------------------------------------------------------- #
-#  Output hooks + diagnostics                                           #
-# --------------------------------------------------------------------- #
+# ===================================================================== #
+#  Output hooks + misfit logger                                         #
+# ===================================================================== #
 
 def _collect_output_hooks(cfg):
     hooks = []
-    if not hasattr(cfg, "outputs"):
+    outputs_cfg = getattr(cfg, "outputs", None)
+    if outputs_cfg is None:
         return hooks
-    outputs_cfg = cfg.outputs
-    if hasattr(outputs_cfg, "write_ncdf"):
-        from igm.outputs import write_ncdf
-        hooks.append(write_ncdf.run)
-    if hasattr(outputs_cfg, "write_ts"):
-        from igm.outputs import write_ts
-        hooks.append(write_ts.run)
-    if hasattr(outputs_cfg, "write_vtp"):
-        from igm.outputs import write_vtp
-        hooks.append(write_vtp.run)
+    for name in ("write_ncdf", "write_ts", "write_vtp"):
+        if hasattr(outputs_cfg, name):
+            mod = importlib.import_module(f"igm.outputs.{name}")
+            hooks.append(mod.run)
     return hooks
 
 
-def _misfits_init(path):
+def _build_misfit_logger(p_outputs, steps):
+    if p_outputs is None:
+        return None
+    misfits = getattr(p_outputs, "misfits", None)
+    if misfits is None:
+        return None
+    path = str(getattr(misfits, "path", "") or "")
+    track = list(getattr(misfits, "track", []) or [])
+    if not path or not track:
+        return None
+
+    step_lookup = {s.name: s for s in steps}
+    cols = []
+    for entry in track:
+        nm = str(entry.step)
+        kd = str(entry.kind)               # "rmse" | "mae"
+        if nm not in step_lookup:
+            raise ValueError(
+                f"time_relaxation: outputs.misfits.track references unknown "
+                f"step {nm!r}."
+            )
+        if kd not in ("rmse", "mae"):
+            raise ValueError(
+                f"time_relaxation: outputs.misfits.track[{nm}].kind must be "
+                f"'rmse' or 'mae', got {kd!r}."
+            )
+        cols.append((nm, kd, f"{nm}_{kd}"))
+
     with open(path, "w") as f:
-        f.write("t,rmse_divflux_minus_amb,mean_abs_divflux_minus_amb,"
-                "rmse_vel,mean_abs_vel_err,n_vel_obs,"
-                "rmse_thk,mean_abs_thk_err,n_thk_obs,"
-                "rmse_usurf,mean_abs_usurf_err\n")
+        f.write("t," + ",".join(c for _, _, c in cols) + "\n")
+
+    def log(state):
+        vals = [float(state.t.numpy())]
+        for step_name, kind, _ in cols:
+            s = step_lookup[step_name]
+            try:
+                r = _compute_residual(s, state)
+                mask = _resolve_mask(state, s.mask_spec)
+                arr = r.numpy()
+                if mask is not None:
+                    arr = arr[mask.numpy() > 0.5]
+                else:
+                    arr = arr.reshape(-1)
+                arr = arr[np.isfinite(arr)]      # drop NaN/Inf cells
+                if arr.size == 0:
+                    vals.append(float("nan"))
+                elif kind == "rmse":
+                    vals.append(float(np.sqrt(np.mean(arr ** 2))))
+                else:
+                    vals.append(float(np.mean(np.abs(arr))))
+            except Exception:
+                vals.append(float("nan"))
+        with open(path, "a") as f:
+            f.write(",".join(f"{v:.6g}" for v in vals) + "\n")
+        msg = f"[time_relaxation] t={vals[0]:7.2f}  " + "  ".join(
+            f"{c}={v:.4g}" for (_, _, c), v in zip(cols, vals[1:])
+        )
+        print(msg)
+
+    return log
 
 
-def _misfits_log(state, path):
-    mask = state.icemask.numpy() > 0.5
+# ===================================================================== #
+#  Forward loop                                                         #
+# ===================================================================== #
 
-    resid = (state.divflux.numpy() - state.amb.numpy())[mask]
-    rmse_df = float(np.sqrt(np.mean(resid ** 2))) if resid.size else float("nan")
-    mae_df = float(np.mean(np.abs(resid))) if resid.size else float("nan")
+def _run_loop(cfg, p, state, forward_mod, pre_modules, post_modules, steps):
+    """Inner relaxation loop.
 
-    if hasattr(state, "velsurf_magobs"):
-        vmod = tf.sqrt(state.uvelsurf ** 2 + state.vvelsurf ** 2).numpy()
-        vobs = state.velsurf_magobs.numpy()
-        sel_v = mask & np.isfinite(vobs) & (vobs > 0.0)
-        n_v = int(sel_v.sum())
-        if n_v:
-            dv = vmod[sel_v] - vobs[sel_v]
-            rmse_v = float(np.sqrt(np.mean(dv ** 2)))
-            mae_v = float(np.mean(np.abs(dv)))
-        else:
-            rmse_v = mae_v = float("nan")
-    else:
-        rmse_v = mae_v = float("nan")
-        n_v = 0
+    Order each iteration (matches legacy time_relaxation):
 
-    if hasattr(state, "thkobs"):
-        thk = state.thk.numpy()
-        tobs = state.thkobs.numpy()
-        sel_t = np.isfinite(tobs) & (tobs >= 0.0)
-        n_t = int(sel_t.sum())
-        if n_t:
-            dh = thk[sel_t] - tobs[sel_t]
-            rmse_t = float(np.sqrt(np.mean(dh ** 2)))
-            mae_t = float(np.mean(np.abs(dh)))
-        else:
-            rmse_t = mae_t = float("nan")
-    else:
-        rmse_t = mae_t = float("nan")
-        n_t = 0
+      1. pre_processes update    (e.g. effective_pressure — produces fields
+                                  consumed by the forward model)
+      2. forward_model.update    (iceflow)
+      3. advance time            (CFL + save-time alignment of state.dt)
+      4. inversion steps         (residual-driven control updates;
+                                  e.g. surface_match writes smb, friction
+                                  writes slidingco, Frank/van Pelt writes
+                                  thk/topg/usurf directly)
+      5. post_processes update   (e.g. thk — mass conservation that consumes
+                                  the smb just written by step 4 and uses
+                                  the post-advance state.dt)
+      6. snapshot                (output hooks + misfit CSV if saveresult)
+    """
+    t_start, t_end = float(p.time.start), float(p.time.end)
+    step_max = float(p.time.step)
+    cfl = float(getattr(p.time, "cfl", 0.3))
 
-    if hasattr(state, "usurf_obs"):
-        ds = (state.usurf.numpy() - state.usurf_obs.numpy())[mask]
-        rmse_s = float(np.sqrt(np.mean(ds ** 2))) if ds.size else float("nan")
-        mae_s = float(np.mean(np.abs(ds))) if ds.size else float("nan")
-    else:
-        rmse_s = mae_s = float("nan")
+    save_times = _build_save_times(t_start, t_end, float(p.time.save))
 
-    t = float(state.t.numpy())
-    with open(path, "a") as f:
-        f.write(
-            f"{t:.3f},{rmse_df:.6g},{mae_df:.6g},"
-            f"{rmse_v:.6g},{mae_v:.6g},{n_v},"
-            f"{rmse_t:.6g},{mae_t:.6g},{n_t},"
-            f"{rmse_s:.6g},{mae_s:.6g}\n"
+    state.t = tf.Variable(t_start, dtype=tf.float32)
+    state.dt = tf.Variable(step_max, dtype=tf.float32)
+    state.saveresult = False
+    state.itsave = -1
+
+    # Initialise step clocks at t_start so the first cadenced firing occurs
+    # only after one full cadence has elapsed (matches legacy `tlast_fr` init).
+    for s in steps:
+        s.last_applied_time = tf.Variable(t_start, dtype=tf.float32)
+
+    # CFL-limit dt iff any step OR post_module evolves geometry.
+    use_cfl = any(s.control_field in ("thk", "topg", "usurf") for s in steps) \
+              or any(m.__name__.endswith(".thk") for m in post_modules)
+
+    output_hooks = _collect_output_hooks(cfg)
+    misfit_log = _build_misfit_logger(getattr(p, "outputs", None), steps)
+
+    i = 0
+    while True:
+        state.it = i
+
+        # 1. pre-forward modules (need to set fields consumed by forward)
+        for m in pre_modules:
+            m.update(cfg, state)
+
+        # 2. forward dynamics
+        forward_mod.update(cfg, state)
+
+        # 3. derived fields (velsurf_mag, divflux) before residuals reference them
+        _ensure_derived(state)
+
+        # 4. advance time (sets save-aligned dt)
+        _advance_time(state, save_times, step_max, cfl, use_cfl)
+
+        # 5. apply steps (write controls — smb, slidingco, geometry)
+        residual_cache: Dict[str, tf.Tensor] = {}
+        t_now = float(state.t.numpy())
+        dt_now = float(state.dt.numpy())
+        for s in steps:
+            if _step_due(s, t_now):
+                _apply_step(s, state, dt_now, residual_cache)
+
+        # 6. post-step modules (e.g. thk consumes the smb just written)
+        for m in post_modules:
+            m.update(cfg, state)
+
+        # 7. snapshot
+        if state.saveresult:
+            for hook in output_hooks:
+                hook(cfg, state)
+            if misfit_log is not None:
+                misfit_log(state)
+
+        if t_now >= t_end - 1e-6:
+            break
+        i += 1
+
+
+# ===================================================================== #
+#  Public API                                                           #
+# ===================================================================== #
+
+def initialize(cfg, state):
+    p = cfg.processes.time_relaxation
+
+    forward_mod = importlib.import_module(f"igm.processes.{p.forward_model}")
+    pre_modules = [importlib.import_module(f"igm.processes.{n}")
+                   for n in (p.get("pre_processes", []) or [])]
+    post_modules = [importlib.import_module(f"igm.processes.{n}")
+                    for n in (p.get("post_processes", []) or [])]
+
+    # Idempotent re-init: forward + aux modules are typically also listed in
+    # /processes (so Hydra loads their configs and IGM main initialises them
+    # once). Re-calling initialize here keeps the legacy contract that the
+    # user can list them in any order in /processes — these implementations
+    # are expected to be safe to initialise twice.
+    forward_mod.initialize(cfg, state)
+    for m in pre_modules + post_modules:
+        m.initialize(cfg, state)
+
+    steps = _build_steps(p.steps or [])
+
+    _snapshot_observations(state)
+    _ensure_derived(state)
+
+    _run_loop(cfg, p, state, forward_mod, pre_modules, post_modules, steps)
+
+    _cleanup_loop_state(state)
+
+
+def update(cfg, state):
+    """The relaxation work happened in initialize(); this signals the outer
+    IGM loop to exit. We can't simply ``del state.t`` (that crashes any other
+    module in /processes that reads state.t — e.g. smb_simple), so we keep
+    state.t and set state.continue_run = False instead.
+    """
+    state.continue_run = False
+    state.saveresult = False
+
+
+def finalize(cfg, state):
+    pass
+
+
+# ===================================================================== #
+#  One-shot helpers                                                     #
+# ===================================================================== #
+
+def _snapshot_observations(state):
+    """If standard observations are absent, snapshot the current model state.
+    Light-touch convenience so that residuals like ``usurf_obs - usurf``,
+    ``amb - divflux`` etc. work out-of-the-box; never overwrites existing obs.
+    """
+    if hasattr(state, "usurf") and not hasattr(state, "usurf_obs"):
+        state.usurf_obs = tf.identity(state.usurf)
+    if hasattr(state, "thk") and not hasattr(state, "thk_obs"):
+        state.thk_obs = tf.identity(state.thk)
+    if hasattr(state, "dhdt") and not hasattr(state, "dhdt_obs"):
+        # Snapshot before any module overwrites state.dhdt as a diagnostic.
+        state.dhdt_obs = tf.identity(state.dhdt)
+    if (hasattr(state, "uvelsurfobs") and hasattr(state, "vvelsurfobs")
+            and not hasattr(state, "velsurf_magobs")):
+        state.velsurf_magobs = tf.sqrt(
+            state.uvelsurfobs ** 2 + state.vvelsurfobs ** 2
         )
 
-    print(
-        f"[time_relaxation] t={t:7.2f}  "
-        f"RMSE(divflux-amb)={rmse_df:8.3f} m/yr  "
-        f"RMSE(vel)={rmse_v:8.2f} m/yr (n={n_v})  "
-        f"RMSE(thk)={rmse_t:8.2f} m (n={n_t})  "
-        f"RMSE(usurf)={rmse_s:7.2f} m"
-    )
-
-
-def _write_final_ncdf(p, state):
-    from netCDF4 import Dataset
-
-    nc = Dataset(p.output.save_result_in_ncdf, "w", format="NETCDF4")
-    nc.createDimension("x", state.x.shape[0])
-    nc.createDimension("y", state.y.shape[0])
-    xv = nc.createVariable("x", "f4", ("x",))
-    xv[:] = state.x.numpy() if hasattr(state.x, "numpy") else np.asarray(state.x)
-    yv = nc.createVariable("y", "f4", ("y",))
-    yv[:] = state.y.numpy() if hasattr(state.y, "numpy") else np.asarray(state.y)
-    for name in p.output.vars_to_save:
-        if not hasattr(state, name):
-            continue
-        val = getattr(state, name)
-        arr = val.numpy() if hasattr(val, "numpy") else np.asarray(val)
-        if arr.ndim != 2:
-            continue
-        v = nc.createVariable(name, "f4", ("y", "x"))
-        v[:] = arr
-    nc.close()
-
-
-# --------------------------------------------------------------------- #
-#  Outer-loop short-circuit                                             #
-# --------------------------------------------------------------------- #
 
 def _cleanup_loop_state(state):
-    """Short-circuit the outer IGM update loop.
+    """Prepare for the single outer-IGM iteration that follows.
 
-    update_modules() exits when state.t is missing; we delete it.
-    state.dt is kept and zeroed because thk / cf_sub_grid still get
-    one update() call from the outer loop on the way out, and rely on
-    state.dt for the advection step (dt=0 → no-op).
+    We do **not** delete state.t — other modules in /processes (e.g.
+    smb_simple) read it in their update() and would crash. Instead:
+      - state.dt is zeroed so any aux module's update() is a no-op
+        (their integrators see dt = 0 and write nothing).
+      - state.saveresult = False so output modules don't double-write.
+      - state.continue_run = False is set in time_relaxation.update()
+        once the outer loop calls it, so the IGM main loop exits after
+        one harmless pass over all modules.
     """
-    if hasattr(state, "t"):
-        delattr(state, "t")
     if hasattr(state, "dt"):
         try:
             state.dt.assign(0.0)
