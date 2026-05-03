@@ -1,12 +1,13 @@
 slope_type:
   Type: string
   Units: dimless
-  Description: "Type of slope limiter for the ice thickness equation (godunov or superbee)."
+  Description: "Type of slope limiter for the ice thickness equation (godunov or superbee). Used in stock mode (`calving_front: false`)."
 ratio_density:
   Type: float
   Units: dimless
-  Description: "Density of ice divided by density of water."
-default_sealevel:
-  Type: float
-  Units: m
-  Description: "Default sea level if not provided by the user."
+  Description: "Density of ice divided by density of water (used by the flotation term)."
+# NOTE: `default_sealevel` was removed in the water_level refactor.
+# A uniform sea level is now configured at the input phase via
+# `inputs.local.water_level` or `inputs.load_ncdf.water_level`,
+# producing a 2D `state.water_level` field. If absent, flotation
+# is disabled (lsurf = topg).
