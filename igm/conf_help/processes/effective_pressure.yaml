@@ -1,0 +1,12 @@
+mode:
+  Type: string
+  Units: dimless
+  Description: "Closure used to compute `state.effective_pressure` (MPa). One of: `constant_one` (N = 1 MPa everywhere), `percentage` (N = (1 - percentage) * rho_ice * g * h), `ocean_connected` (N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0); requires `state.water_level`), or `from_input` (leave `state.effective_pressure` as already loaded from the input data)."
+percentage:
+  Type: float
+  Units: dimless
+  Description: "Fraction of the ice-overburden pressure subtracted in `mode: percentage`. 0 means N equals overburden; 1 means N is zero. Ignored for other modes."
+N_min:
+  Type: float
+  Units: MPa
+  Description: "Lower floor applied to N after the chosen formula (default 1.0e-3 MPa = 1 kPa) to avoid the singularity in the Budd / Coulomb sliding cost."
