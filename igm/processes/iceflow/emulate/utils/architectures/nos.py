@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
 import tensorflow as tf
 from igm.utils.math.precision import normalize_precision
 
@@ -82,27 +85,44 @@ class FNO(tf.keras.Model):
 
         return outputs
 
-
 # --------------------------------------------------------------------
-# SpectralConv2D: 2D Fourier layer (Li et al. FNO2d style)
+# SpectralConv2D: 2D Fourier layer
 # --------------------------------------------------------------------
 class SpectralConv2D(tf.keras.layers.Layer):
     """
     2D Fourier layer.
 
-    x: [B, C_in, H, W] (channels-first, real)
-    -> rFFT -> multiply low modes with learned complex weights -> irFFT
+    x: [B, C_in, H, W] channels-first, real
+    -> rFFT
+    -> multiply low modes with learned complex weights
+    -> irFFT
     -> [B, C_out, H, W]
     """
 
-    def __init__(self, in_channels, out_channels, modes1, modes2, **kwargs):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        modes1: int,
+        modes2: int,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
+
         self.in_channels = int(in_channels)
         self.out_channels = int(out_channels)
         self.modes1 = int(modes1)
         self.modes2 = int(modes2)
 
-        # scale is as in Li's implementation
+        if self.in_channels <= 0:
+            raise ValueError(f"in_channels must be > 0, got {self.in_channels}")
+        if self.out_channels <= 0:
+            raise ValueError(f"out_channels must be > 0, got {self.out_channels}")
+        if self.modes1 <= 0:
+            raise ValueError(f"modes1 must be > 0, got {self.modes1}")
+        if self.modes2 <= 0:
+            raise ValueError(f"modes2 must be > 0, got {self.modes2}")
+
         self.scale = 1.0 / (self.in_channels * self.out_channels)
 
         self.w1_real = None
@@ -110,191 +130,409 @@ class SpectralConv2D(tf.keras.layers.Layer):
         self.w2_real = None
         self.w2_imag = None
 
-    def build(self, input_shape):
-        # input_shape: (B, C_in, H, W)
+    def build(self, input_shape) -> None:
+        input_shape = tf.TensorShape(input_shape)
+
+        if input_shape.rank != 4:
+            raise ValueError(
+                f"SpectralConv2D expects rank-4 input [B, C, H, W], got {input_shape}"
+            )
+
         if input_shape[1] is not None:
-            if int(input_shape[1]) != self.in_channels:
+            got_channels = int(input_shape[1])
+            if got_channels != self.in_channels:
                 raise ValueError(
-                    f"SpectralConv2D: expected {self.in_channels} input channels, "
-                    f"got {input_shape[1]}"
+                    f"SpectralConv2D expected {self.in_channels} input channels, "
+                    f"got {got_channels}"
                 )
 
-        # Validate modes against input dimensions
-        # For rfft2d: W_r = W//2 + 1
-        if input_shape[2] is not None:  # Height known
-            H = int(input_shape[2])
-            if self.modes1 > H:
+        if input_shape[2] is not None:
+            height = int(input_shape[2])
+            if self.modes1 > height:
                 raise ValueError(
-                    f"SpectralConv2D: modes1={self.modes1} exceeds input height H={H}. "
-                    f"modes1 must be <= H for proper spectral truncation."
+                    f"SpectralConv2D modes1={self.modes1} exceeds input height "
+                    f"H={height}. modes1 must be <= H."
                 )
 
-        if input_shape[3] is not None:  # Width known
-            W = int(input_shape[3])
-            W_r = W // 2 + 1  # rfft output size
-            if self.modes2 > W_r:
+        if input_shape[3] is not None:
+            width = int(input_shape[3])
+            width_rfft = width // 2 + 1
+            if self.modes2 > width_rfft:
                 raise ValueError(
-                    f"SpectralConv2D: modes2={self.modes2} exceeds rfft width W_r={W_r} (W={W}). "
-                    f"modes2 must be <= W//2 + 1 for proper spectral truncation."
+                    f"SpectralConv2D modes2={self.modes2} exceeds rFFT width "
+                    f"W//2+1={width_rfft} for W={width}. "
+                    f"modes2 must be <= W//2 + 1."
                 )
 
         limit = tf.math.sqrt(tf.cast(self.scale, tf.float32))
         init = tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
-        # weights1: top modes [:modes1, :modes2]
+        weight_shape = (
+            self.in_channels,
+            self.out_channels,
+            self.modes1,
+            self.modes2,
+        )
+
+        # Top-frequency block
         self.w1_real = self.add_weight(
             name="w1_real",
-            shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
+            shape=weight_shape,
             initializer=init,
             trainable=True,
+            dtype=tf.float32,
         )
         self.w1_imag = self.add_weight(
             name="w1_imag",
-            shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
+            shape=weight_shape,
             initializer=init,
             trainable=True,
+            dtype=tf.float32,
         )
 
-        # weights2: bottom modes [-modes1:, :modes2]
+        # Bottom-frequency block
         self.w2_real = self.add_weight(
             name="w2_real",
-            shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
+            shape=weight_shape,
             initializer=init,
             trainable=True,
+            dtype=tf.float32,
         )
         self.w2_imag = self.add_weight(
             name="w2_imag",
-            shape=(self.in_channels, self.out_channels, self.modes1, self.modes2),
+            shape=weight_shape,
             initializer=init,
             trainable=True,
+            dtype=tf.float32,
         )
 
         super().build(input_shape)
 
-    def _compl_mul2d(self, x_ft, w_real, w_imag):
+    def _compl_mul2d(
+        self,
+        x_ft: tf.Tensor,
+        w_real: tf.Tensor,
+        w_imag: tf.Tensor,
+    ) -> tf.Tensor:
         """
-        Complex multiplication:
-          x_ft: [B, C_in, m1, m2]
-          w_*:  [C_in, C_out, m1, m2]
-          ->    [B, C_out, m1, m2]
+        Complex multiplication.
+
+        x_ft: [B, C_in, m1, m2]
+        w_*:  [C_in, C_out, m1, m2]
+        ->    [B, C_out, m1, m2]
         """
         weights = tf.complex(w_real, w_imag)
         return tf.einsum("bixy,ioxy->boxy", x_ft, weights)
 
-    def call(self, x):
+    def call(self, x: tf.Tensor) -> tf.Tensor:
         """
         x: [B, C_in, H, W], real
         """
-        if x.dtype != tf.float32:
-            x = tf.cast(x, tf.float32)
+        x = tf.cast(x, tf.float32)
 
         height = tf.shape(x)[2]
         width = tf.shape(x)[3]
 
-        # rFFT over last two dims (no fftshift)
-        x_ft = tf.signal.rfft2d(x)  # [B, C_in, H, W_r], W_r = W//2 + 1
+        x_ft = tf.signal.rfft2d(x)  # [B, C_in, H, W//2+1]
         h_ft = tf.shape(x_ft)[2]
         w_r = tf.shape(x_ft)[3]
 
         # Top modes
-        x_ft_top = x_ft[:, :, : self.modes1, : self.modes2]  # [B, C_in, m1, m2]
-        out_ft_top = self._compl_mul2d(x_ft_top, self.w1_real, self.w1_imag)
+        x_ft_top = x_ft[:, :, : self.modes1, : self.modes2]
+        out_ft_top = self._compl_mul2d(
+            x_ft_top,
+            self.w1_real,
+            self.w1_imag,
+        )
 
         # Bottom modes
-        x_ft_bottom = x_ft[:, :, -self.modes1 :, : self.modes2]  # [B, C_in, m1, m2]
-        out_ft_bottom = self._compl_mul2d(x_ft_bottom, self.w2_real, self.w2_imag)
+        x_ft_bottom = x_ft[:, :, -self.modes1 :, : self.modes2]
+        out_ft_bottom = self._compl_mul2d(
+            x_ft_bottom,
+            self.w2_real,
+            self.w2_imag,
+        )
 
-        # Pad into full [B, C_out, H, W_r]
-        pad_top = [
-            [0, 0],
-            [0, 0],
-            [0, h_ft - self.modes1],
-            [0, w_r - self.modes2],
-        ]
-        out_ft_top_full = tf.pad(out_ft_top, pad_top)
+        # Pad top block into full Fourier tensor
+        out_ft_top_full = tf.pad(
+            out_ft_top,
+            paddings=[
+                [0, 0],
+                [0, 0],
+                [0, h_ft - self.modes1],
+                [0, w_r - self.modes2],
+            ],
+        )
 
-        pad_bottom = [
-            [0, 0],
-            [0, 0],
-            [h_ft - self.modes1, 0],
-            [0, w_r - self.modes2],
-        ]
-        out_ft_bottom_full = tf.pad(out_ft_bottom, pad_bottom)
+        # Pad bottom block into full Fourier tensor
+        out_ft_bottom_full = tf.pad(
+            out_ft_bottom,
+            paddings=[
+                [0, 0],
+                [0, 0],
+                [h_ft - self.modes1, 0],
+                [0, w_r - self.modes2],
+            ],
+        )
 
-        out_ft = out_ft_top_full + out_ft_bottom_full  # [B, C_out, H, W_r]
+        out_ft = out_ft_top_full + out_ft_bottom_full
 
-        # Inverse rFFT back to real space
-        x_out = tf.signal.irfft2d(
-            out_ft, fft_length=[height, width]
-        )  # [B, C_out, H, W]
-        return x_out
+        return tf.signal.irfft2d(
+            out_ft,
+            fft_length=[height, width],
+        )
+
+    def get_config(self) -> Dict[str, Any]:
+        config = super().get_config()
+        config.update(
+            {
+                "in_channels": int(self.in_channels),
+                "out_channels": int(self.out_channels),
+                "modes1": int(self.modes1),
+                "modes2": int(self.modes2),
+            }
+        )
+        return config
 
 
+# --------------------------------------------------------------------
+# FNO2: new-format architecture
+# --------------------------------------------------------------------
 class FNO2(tf.keras.Model):
+    """
+    2D Fourier Neural Operator emulator.
+
+    New-format constructor:
+
+        FNO2(
+            input_names=[...],
+            Nz=...,
+            network_params={...},
+            dx_const=None,
+        )
+
+    Output convention:
+        output[..., :Nz] = U_x(z)
+        output[..., Nz:] = U_y(z)
+
+    Therefore nb_outputs is fixed to 2 * Nz.
+    """
 
     def __init__(
-        self, cfg, nb_inputs, nb_outputs, input_normalizer=None, name="FNO2D", **kwargs
+        self,
+        *,
+        input_names: list[str],
+        Nz: int,
+        network_params: Dict[str, Any],
+        dx_const: Optional[float] = None,
+        **kwargs: Any,
     ):
-        super().__init__(name=name, **kwargs)
+        super().__init__(**kwargs)
 
-        cfg_unified = cfg.processes.iceflow.unified
-        cfg_numerics = cfg.processes.iceflow.numerics
+        # ------------------------------------------------------------------
+        # Minimal reconstruction inputs
+        # ------------------------------------------------------------------
+        self.input_names = [str(x) for x in input_names]
+        self.Nz = int(Nz)
 
-        width = getattr(cfg_unified.network, "width", 32)
-        modes1 = getattr(cfg_unified.network, "modes1", 8)
-        modes2 = getattr(cfg_unified.network, "modes2", modes1)
-        padding = getattr(cfg_unified.network, "padding", 9)
-        use_grid = getattr(cfg_unified.network, "use_grid", True)
+        if self.Nz <= 0:
+            raise ValueError(f"Nz must be > 0, got {self.Nz}")
 
-        Nz = cfg_numerics.Nz
+        self.nb_inputs = len(self.input_names)
+        self.nb_outputs = 2 * self.Nz
 
-        self.modes1 = int(modes1)
-        self.modes2 = int(modes2)
-        self.width = int(width)
-        self.input_channels = int(nb_inputs)
-        self.output_channels = int(nb_outputs)
-        self.nz = Nz
-        self.padding = int(padding)
-        self.use_grid = bool(use_grid)
-        self.input_normalizer = input_normalizer
+        self.dx_const_value = None if dx_const is None else float(dx_const)
 
-        # Lifting: linear map on last channel dimension
-        self.fc0 = tf.keras.layers.Dense(self.width, dtype=tf.float32)
+        # External normalizer, attached elsewhere.
+        self.input_normalizer = None
 
-        # Fourier layers (channels-first)
-        self.conv0 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2D(self.width, self.width, self.modes1, self.modes2)
+        # ------------------------------------------------------------------
+        # Architecture parameters from network_params
+        # ------------------------------------------------------------------
+        params = dict(network_params)
 
-        # 1x1 conv skips in channels-first format
-        self.w0 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+        allowed_keys = {
+            "width",
+            "modes1",
+            "modes2",
+            "padding",
+            "use_grid",
+            "projection_width",
+        }
+
+        unexpected = sorted(set(params.keys()) - allowed_keys)
+        if unexpected:
+            raise ValueError(
+                f"Unexpected keys in network_params: {unexpected}. "
+                f"Allowed keys are: {sorted(allowed_keys)}"
+            )
+
+        self.width = int(params.get("width", 32))
+        self.modes1 = int(params.get("modes1", 8))
+        self.modes2 = int(params.get("modes2", self.modes1))
+        self.padding = int(params.get("padding", 9))
+        self.use_grid = bool(params.get("use_grid", True))
+        self.projection_width = int(params.get("projection_width", 128))
+
+        if self.width <= 0:
+            raise ValueError(f"width must be > 0, got {self.width}")
+        if self.modes1 <= 0:
+            raise ValueError(f"modes1 must be > 0, got {self.modes1}")
+        if self.modes2 <= 0:
+            raise ValueError(f"modes2 must be > 0, got {self.modes2}")
+        if self.padding < 0:
+            raise ValueError(f"padding must be >= 0, got {self.padding}")
+        if self.projection_width <= 0:
+            raise ValueError(
+                f"projection_width must be > 0, got {self.projection_width}"
+            )
+
+        self.lift_input_channels = self.nb_inputs + (2 if self.use_grid else 0)
+
+        # Store normalized architecture dict exactly as used.
+        self.network_params = {
+            "width": int(self.width),
+            "modes1": int(self.modes1),
+            "modes2": int(self.modes2),
+            "padding": int(self.padding),
+            "use_grid": bool(self.use_grid),
+            "projection_width": int(self.projection_width),
+        }
+
+        # Dummy sizes for deterministic build.
+        #
+        # SpectralConv2D sees the padded size, so ensure the unpadded dummy plus
+        # padding is large enough for the requested modes.
+        self._dummy_H = max(16, self.modes1 + 1)
+        self._dummy_W = max(16, 2 * self.modes2 + 2)
+
+        # ------------------------------------------------------------------
+        # Layers
+        # ------------------------------------------------------------------
+        self.fc0 = tf.keras.layers.Dense(
+            self.width,
+            dtype=tf.float32,
+            name="fc0",
         )
-        self.w1 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+
+        self.convs = [
+            SpectralConv2D(
+                self.width,
+                self.width,
+                self.modes1,
+                self.modes2,
+                name=f"spectral_conv_{i}",
+            )
+            for i in range(4)
+        ]
+
+        self.ws = [
+            tf.keras.layers.Conv2D(
+                self.width,
+                kernel_size=1,
+                data_format="channels_first",
+                use_bias=True,
+                dtype=tf.float32,
+                name=f"pointwise_skip_{i}",
+            )
+            for i in range(4)
+        ]
+
+        self.fc1 = tf.keras.layers.Dense(
+            self.projection_width,
+            dtype=tf.float32,
+            name="fc1",
         )
-        self.w2 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
-        )
-        self.w3 = tf.keras.layers.Conv2D(
-            self.width, kernel_size=1, data_format="channels_first", use_bias=True
+        self.fc2 = tf.keras.layers.Dense(
+            self.nb_outputs,
+            dtype=tf.float32,
+            name="fc2",
         )
 
-        # Projection head
-        self.fc1 = tf.keras.layers.Dense(128, dtype=tf.float32)
-        self.fc2 = tf.keras.layers.Dense(self.output_channels, dtype=tf.float32)
-
-        # Dummy forward pass to build variables
-        dummy_H = max(16, self.modes1 + 1)
-        dummy_W = max(16, 2 * self.modes2 + 2)
-        dummy_input = tf.zeros((1, dummy_H, dummy_W, nb_inputs), dtype=tf.float32)
-        _ = self(dummy_input, training=False)
-
-    def _get_grid(self, x):
+    # ----------------------------------------------------------------------
+    # Minimal reconstruction manifest payload
+    # ----------------------------------------------------------------------
+    def resolved_params(self) -> Dict[str, Any]:
         """
-        Generate [B, H, W, 2] grid with coordinates in [0,1].
-        x: [B, H, W, C]
+        Return exactly the minimal constructor payload needed to rebuild the
+        model structure before attaching weights / external normalizer.
+        """
+        return {
+            "input_names": [str(n) for n in self.input_names],
+            "Nz": int(self.Nz),
+            "network_params": dict(self.network_params),
+            "dx_const": None
+            if self.dx_const_value is None
+            else float(self.dx_const_value),
+        }
+
+    # ----------------------------------------------------------------------
+    # Keras build
+    # ----------------------------------------------------------------------
+    def build(self, input_shape) -> None:
+        """
+        Explicit deterministic build for subclassed-model compatibility.
+
+        Creates weights in forward-pass order via a dummy call.
+        """
+        if self.built:
+            return
+
+        input_shape = tf.TensorShape(input_shape)
+        if input_shape.rank != 4:
+            raise ValueError(
+                f"FNO2 expects input_shape rank 4 [B, H, W, C], got {input_shape}"
+            )
+
+        channel_dim = input_shape[-1]
+        if channel_dim is None:
+            channel_dim = self.nb_inputs
+        else:
+            channel_dim = int(channel_dim)
+
+        if channel_dim != self.nb_inputs:
+            raise ValueError(
+                f"Input channel mismatch: model expects {self.nb_inputs} channels "
+                f"from input_names={self.input_names}, but build got C={channel_dim}."
+            )
+
+        batch_dim = 1 if input_shape[0] is None else int(input_shape[0])
+
+        if input_shape[1] is None:
+            height_dim = self._dummy_H
+        else:
+            height_dim = max(self._dummy_H, int(input_shape[1]))
+
+        if input_shape[2] is None:
+            width_dim = self._dummy_W
+        else:
+            width_dim = max(self._dummy_W, int(input_shape[2]))
+
+        dummy = tf.zeros(
+            shape=(batch_dim, height_dim, width_dim, channel_dim),
+            dtype=tf.float32,
+        )
+
+        _ = self.call(dummy, training=False)
+        super().build(input_shape)
+
+    # ----------------------------------------------------------------------
+    # Public helper methods
+    # ----------------------------------------------------------------------
+    def set_input_normalizer(self, layer: tf.keras.layers.Layer) -> None:
+        """
+        Attach an external input normalizer.
+
+        This is not part of the architecture reconstruction contract.
+        """
+        self.input_normalizer = layer
+
+    # ----------------------------------------------------------------------
+    # Utilities
+    # ----------------------------------------------------------------------
+    def _get_grid(self, x: tf.Tensor) -> tf.Tensor:
+        """
+        Generate [B, H, W, 2] grid with coordinates in [0, 1].
         """
         shape = tf.shape(x)
         batch_size = shape[0]
@@ -309,74 +547,80 @@ class FNO2(tf.keras.Model):
         gridy = tf.reshape(gridy, [1, 1, size_y, 1])
         gridy = tf.tile(gridy, [batch_size, size_x, 1, 1])
 
-        grid = tf.concat([gridx, gridy], axis=-1)  # [B, H, W, 2]
-        return grid
+        return tf.concat([gridx, gridy], axis=-1)
 
-    def call(self, inputs, training=False):
+    # ----------------------------------------------------------------------
+    # Forward pass
+    # ----------------------------------------------------------------------
+    def call(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
         """
-        inputs: [N, H, W, C_in]
-        returns: [N, H, W, C_out]
+        inputs:  [B, H, W, C_in]
+        returns: [B, H, W, 2*Nz]
         """
-        x = inputs
-        if x.dtype != tf.float32:
-            x = tf.cast(x, tf.float32)
+        x = tf.cast(inputs, tf.float32)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x, training=training)
+            x = tf.cast(x, tf.float32)
 
-        # Optionally append (x,y) grid
         if self.use_grid:
             grid = self._get_grid(x)
-            x = tf.concat([x, grid], axis=-1)  # [B, H, W, C_in (+2)]
+            x = tf.concat([x, grid], axis=-1)
 
         # Lift to hidden width
         x = self.fc0(x)  # [B, H, W, width]
 
-        # Switch to channels-first for the spectral blocks
+        # Channels-last -> channels-first
         x = tf.transpose(x, [0, 3, 1, 2])  # [B, width, H, W]
 
-        # Optional padding (emulate non-periodic boundaries à la Li)
         if self.padding > 0:
-            paddings = [[0, 0], [0, 0], [0, self.padding], [0, self.padding]]
-            x = tf.pad(x, paddings)
+            x = tf.pad(
+                x,
+                paddings=[
+                    [0, 0],
+                    [0, 0],
+                    [0, self.padding],
+                    [0, self.padding],
+                ],
+            )
 
-        H_pad = tf.shape(x)[2]
-        W_pad = tf.shape(x)[3]
+        height_pad = tf.shape(x)[2]
+        width_pad = tf.shape(x)[3]
 
-        # 4 Fourier blocks
-        # Block 0
-        x1 = self.conv0(x)
-        x2 = self.w0(x)
-        x = tf.nn.gelu(x1 + x2)
+        # Four Fourier blocks.
+        for i, (spectral_conv, pointwise_conv) in enumerate(zip(self.convs, self.ws)):
+            x1 = spectral_conv(x)
+            x2 = pointwise_conv(x)
 
-        # Block 1
-        x1 = self.conv1(x)
-        x2 = self.w1(x)
-        x = tf.nn.gelu(x1 + x2)
+            if i < len(self.convs) - 1:
+                x = tf.nn.gelu(x1 + x2)
+            else:
+                x = x1 + x2
 
-        # Block 2
-        x1 = self.conv2(x)
-        x2 = self.w2(x)
-        x = tf.nn.gelu(x1 + x2)
-
-        # Block 3 (no activation after last)
-        x1 = self.conv3(x)
-        x2 = self.w3(x)
-        x = x1 + x2
-
-        # Remove padding
         if self.padding > 0:
-            x = x[:, :, : H_pad - self.padding, : W_pad - self.padding]
+            x = x[
+                :,
+                :,
+                : height_pad - self.padding,
+                : width_pad - self.padding,
+            ]
 
-        # Back to channels-last
+        # Channels-first -> channels-last
         x = tf.transpose(x, [0, 2, 3, 1])  # [B, H, W, width]
 
-        # Per-pixel MLP head
         x = self.fc1(x)
         x = tf.nn.gelu(x)
-        x = self.fc2(x)  # [B, H, W, output_channels]
+        x = self.fc2(x)
 
         return x
+
+    # ----------------------------------------------------------------------
+    # Keras serialization compatibility
+    # ----------------------------------------------------------------------
+    def get_config(self) -> Dict[str, Any]:
+        config = super().get_config()
+        config.update(self.resolved_params())
+        return config
 
 # TensorFlow CNO2d — converted from the PyTorch CNO2d tutorial code
 # (ETH Zurich, AI in the Sciences and Engineering).
