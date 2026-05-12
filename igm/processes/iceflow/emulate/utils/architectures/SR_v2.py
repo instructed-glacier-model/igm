@@ -730,3 +730,388 @@ class SIADecompNetV2(tf.keras.Model):
             "residual_uv": res_uv,
             "physics_aux": aux,
         }
+
+
+class SIADecompNetV2SharedHead(SIADecompNetV2):
+    """
+    Shared-spatial-body variant of SIADecompNetV2.
+
+    This architecture keeps the same explicit physics decomposition as
+    ``SIADecompNetV2`` at the output level:
+
+      total = broadcast(sliding) + anchored_deformation + zero_mean_residual
+
+    but removes the three separate spatial head bodies.  All learned spatial
+    processing after input normalization happens in one shared dilated context
+    encoder.  The three component heads are deliberately lightweight 1x1
+    physics-conditioned projections:
+
+      slide head: shared context + slide-relevant physics -> 2 channels
+      def head:   shared context + deformation-relevant physics -> 2*Nz channels
+      res head:   shared context + all physics features -> 2*Nz channels
+
+    The point is to test whether the SIADV2 decomposition needs separate
+    component-specific spatial processing, or whether the decomposition can be
+    enforced mostly through output constraints plus local physics conditioning.
+
+    network_params
+    --------------
+    nb_layers : int
+        Nominal context depth.  As in SIADecompNetV2, this creates
+        ``max(2, nb_layers // 2)`` residual context blocks, each with two
+        3x3 convolutions.
+    nb_out_filter : int
+        Width of the shared context encoder.
+    context_dilation_schedule : list[int]
+        One dilation value per residual context block.
+    head_filters : int, optional
+        Width of the optional per-head 1x1 bottleneck.  Defaults to
+        ``max(nb_out_filter // 2, 32)``.
+    head_layers : int, optional
+        Number of Conv2D(1x1)+GELU bottleneck layers before each output
+        projection.  Defaults to 1.  Set to 0 for pure linear projections.
+    anchor_deformation_at_bed : bool, optional
+        Same constraint as SIADecompNetV2.  Default True.
+    zero_mean_residual_over_depth : bool, optional
+        Same constraint as SIADecompNetV2.  Default True.
+    """
+
+    def __init__(
+        self,
+        *,
+        input_names: list[str],
+        Nz: int,
+        network_params: dict[str, Any],
+        dx_const: Optional[float] = None,
+        **kwargs,
+    ):
+        tf.keras.Model.__init__(self, **kwargs)
+
+        # ------------------------------------------------------------------
+        # Minimal reconstruction inputs
+        # ------------------------------------------------------------------
+        self.input_names = list(input_names)
+        self.Nz = int(Nz)
+        self.nb_inputs = len(self.input_names)
+        self.nb_outputs = 2 * self.Nz
+
+        # ------------------------------------------------------------------
+        # Fixed physics constants; keep bitwise-compatible definitions with
+        # SIADecompNetV2 so _physics_features can be inherited unchanged.
+        # ------------------------------------------------------------------
+        self.n_glen = float(self.FIXED_N_GLEN)
+        self.rho = float(self.FIXED_RHO)
+        self.g = float(self.FIXED_G)
+
+        self.m_slide = float(self.FIXED_M_SLIDE)
+        self.u_ref = float(self.FIXED_U_REF)
+
+        self.eps_value = float(self.FIXED_EPS)
+        self.H_ref_value = float(self.FIXED_H_REF)
+        self.slope_ref_value = float(self.FIXED_SLOPE_REF)
+        self.A_ref_value = float(self.FIXED_A_REF)
+        self.tau_ref_scale_value = (
+            self.rho * self.g * self.H_ref_value * self.slope_ref_value
+        )
+
+        self.H_proxy_floor_value = float(self.FIXED_H_PROXY_FLOOR)
+        self.H_proxy_floor = tf.constant(self.H_proxy_floor_value, dtype=tf.float32)
+
+        self.eps = tf.constant(self.eps_value, dtype=tf.float32)
+        self.H_ref = tf.constant(self.H_ref_value, dtype=tf.float32)
+        self.slope_ref = tf.constant(self.slope_ref_value, dtype=tf.float32)
+        self.tau_ref_scale = tf.constant(self.tau_ref_scale_value, dtype=tf.float32)
+        self.A_ref = tf.constant(self.A_ref_value, dtype=tf.float32)
+
+        # ------------------------------------------------------------------
+        # Input channel bookkeeping
+        # ------------------------------------------------------------------
+        self.idx_thk = self.input_names.index("thk")
+        self.idx_usurf = self.input_names.index("usurf")
+
+        self.idx_slidingco = (
+            self.input_names.index("slidingco")
+            if "slidingco" in self.input_names
+            else None
+        )
+        self.idx_arrhenius = (
+            self.input_names.index("arrhenius")
+            if "arrhenius" in self.input_names
+            else None
+        )
+        self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
+
+        if self.idx_dX is None:
+            self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
+            self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
+        else:
+            self.dx_const_value = None
+            self.dx_const = None
+
+        self.input_normalizer = None
+
+        # ------------------------------------------------------------------
+        # Parse and validate the deliberately small configuration surface.
+        # ------------------------------------------------------------------
+        params = dict(network_params)
+        allowed_keys = {
+            "nb_layers",
+            "nb_out_filter",
+            "context_dilation_schedule",
+            "head_filters",
+            "head_layers",
+            "anchor_deformation_at_bed",
+            "zero_mean_residual_over_depth",
+        }
+        unexpected = sorted(set(params.keys()) - allowed_keys)
+        if unexpected:
+            raise ValueError(
+                f"Unexpected keys in network_params: {unexpected}. "
+                f"Allowed keys are: {sorted(allowed_keys)}"
+            )
+
+        for required in ("nb_layers", "nb_out_filter", "context_dilation_schedule"):
+            if required not in params:
+                raise ValueError(f"network_params must contain '{required}'")
+
+        self.nb_layers = int(params["nb_layers"])
+        self.nb_out_filter = int(params["nb_out_filter"])
+        self.context_dilation_schedule = [
+            int(v) for v in params["context_dilation_schedule"]
+        ]
+        self.n_context_blocks = max(2, self.nb_layers // 2)
+
+        if len(self.context_dilation_schedule) != self.n_context_blocks:
+            raise ValueError(
+                f"context_dilation_schedule must have length {self.n_context_blocks} "
+                f"(because nb_layers={self.nb_layers} -> "
+                f"n_context_blocks={self.n_context_blocks}), "
+                f"but got {len(self.context_dilation_schedule)}"
+            )
+
+        self.head_filters = int(params.get("head_filters", max(self.nb_out_filter // 2, 32)))
+        self.head_layers = int(params.get("head_layers", 1))
+        if self.head_layers < 0:
+            raise ValueError("head_layers must be >= 0")
+        if self.head_layers > 0 and self.head_filters <= 0:
+            raise ValueError("head_filters must be > 0 when head_layers > 0")
+
+        self.anchor_deformation_at_bed = bool(params.get("anchor_deformation_at_bed", True))
+        self.zero_mean_residual_over_depth = bool(
+            params.get("zero_mean_residual_over_depth", True)
+        )
+        self.bed_index = int(0)
+
+        self.network_params = {
+            "nb_layers": int(self.nb_layers),
+            "nb_out_filter": int(self.nb_out_filter),
+            "context_dilation_schedule": list(self.context_dilation_schedule),
+            "head_filters": int(self.head_filters),
+            "head_layers": int(self.head_layers),
+            "anchor_deformation_at_bed": bool(self.anchor_deformation_at_bed),
+            "zero_mean_residual_over_depth": bool(self.zero_mean_residual_over_depth),
+        }
+
+        # ------------------------------------------------------------------
+        # Fixed physics scaling / centering used by inherited _physics_features.
+        # ------------------------------------------------------------------
+        self.log_H_ref = tf.math.log(self.H_ref + 1.0)
+        self.log_tau_ref_scale = tf.math.log(self.tau_ref_scale + self.eps)
+        self.log_A_ref = tf.math.log(self.A_ref + self.eps)
+
+        self.B_ref = 2.0 * tf.pow(self.A_ref, -1.0 / self.n_glen)
+        self.log_B_ref = tf.math.log(self.B_ref + self.eps)
+
+        self.log_u_slide_ref = tf.math.log(
+            tf.constant(self.u_ref, dtype=tf.float32) + self.eps
+        )
+        self.log_u_def_ref = (
+            self.log_A_ref
+            + (self.n_glen + 1.0) * tf.math.log(self.H_ref + self.H_proxy_floor)
+            + self.n_glen * tf.math.log(self.slope_ref + self.eps)
+        )
+
+        # ------------------------------------------------------------------
+        # One shared spatial context body.
+        # ------------------------------------------------------------------
+        self.context_in = tf.keras.layers.Conv2D(
+            self.nb_out_filter,
+            3,
+            padding="same",
+            dtype=tf.float32,
+            name="context_in",
+        )
+
+        self.context_blocks = []
+        for i, dilation in enumerate(self.context_dilation_schedule):
+            block = {
+                "conv1": tf.keras.layers.Conv2D(
+                    self.nb_out_filter,
+                    3,
+                    padding="same",
+                    dilation_rate=int(dilation),
+                    dtype=tf.float32,
+                    name=f"context_block_{i}_conv1",
+                ),
+                "conv2": tf.keras.layers.Conv2D(
+                    self.nb_out_filter,
+                    3,
+                    padding="same",
+                    dilation_rate=int(dilation),
+                    dtype=tf.float32,
+                    name=f"context_block_{i}_conv2",
+                ),
+                "act1": tf.keras.layers.Activation(
+                    tf.nn.gelu, name=f"context_block_{i}_gelu1"
+                ),
+                "act2": tf.keras.layers.Activation(
+                    tf.nn.gelu, name=f"context_block_{i}_gelu2"
+                ),
+            }
+            self.context_blocks.append(block)
+
+        # ------------------------------------------------------------------
+        # Lightweight local component heads.  Each head sees shared context plus
+        # only its relevant physics conditioning.  The residual head sees the
+        # full physics set because it is explicitly tasked with correcting what
+        # the slide/deformation proxies miss.
+        # ------------------------------------------------------------------
+        self.slide_head = self._make_pointwise_head(
+            "slide_head", out_channels=2, zero_init=False
+        )
+        self.def_head = self._make_pointwise_head(
+            "def_head", out_channels=2 * self.Nz, zero_init=False
+        )
+        self.res_head = self._make_pointwise_head(
+            "res_head", out_channels=2 * self.Nz, zero_init=True
+        )
+
+    def _make_pointwise_head(
+        self,
+        name: str,
+        *,
+        out_channels: int,
+        zero_init: bool,
+    ) -> tf.keras.Sequential:
+        layers: List[tf.keras.layers.Layer] = []
+        for i in range(self.head_layers):
+            layers.append(
+                tf.keras.layers.Conv2D(
+                    self.head_filters,
+                    1,
+                    padding="same",
+                    dtype=tf.float32,
+                    name=f"{name}_pw{i + 1}",
+                )
+            )
+            layers.append(tf.keras.layers.Activation(tf.nn.gelu, name=f"{name}_gelu{i + 1}"))
+
+        initializer = "zeros" if zero_init else "glorot_uniform"
+        layers.append(
+            tf.keras.layers.Conv2D(
+                out_channels,
+                1,
+                padding="same",
+                dtype=tf.float32,
+                kernel_initializer=initializer,
+                bias_initializer="zeros" if zero_init else "zeros",
+                name=f"{name}_out",
+            )
+        )
+        return tf.keras.Sequential(layers, name=name)
+
+    def resolved_params(self) -> Dict[str, Any]:
+        return {
+            "input_names": [str(v) for v in self.input_names],
+            "Nz": int(self.Nz),
+            "network_params": {
+                "nb_layers": int(self.nb_layers),
+                "nb_out_filter": int(self.nb_out_filter),
+                "context_dilation_schedule": [
+                    int(v) for v in list(self.context_dilation_schedule)
+                ],
+                "head_filters": int(self.head_filters),
+                "head_layers": int(self.head_layers),
+                "anchor_deformation_at_bed": bool(self.anchor_deformation_at_bed),
+                "zero_mean_residual_over_depth": bool(
+                    self.zero_mean_residual_over_depth
+                ),
+            },
+            "dx_const": None
+            if self.dx_const_value is None
+            else float(self.dx_const_value),
+        }
+
+    def build(self, input_shape) -> None:
+        if self.built:
+            return
+
+        input_shape = tf.TensorShape(input_shape)
+        if input_shape.rank != 4:
+            raise ValueError(
+                f"SIADecompNetV2SharedHead expects input_shape rank 4 [B, H, W, C], "
+                f"got {input_shape}"
+            )
+
+        channel_dim = input_shape[-1]
+        if channel_dim is None:
+            channel_dim = self.nb_inputs
+        else:
+            channel_dim = int(channel_dim)
+
+        if channel_dim != self.nb_inputs:
+            raise ValueError(
+                f"Input channel mismatch: model expects {self.nb_inputs} channels "
+                f"from input_names={self.input_names}, but build got C={channel_dim}."
+            )
+
+        batch_dim = 1 if input_shape[0] is None else int(input_shape[0])
+        height_dim = 4 if input_shape[1] is None else int(input_shape[1])
+        width_dim = 4 if input_shape[2] is None else int(input_shape[2])
+
+        dummy = tf.zeros(
+            shape=(batch_dim, height_dim, width_dim, channel_dim),
+            dtype=tf.float32,
+        )
+        _ = self.call(dummy, training=False, return_components=False)
+        super().build(input_shape)
+
+    def call(
+        self,
+        inputs: tf.Tensor,
+        training: bool = False,
+        return_components: bool = False,
+    ) -> tf.Tensor | Dict[str, Any]:
+        raw_inputs = tf.cast(inputs, tf.float32)
+
+        slide_phys, def_phys, all_phys, aux = self._physics_features(raw_inputs)
+        context = self._context_features(raw_inputs, training=training)
+
+        slide_xy = self.slide_head(tf.concat([context, slide_phys], axis=-1))
+
+        def_flat = self.def_head(tf.concat([context, def_phys], axis=-1))
+        def_uv = self._split_xy_channels(def_flat)
+        if self.anchor_deformation_at_bed:
+            def_uv = def_uv - def_uv[..., self.bed_index:self.bed_index + 1, :]
+
+        res_flat = self.res_head(tf.concat([context, all_phys], axis=-1))
+        res_uv = self._split_xy_channels(res_flat)
+        if self.zero_mean_residual_over_depth:
+            res_uv = res_uv - tf.reduce_mean(res_uv, axis=-2, keepdims=True)
+
+        slide_uv = self._broadcast_slide(slide_xy)
+        total_uv = slide_uv + def_uv + res_uv
+        total_flat = self._merge_xy_channels(total_uv)
+
+        if not return_components:
+            return total_flat
+
+        return {
+            "total": total_flat,
+            "total_uv": total_uv,
+            "slide_xy": slide_xy,
+            "slide_uv": slide_uv,
+            "deformation_uv": def_uv,
+            "residual_uv": res_uv,
+            "physics_aux": aux,
+        }
