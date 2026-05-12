@@ -11,18 +11,10 @@ import numpy as np
 import tensorflow as tf
 
 from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
+from igm.processes.iceflow.unified.solver.solver import get_solver_inputs_from_state
 
 from .objective import build_objective_from_cfg
 from .outputs.output_ncdf import update_ncdf_optimize
-
-
-class StaticBatchSampler:
-    dynamic_augmentation = False
-
-    def __call__(self, inputs: tf.Tensor) -> tf.Tensor:
-        # L-BFGS expects shape [M, B, H, W, C] with M=1
-        return tf.expand_dims(inputs, axis=0)
 
 
 @dataclass
@@ -62,8 +54,7 @@ def reset_da_run_state(da: DataAssimilationRuntime) -> None:
 
 
 def build_current_inputs(cfg, state) -> tf.Tensor:
-    X = fieldin_state_to_X(cfg, state)
-    return state.iceflow.patching.generate_patches(X)
+    return get_solver_inputs_from_state(cfg, state)
 
 
 def evaluate_cost_terms_current_theta(

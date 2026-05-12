@@ -344,19 +344,8 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         return alpha
 
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-        first_batch = self.sampler(inputs)  # [M, B, H, W, C]
-        n_batches = first_batch.shape[0]
-        if n_batches != 1:
-            raise NotImplementedError("❌ L-BFGS requires a single batch.")
-
-        if getattr(self.sampler, "dynamic_augmentation", False):
-            static_batches = None
-            dynamic_augmentation = True
-        else:
-            static_batches = first_batch
-            dynamic_augmentation = False
-
-        input = first_batch[0, :, :, :, :]
+        # inputs: [N, H, W, C] — used as a single full batch (LBFGS is full-batch)
+        input = inputs
 
         # State variables
         theta_flat = self.map.flatten_theta(self.map.get_theta())
@@ -380,13 +369,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         cost_reg_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
 
         for iter in tf.range(self.iter_max):
-            # Sample fresh augmented batch for this iteration
-            if dynamic_augmentation:
-                next_batch = self.sampler(inputs)
-            else:
-                next_batch = static_batches
-
-            input = next_batch[0, :, :, :, :]
+            input = inputs
 
             theta_prev = theta_flat
 

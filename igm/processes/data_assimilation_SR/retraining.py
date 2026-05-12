@@ -57,7 +57,6 @@ class RetrainingRuntime:
     shared_mapping: Any
     shared_network: tf.keras.Model
     training_physics_cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]
-    local_sampler: Any
     optimizer: tf.keras.optimizers.Optimizer
     trainer: Any
     pretrained_network_weights: list[tf.Variable]
@@ -309,7 +308,6 @@ def initialize_retraining(cfg, state, da_map) -> RetrainingRuntime:
         shared_mapping=shared_mapping,
         shared_network=shared_network,
         training_physics_cost_fn=training_physics_cost_fn,
-        local_sampler=state.iceflow.optimizer.sampler,
         optimizer=optimizer,
         trainer=trainer,
         pretrained_network_weights=pretrained_network_weights,
@@ -324,17 +322,6 @@ def reset_retraining_run_state(retr: RetrainingRuntime) -> None:
     retr.phase = 1
     retr.history.clear()
     retr.last_summary = None
-
-
-def _sample_local_batch(local_sampler, current_inputs: tf.Tensor) -> tf.Tensor:
-    sampled = local_sampler(current_inputs)
-    if sampled.shape.rank == 5:
-        return sampled[0, :, :, :, :]
-    if sampled.shape.rank == 4:
-        return sampled
-    raise ValueError(
-        f"Unexpected sampler output rank {sampled.shape.rank}; expected 4 or 5."
-    )
 
 
 def _current_inputs_from_da_state(cfg, state, da) -> tf.Tensor:
@@ -402,17 +389,15 @@ def run_retraining_phase(cfg, state, da) -> None:
     )
 
     for step in range(1, retr.settings.steps + 1):
-        local_batch = _sample_local_batch(retr.local_sampler, current_inputs)
-
         if use_replay:
             replay_x, replay_y = next(retr.replay.train_it)
             total, local_phys, replay_data, replay_phys, anchor = step_fn(
-                local_batch,
+                current_inputs,
                 replay_x,
                 replay_y,
             )
         else:
-            total, local_phys, replay_data, replay_phys, anchor = step_fn(local_batch)
+            total, local_phys, replay_data, replay_phys, anchor = step_fn(current_inputs)
 
         if (
             step == 1

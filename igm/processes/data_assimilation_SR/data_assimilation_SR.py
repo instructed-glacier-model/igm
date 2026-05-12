@@ -72,7 +72,6 @@ from igm.utils.math.precision import normalize_precision
 
 from .phase_runner import (
     DataAssimilationRuntime,
-    StaticBatchSampler,
     build_cost_and_objective,
     reset_da_run_state,
     run_da_phase,
@@ -116,7 +115,6 @@ def data_assimilation_initialize(cfg, state) -> None:
     optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
     optimizer_args["halt"] = _build_halt(cfg)
     optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
-    optimizer.sampler = StaticBatchSampler()
 
     da = DataAssimilationRuntime(
         map=da_map,
