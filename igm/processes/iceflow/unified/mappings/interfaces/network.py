@@ -64,9 +64,10 @@ class InterfaceNetwork(InterfaceMapping):
                 _attach_config_normalizer(cfg, iceflow_model)
 
             else:
+                do_pretraining = "pretraining" in cfg.processes.keys()
                 iceflow_model = build_emulator_from_cfg(
                     cfg,
-                    attach_config_normalizer=not cfg.processes.iceflow.do_pretraining,
+                    attach_config_normalizer=not do_pretraining,
                 )
 
         state.iceflow_model = iceflow_model

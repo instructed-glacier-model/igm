@@ -124,8 +124,8 @@ def _attach_config_normalizer(cfg, model: tf.keras.Model) -> None:
     else:
         raise ValueError(f"Unknown normalizing method: {method}")
 
-    model.input_normalizer = normalizing_layer
-
+    #model.input_normalizer = normalizing_layer
+    object.__setattr__(model, "input_normalizer", normalizing_layer)
 
 def build_emulator_from_cfg(
     cfg,
