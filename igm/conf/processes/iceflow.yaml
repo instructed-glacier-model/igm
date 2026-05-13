@@ -171,11 +171,29 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     adaptive_patching:
-      strategy: none           # none | topk | nms | maxpool | tfnms
-      max_retrain_patches: 10  # K: max patches per retraining step
-      min_dhdt: 0.1            # threshold (m/yr): skip patches below this
-      forgetting_prevention: true  # add 1 random ice-covered patch
-      scoring: max             # max | mean — reduction within each patch
+      # Two-layer API (see solver/patch_selection.py for details).
+      # Layer 1 — window generator:
+      windows: peak_augmented        # regular_grid | sliding_overlap | peak_augmented
+      stride_factor: 1.0             # sliding_overlap only (1.0 = no overlap)
+      n_extra_peaks: 4               # peak_augmented only
+      # Layer 2 — selector:
+      selection: scheduled           # all | top_k | nms | scheduled
+      # Shared scoring:
+      scoring: max                   # max | mean — reduction within each window
+      min_dhdt: 0.1                  # threshold (m/yr): skip windows below this
+      # top_k / nms selector knobs:
+      max_retrain_patches: 10        # K: max patches per retraining step
+      forgetting_prevention: true    # add 1 random ice-covered patch
+      # scheduled selector knobs:
+      min_freq: 1                    # every kept window retrains ≥1× per epoch
+      freq_ratio: 5                  # hottest window retrains ≤ min_freq * freq_ratio× per epoch
+      memory_budget: 0               # bs = floor(M^2 / (ly*lx)); 0 = no cap
+      schedule_rebuild_freq: 1       # rebuild schedule every N retrain-step calls
+      shuffle_within_pass: true
+      shuffle_pass_order: false
+      record_schedule: false
+      record_path: null              # null = schedule_record.jsonl in cwd
+      rng_seed: null                 # null = nondeterministic
     data_preparation:
       framesizemax: 1000
       patches_per_batch: 1
