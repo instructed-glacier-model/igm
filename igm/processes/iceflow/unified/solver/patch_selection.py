@@ -59,13 +59,22 @@ def _patch_grid_dims(ny: int, nx: int, framesizemax: int):
 
 
 def _get_dhdt(state: State) -> np.ndarray:
-    """Return |dh/dt| as a numpy array [H, W]."""
+    """Return |dh/dt| as a numpy array [H, W], with NaN/inf sanitised to 0.
+
+    NaN guard matters early in a run: if the network is untrained the
+    predicted velocities can be wild and the resulting thickness can drift
+    to NaN. The score/freq computation downstream then explodes. Treat
+    NaN/inf cells as "no proxy signal here" — the scheduler falls back to
+    uniform-freq behaviour and keeps running rather than crashing.
+    """
     if hasattr(state, "dhdt") and state.dhdt is not None:
-        return np.abs(state.dhdt.numpy() if hasattr(state.dhdt, "numpy") else np.array(state.dhdt))
-    if hasattr(state, "_thk_prev") and state._thk_prev is not None:
+        a = np.abs(state.dhdt.numpy() if hasattr(state.dhdt, "numpy") else np.array(state.dhdt))
+    elif hasattr(state, "_thk_prev") and state._thk_prev is not None:
         dt = float(state.dt) if hasattr(state, "dt") and state.dt > 0 else 1.0
-        return np.abs((state.thk.numpy() - state._thk_prev.numpy()) / dt)
-    return np.zeros_like(state.thk.numpy())
+        a = np.abs((state.thk.numpy() - state._thk_prev.numpy()) / dt)
+    else:
+        a = np.zeros_like(state.thk.numpy())
+    return np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 def _cache_full_field(state: State, cfg: DictConfig) -> tf.Tensor:
@@ -259,8 +268,11 @@ def _select_nms(scores, cfg_ap, state, windows):
 
 def _scores_to_freqs(scores, min_freq, max_freq, min_dhdt):
     n = len(scores)
+    # Defense in depth: even if _get_dhdt's NaN scrub is bypassed by a
+    # future code path, drop NaN/inf here so the integer cast can't blow up.
+    scores = np.where(np.isfinite(scores), scores, 0.0)
     s_max = float(scores.max()) if n > 0 else 0.0
-    if s_max <= 0.0:
+    if not np.isfinite(s_max) or s_max <= 0.0:
         return np.full(n, max(1, min_freq), dtype=np.int32)
     freqs = np.zeros(n, dtype=np.int32)
     span = max(1, max_freq - min_freq)
@@ -485,7 +497,7 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
 
     n_total = len(windows)
     n_selected = int(indices.shape[0]) if hasattr(indices, "shape") else len(indices)
-    print(f"  Adaptive patching ({ap.windows} × {ap.selection}): "
-          f"{n_selected}/{n_total} windows")
+#    print(f"  Adaptive patching ({ap.windows} × {ap.selection}): "
+#          f"{n_selected}/{n_total} windows")
 
     return selected
