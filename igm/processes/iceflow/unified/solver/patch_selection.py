@@ -144,10 +144,15 @@ def _windows_peak_augmented(state, cfg_ap):
     where the proxy field |dh/dt| has localised peaks. Each picked peak
     is suppressed in the score map before the next peak is chosen, so
     extras don't collapse onto the same hotspot.
+
+    Special value `n_extra_peaks: -1` → match the number of grid windows
+    (so the output has 2N windows: N grid for coverage, N peaks for focus).
     """
     grid = _windows_regular_grid(state, cfg_ap)
     n_extra = int(cfg_ap.n_extra_peaks)
-    if n_extra <= 0:
+    if n_extra < 0:
+        n_extra = len(grid)        # auto = match grid count
+    if n_extra == 0:
         return grid
 
     dhdt = _get_dhdt(state).copy()
@@ -336,10 +341,15 @@ def _select_scheduled(scores, cfg_ap, state, windows):
     ly = windows[0][2]
     lx = windows[0][3]
 
-    if cfg_ap.memory_budget and int(cfg_ap.memory_budget) > 0:
-        bs = max(1, int(cfg_ap.memory_budget) ** 2 // max(1, ly * lx))
-    else:
-        bs = n
+    # bs derived from GPU-capacity (Scenario A): we know one tile of
+    # (framemax_capacity, framemax_capacity) fits at bs=1. For tiles of
+    # (ly, lx) ≤ (framemax_capacity, framemax_capacity) we can stack:
+    #     bs = floor(framemax_capacity^2 / (ly * lx))
+    # framemax_capacity = data_preparation.framesizemax. The actual tile
+    # size (ly, lx) is derived from `adaptive_patching.patch_size`
+    # (overrides framesizemax in the window generators) when set.
+    framemax_cap = int(getattr(cfg_ap, "framemax_capacity", 0) or 0)
+    bs = max(1, framemax_cap ** 2 // max(1, ly * lx)) if framemax_cap > 0 else n
     bs = max(1, min(bs, n))
 
     rng = (np.random.default_rng(int(cfg_ap.rng_seed))
@@ -450,18 +460,25 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
     ap.selection             = str(_get("selection", "scheduled"))
     ap.scoring               = str(_get("scoring", "max"))
     ap.min_dhdt              = float(_get("min_dhdt", 0.0))
-    ap.framesizemax          = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
+    # Capacity = data_preparation.framesizemax (= "framemax" in the bs formula:
+    # the max single-tile size that fits on the GPU at bs=1). Used only by
+    # the scheduled selector to derive batch size.
+    ap.framemax_capacity     = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
+    # Actual tile size used by the window generators (= "ps" in the bs formula).
+    # When patch_size = 0 (default) we fall back to framesizemax, preserving the
+    # original single-knob behaviour. The generators read this as ap.framesizemax.
+    _patch_size              = int(_get("patch_size", 0) or 0)
+    ap.framesizemax          = _patch_size if _patch_size > 0 else ap.framemax_capacity
     # Generator-specific
     ap.stride_factor         = float(_get("stride_factor", 1.0))
-    ap.n_extra_peaks         = int(_get("n_extra_peaks", 4))
+    ap.n_extra_peaks         = int(_get("n_extra_peaks", -1))
     # Selector-specific (top_k / nms)
     ap.max_retrain_patches   = int(_get("max_retrain_patches", 2))
     ap.forgetting_prevention = bool(_get("forgetting_prevention", False))
     # Selector-specific (scheduled)
     ap.min_freq              = int(_get("min_freq", 1))
-    ap.freq_ratio            = int(_get("freq_ratio", 5))
-    ap.memory_budget         = int(_get("memory_budget", 0))
-    ap.schedule_rebuild_freq = int(_get("schedule_rebuild_freq", 1))
+    ap.freq_ratio            = int(_get("freq_ratio", 10))
+    ap.schedule_rebuild_freq = int(_get("schedule_rebuild_freq", 10))
     ap.shuffle_within_pass   = bool(_get("shuffle_within_pass", True))
     ap.shuffle_pass_order    = bool(_get("shuffle_pass_order", False))
     ap.record_schedule       = bool(_get("record_schedule", False))
