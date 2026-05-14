@@ -181,6 +181,7 @@ iceflow:
       # Shared scoring:
       scoring: max                   # max | mean — reduction within each window
       min_dhdt: 0.0                  # threshold (m/yr): skip windows below this
+      min_thk_in_window: 0.0         # (m) skip windows whose max(thk) is below this; 0 = no filter
       # top_k / nms selector knobs:
       max_retrain_patches: 10        # K: max patches per retraining step
       forgetting_prevention: true    # add 1 random ice-covered patch

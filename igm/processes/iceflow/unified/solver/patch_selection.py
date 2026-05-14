@@ -187,11 +187,24 @@ _WINDOW_GENS = {
 # Scoring (shared)
 # ===========================================================================
 
-def _score_windows(state, windows, scoring):
-    """Score each window by max or mean of |dh/dt| within its extent."""
+def _score_windows(state, windows, scoring, min_thk_in_window=0.0):
+    """Score each window by max or mean of |dh/dt| within its extent.
+
+    If `min_thk_in_window > 0`, windows whose max thickness is below the
+    threshold are marked ineligible (sentinel score = -1.0). Downstream
+    selectors treat negative scores as "skip entirely" — top_k/nms drop
+    them via their threshold check, scheduled gives them freq=0.
+    """
     dhdt = _get_dhdt(state)
     scores = np.zeros(len(windows), dtype=np.float64)
+    if min_thk_in_window > 0.0:
+        thk = state.thk.numpy() if hasattr(state.thk, "numpy") else np.array(state.thk)
+    else:
+        thk = None
     for i, (y0, x0, ly, lx) in enumerate(windows):
+        if thk is not None and float(np.max(thk[y0:y0+ly, x0:x0+lx])) < min_thk_in_window:
+            scores[i] = -1.0
+            continue
         p = dhdt[y0:y0+ly, x0:x0+lx]
         scores[i] = float(np.mean(p)) if scoring == "mean" else float(np.max(p))
     return scores
@@ -273,16 +286,23 @@ def _select_nms(scores, cfg_ap, state, windows):
 
 def _scores_to_freqs(scores, min_freq, max_freq, min_dhdt):
     n = len(scores)
-    # Defense in depth: even if _get_dhdt's NaN scrub is bypassed by a
-    # future code path, drop NaN/inf here so the integer cast can't blow up.
+    # NaN/inf scrub.
     scores = np.where(np.isfinite(scores), scores, 0.0)
-    s_max = float(scores.max()) if n > 0 else 0.0
-    if not np.isfinite(s_max) or s_max <= 0.0:
-        return np.full(n, max(1, min_freq), dtype=np.int32)
+    # Sentinel: score < 0 → ineligible (e.g. ice-free window).
+    eligible = scores >= 0.0
+    pos = scores[eligible & (scores > 0)]
+    s_max = float(pos.max()) if pos.size else 0.0
     freqs = np.zeros(n, dtype=np.int32)
+    if not np.isfinite(s_max) or s_max <= 0.0:
+        # No positive scores anywhere — give every eligible window min_freq.
+        if min_freq > 0:
+            freqs[eligible] = min_freq
+        return freqs
     span = max(1, max_freq - min_freq)
     for i in range(n):
-        if scores[i] < min_dhdt:
+        if not eligible[i]:
+            freqs[i] = 0
+        elif scores[i] < min_dhdt:
             freqs[i] = 0 if min_freq == 0 else min_freq
         else:
             f = min_freq + span * scores[i] / s_max
@@ -460,6 +480,8 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
     ap.selection             = str(_get("selection", "scheduled"))
     ap.scoring               = str(_get("scoring", "max"))
     ap.min_dhdt              = float(_get("min_dhdt", 0.0))
+    # Skip windows whose max(thk) is below this (m). 0 = no ice-mask filter.
+    ap.min_thk_in_window     = float(_get("min_thk_in_window", 0.0))
     # Capacity = data_preparation.framesizemax (= "framemax" in the bs formula:
     # the max single-tile size that fits on the GPU at bs=1). Used only by
     # the scheduled selector to derive batch size.
@@ -500,7 +522,7 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
     windows = _WINDOW_GENS[ap.windows](state, ap)
 
     # 2. Score each window
-    scores = _score_windows(state, windows, ap.scoring)
+    scores = _score_windows(state, windows, ap.scoring, ap.min_thk_in_window)
 
     # 3. Pick window indices
     indices = _SELECTORS[ap.selection](scores, ap, state, windows)
