@@ -394,6 +394,14 @@ def _select_scheduled(scores, cfg_ap, state, windows):
         sched["bs"] = bs
         state._patch_schedule = sched
 
+    # All windows ineligible (e.g. domain has no ice yet, so the
+    # `min_thk_in_window` filter rejected every window) → empty schedule.
+    # Fall back to a single highest-scoring window so the optimizer
+    # always has at least one patch to train on, even if it doesn't meet
+    # any criterion. Avoids the downstream empty-tensor handling.
+    if len(sched["batches"]) == 0:
+        return np.array([int(np.argmax(scores))], dtype=np.int32)
+
     cursor = sched["cursor"]
     batch_idx = sched["batches"][cursor]
     pass_k = sched["batch_pass_k"][cursor]
