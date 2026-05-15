@@ -99,8 +99,9 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Adaptive patch selection: filter patches by |dh/dt| if enabled
-    if do_solve and status == Status.DEFAULT:
+    # Adaptive patch selection
+    cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
+    if do_solve and status == Status.DEFAULT and bool(getattr(cfg_ap, "enabled", False)):
         inputs = select_patches(cfg, state, inputs)
 
     # Optimize and save cost
