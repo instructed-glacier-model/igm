@@ -170,27 +170,6 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: CNN
-    adaptive_patching:
-      # Two-layer API (see solver/patch_selection.py for details).
-      enabled: false 
-      windows: regular_grid          # regular_grid | sliding_overlap | peak_augmented
-      stride_factor: 1.0             # sliding_overlap only (1.0 = no overlap)
-      n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count → 2N windows total)
-      selection: all                 # all | top_k | nms | scheduled
-      scoring: max                   # max | mean — reduction within each window
-      min_dhdt: 0.0                  # threshold (m/yr): skip windows below this
-      min_thk_in_window: 0.0         # (m) skip windows whose max(thk) is below this; 0 = no filter
-      max_retrain_patches: 10        # K: max patches per retraining step
-      forgetting_prevention: true    # add 1 random ice-covered patch
-      min_freq: 1                    # every kept window retrains ≥1× per epoch
-      freq_ratio: 10                 # hottest window retrains ≤ min_freq * freq_ratio× per epoch
-      patch_size: 0                  # actual tile size for window generators (= "ps"). 0 = use framesizemax  bs derived as floor(framesizemax^2 / patch_size^2).
-      schedule_rebuild_freq: 10      # rebuild schedule every N retrain-step calls
-      shuffle_within_pass: true
-      shuffle_pass_order: false
-      record_schedule: false
-      record_path: null              # null = schedule_record.jsonl in cwd
-      rng_seed: null                 # null = nondeterministic
     data_preparation:
       framesizemax: 1000
       patches_per_batch: 1

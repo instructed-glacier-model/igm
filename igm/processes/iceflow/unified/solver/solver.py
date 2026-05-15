@@ -15,7 +15,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 from igm.utils.math.precision import normalize_precision
 
 from ..mappings.normalizer import is_distribution_shifted
-from .patch_selection import select_patches
+# from .patch_selection import select_patches
 
 
 def get_status(
@@ -99,10 +99,12 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Adaptive patch selection
-    cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
-    if do_solve and status == Status.DEFAULT and bool(getattr(cfg_ap, "enabled", False)):
-        inputs = select_patches(cfg, state, inputs)
+    # Placeholder for the adaptive patch selection (currently tested on adaptive patching branch)
+    # The goal is to select a subset of patches where the dh/dt change the most, to intensify the training
+    # on the most changing areas while mitigating the little changing areas.
+    # cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
+    # if do_solve and status == Status.DEFAULT and bool(getattr(cfg_ap, "enabled", False)):
+    #     inputs = select_patches(cfg, state, inputs)
 
     # Optimize and save cost
     if do_solve:
