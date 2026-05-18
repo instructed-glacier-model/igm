@@ -101,10 +101,23 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
     # Adaptive patch selection
     cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
-    if do_solve and status == Status.DEFAULT and bool(getattr(cfg_ap, "enabled", False)):
-        inputs = select_patches(cfg, state, inputs)
+    use_adaptive = (
+        do_solve
+        and status == Status.DEFAULT
+        and bool(getattr(cfg_ap, "enabled", False))
+    )
 
     # Optimize and save cost
-    if do_solve:
-
+    if do_solve and use_adaptive:
+        # `select_patches` returns the full training tensor of shape
+        # [N_train, ly, lx, C] (already shuffled / scored / sampled per
+        # the new 4-step pipeline) plus the fixed batch size `bs`. We
+        # loop over N_train/bs slices, each of fixed shape [bs, ly, lx, C],
+        # so the optimizer graph compiles once.
+        training_inputs, bs = select_patches(cfg, state, inputs)
+        n_train = int(training_inputs.shape[0])
+        for start in range(0, n_train, bs):
+            batch = training_inputs[start:start + bs]
+            state.cost = optimizer.minimize(batch)
+    elif do_solve:
         state.cost = optimizer.minimize(inputs)

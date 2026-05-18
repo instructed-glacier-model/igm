@@ -6,37 +6,69 @@
 """
 Adaptive patch selection for the unified iceflow solver.
 
-Two-layer design:
+PIPELINE (one call to `select_patches`):
 
-  Layer 1 — WINDOW GENERATORS produce a list of (y0, x0, ly, lx) corners
-  whose union covers the full domain. Configured by
-  cfg.processes.iceflow.unified.adaptive_patching.windows:
+  Once early — compute the fixed-shape budget:
+      bs      = max(1, floor(framesizemax^2 / (ly · lx)))
+      N_train = floor(grid_cover_count / bs) · bs          (multiple of bs)
 
-    - "regular_grid"     non-overlapping tiles, exact coverage, zero overlap
-    - "sliding_overlap"  windows at stride = ly * stride_factor, exact
-                          coverage; stride_factor=1.0 → no overlap (= grid),
-                          stride_factor=0.5 → 4x redundancy in 2D
-    - "peak_augmented"   regular_grid (covering base) + n_extra_peaks
-                          windows centered at score peaks (DEFAULT)
+  STEP 1 — WINDOW GENERATION (Layer 1)
+      list_windows = generator(state, cfg_ap)
+      Available generators:
+        - "regular_grid"     non-overlapping tiles, exact coverage
+        - "sliding_overlap"  windows at stride = ly · stride_factor
+        - "peak_augmented"   regular_grid + n_extra_peaks windows at score peaks (DEFAULT)
 
-  Layer 2 — SELECTORS pick which window indices to retrain on at each call.
-  Configured by cfg.processes.iceflow.unified.adaptive_patching.selection:
+  STEP 2 — SCORING (with freq computation, including the thk filter)
+      score[i] = max/mean of |dh/dt| in window i
+      freq[i]  = 0                       if max(thk in window i) < min_thk_in_window
+                 1                       if selection == "all"
+                 clip(round(min_freq + (max_freq - min_freq) · score[i] / s_max),
+                      1, max_freq)       if selection == "scored"
+      where max_freq = min_freq · freq_ratio  (defaults: min_freq=1, freq_ratio=10).
 
-    - "all"        return every window
-    - "top_k"      max_retrain_patches highest-scoring windows
-    - "nms"        top-K with greedy IoU overlap suppression
-    - "scheduled"  frequency-weighted, memory-bounded round-robin schedule
-                    (no duplicates per batch) — DEFAULT
+  STEP 3 — TRAINING WINDOWS (Layer 2)
+      training_windows = length-N_train int array of indices into list_windows.
+        - selection == "all"        → deterministic: list_windows truncated or
+                                        padded (cyclically) to N_train.
+        - selection == "scored"  → N_train independent draws with replacement,
+                                        weighted by freq.
+      If shuffle_training_windows (default true), the resulting indices are shuffled.
+      If record_training_windows, one JSONL line is appended to record_path.
 
-Scoring proxy is |dh/dt|; reduced inside each window by max or mean
-(cfg.scoring). Windows below cfg.min_dhdt get score=0 (and freq=0 in the
-scheduled selector if min_freq=0).
+  STEP 4 — SOLVER LOOP   (lives in solver.py, NOT here)
+      The solver receives the [N_train, ly, lx, C] training tensor together with bs
+      and runs `ceil(N_train / bs) = N_train // bs` calls to optimizer.minimize(),
+      each on a fixed-shape [bs, ly, lx, C] slice. Constant batch shape → no XLA
+      recompile, no tail batch.
 
-For "scheduled" selection, all schedule state is parked on
-state._patch_schedule across calls; if cfg.record_schedule is true,
-per-call metadata is appended to state._patch_schedule_record for
-downstream visualization.
+KEY CONFIG KNOBS
+  (see igm/conf/processes/iceflow.yaml for the full schema and defaults)
+
+      data_preparation.framesizemax     GPU capacity per batch (= one tile fits at bs=1)
+      adaptive_patching.patch_size      Actual tile side. 0 → fall back to framesizemax.
+      adaptive_patching.windows         Window generator (Step 1)
+      adaptive_patching.selection       "all" | "scored"  (Step 2/3 weighting)
+      adaptive_patching.scoring         "max" | "mean"  (within-window reduction)
+      adaptive_patching.min_thk_in_window  (m) Drop windows below this thk → freq=0.
+      adaptive_patching.min_freq        Floor of the freq formula (default 1)
+      adaptive_patching.freq_ratio      max_freq / min_freq (default 10)
+      adaptive_patching.shuffle_training_windows  bool (default true)
+      adaptive_patching.record_training_windows   bool (default false)
+      adaptive_patching.record_path     JSONL output path (default training_windows.jsonl)
+      adaptive_patching.rng_seed        int|null — null means fresh randomness per call
+      adaptive_patching.rescore_freq    Steps 1+2 (windows + scoring + freq) are
+                                          recomputed every N retrain calls; in between,
+                                          the cached list_windows/scores/freqs are
+                                          reused. Step 3 (sampling) runs every call.
+                                          Default 10. Use 1 to recompute every call.
+
+ARCHIVE: the prior multi-pass round-robin `scheduled` selector, the `top_k` and
+`nms` selectors, and `_build_schedule` live in `patch_selection_archive.py`.
 """
+
+import json
+import os
 
 import numpy as np
 import tensorflow as tf
@@ -63,9 +95,8 @@ def _get_dhdt(state: State) -> np.ndarray:
 
     NaN guard matters early in a run: if the network is untrained the
     predicted velocities can be wild and the resulting thickness can drift
-    to NaN. The score/freq computation downstream then explodes. Treat
-    NaN/inf cells as "no proxy signal here" — the scheduler falls back to
-    uniform-freq behaviour and keeps running rather than crashing.
+    to NaN. Treat NaN/inf cells as "no proxy signal here" — downstream
+    falls back to uniform-freq behaviour rather than crashing.
     """
     if hasattr(state, "dhdt") and state.dhdt is not None:
         a = np.abs(state.dhdt.numpy() if hasattr(state.dhdt, "numpy") else np.array(state.dhdt))
@@ -106,7 +137,6 @@ def _windows_regular_grid(state, cfg_ap):
     windows = []
     for j in range(sy):
         for i in range(sx):
-            # Snap last row/col inward so the union covers [0:ny] x [0:nx] exactly
             y0 = j * ly if j < sy - 1 else (ny - ly)
             x0 = i * lx if i < sx - 1 else (nx - lx)
             windows.append((int(y0), int(x0), int(ly), int(lx)))
@@ -114,8 +144,7 @@ def _windows_regular_grid(state, cfg_ap):
 
 
 def _windows_sliding_overlap(state, cfg_ap):
-    """Sliding windows at stride = ly * stride_factor; the last row/col is
-    snapped to cover the trailing edge.
+    """Sliding windows at stride = ly · stride_factor.
 
     stride_factor=1.0 → no overlap (equivalent to regular_grid).
     stride_factor=0.5 → 4× redundancy in 2D.
@@ -140,18 +169,13 @@ def _windows_sliding_overlap(state, cfg_ap):
 def _windows_peak_augmented(state, cfg_ap):
     """Regular grid (covering base) + n_extra_peaks windows centered at peaks.
 
-    Coverage is guaranteed by the grid base. Extras add training samples
-    where the proxy field |dh/dt| has localised peaks. Each picked peak
-    is suppressed in the score map before the next peak is chosen, so
-    extras don't collapse onto the same hotspot.
-
     Special value `n_extra_peaks: -1` → match the number of grid windows
     (so the output has 2N windows: N grid for coverage, N peaks for focus).
     """
     grid = _windows_regular_grid(state, cfg_ap)
     n_extra = int(cfg_ap.n_extra_peaks)
     if n_extra < 0:
-        n_extra = len(grid)        # auto = match grid count
+        n_extra = len(grid)
     if n_extra == 0:
         return grid
 
@@ -184,270 +208,125 @@ _WINDOW_GENS = {
 
 
 # ===========================================================================
-# Scoring (shared)
+# Step 2 — Scoring + freq
 # ===========================================================================
 
-def _score_windows(state, windows, scoring, min_thk_in_window=0.0):
-    """Score each window by max or mean of |dh/dt| within its extent.
-
-    If `min_thk_in_window > 0`, windows whose max thickness is below the
-    threshold are marked ineligible (sentinel score = -1.0). Downstream
-    selectors treat negative scores as "skip entirely" — top_k/nms drop
-    them via their threshold check, scheduled gives them freq=0.
-    """
+def _score_windows(state, windows, scoring: str) -> np.ndarray:
+    """Score each window by max or mean of |dh/dt| inside its extent."""
     dhdt = _get_dhdt(state)
     scores = np.zeros(len(windows), dtype=np.float64)
-    if min_thk_in_window > 0.0:
-        thk = state.thk.numpy() if hasattr(state.thk, "numpy") else np.array(state.thk)
-    else:
-        thk = None
     for i, (y0, x0, ly, lx) in enumerate(windows):
-        if thk is not None and float(np.max(thk[y0:y0+ly, x0:x0+lx])) < min_thk_in_window:
-            scores[i] = -1.0
-            continue
         p = dhdt[y0:y0+ly, x0:x0+lx]
         scores[i] = float(np.mean(p)) if scoring == "mean" else float(np.max(p))
     return scores
 
 
-# ===========================================================================
-# Layer 2 — Selectors
-# ===========================================================================
-# Signature: (scores, cfg_ap, state, windows) → np.ndarray[int]
-# Return the indices INTO `windows` that should be retrained this call.
-# ===========================================================================
+def _eligibility_mask(state, windows, min_thk_in_window: float) -> np.ndarray:
+    """Boolean mask: which windows have enough ice to be considered for training.
 
-def _select_all(scores, cfg_ap, state, windows):
-    return np.arange(len(scores), dtype=np.int32)
-
-
-def _select_top_k(scores, cfg_ap, state, windows):
-    """Top-K windows by score above min_dhdt; fallback to argmax if none.
-
-    forgetting_prevention=True appends one random ice-covered window not
-    already selected.
+    Windows with max(thk) < min_thk_in_window are ineligible → freq=0 → never picked,
+    regardless of selector. Returns all-True when min_thk_in_window <= 0.
     """
-    K = int(cfg_ap.max_retrain_patches)
-    threshold = float(cfg_ap.min_dhdt)
-    above = np.where(scores >= threshold)[0]
-    if len(above) == 0:
-        selected = np.array([int(np.argmax(scores))], dtype=np.int32)
-    else:
-        ranked = above[np.argsort(-scores[above])]
-        selected = ranked[:K].astype(np.int32)
-
-    if cfg_ap.forgetting_prevention:
-        rng = np.random.default_rng()
-        thk = state.thk.numpy() if hasattr(state.thk, "numpy") else np.array(state.thk)
-        ice_candidates = []
-        for i, (y0, x0, ly, lx) in enumerate(windows):
-            if i in selected:
-                continue
-            if np.max(thk[y0:y0+ly, x0:x0+lx]) > 1.0:
-                ice_candidates.append(i)
-        if ice_candidates:
-            selected = np.append(selected, rng.choice(ice_candidates)).astype(np.int32)
-    return selected
+    if min_thk_in_window <= 0.0:
+        return np.ones(len(windows), dtype=bool)
+    thk = state.thk.numpy() if hasattr(state.thk, "numpy") else np.array(state.thk)
+    return np.array(
+        [float(np.max(thk[y0:y0+ly, x0:x0+lx])) >= min_thk_in_window
+         for (y0, x0, ly, lx) in windows],
+        dtype=bool,
+    )
 
 
-def _window_iou(a, b):
-    """IoU between two axis-aligned (y0,x0,ly,lx) windows."""
-    ay0, ax0, aly, alx = a
-    by0, bx0, bly, blx = b
-    iy0 = max(ay0, by0); ix0 = max(ax0, bx0)
-    iy1 = min(ay0+aly, by0+bly); ix1 = min(ax0+alx, bx0+blx)
-    if iy1 <= iy0 or ix1 <= ix0:
-        return 0.0
-    inter = (iy1 - iy0) * (ix1 - ix0)
-    union = aly * alx + bly * blx - inter
-    return inter / union if union > 0 else 0.0
+def _scores_to_freqs(scores: np.ndarray, eligible: np.ndarray,
+                     selection: str, min_freq: int, freq_ratio: int) -> np.ndarray:
+    """Map per-window scores to integer frequencies.
 
-
-def _select_nms(scores, cfg_ap, state, windows):
-    """Top-K with greedy IoU overlap suppression."""
-    K = int(cfg_ap.max_retrain_patches)
-    threshold = float(cfg_ap.min_dhdt)
-    order = np.argsort(-scores)
-    selected = []
-    for idx in order:
-        if scores[idx] < threshold:
-            break
-        if any(_window_iou(windows[idx], windows[s]) > 0.0 for s in selected):
-            continue
-        selected.append(int(idx))
-        if len(selected) >= K:
-            break
-    if not selected:
-        selected.append(int(np.argmax(scores)))
-    return np.array(selected, dtype=np.int32)
-
-
-# --- scheduled selector ---
-
-def _scores_to_freqs(scores, min_freq, max_freq, min_dhdt):
+    - Ineligible (thk-filtered) windows → freq = 0 (never sampled).
+    - selection == "all"       → freq = 1 for every eligible window (uniform).
+    - selection == "scored" → freq = clip(round(min_freq + (max_freq - min_freq)
+                                              · score / s_max), 1, max_freq),
+                                  where max_freq = min_freq · freq_ratio.
+    """
     n = len(scores)
-    # NaN/inf scrub.
-    scores = np.where(np.isfinite(scores), scores, 0.0)
-    # Sentinel: score < 0 → ineligible (e.g. ice-free window).
-    eligible = scores >= 0.0
-    pos = scores[eligible & (scores > 0)]
-    s_max = float(pos.max()) if pos.size else 0.0
     freqs = np.zeros(n, dtype=np.int32)
-    if not np.isfinite(s_max) or s_max <= 0.0:
-        # No positive scores anywhere — give every eligible window min_freq.
-        if min_freq > 0:
-            freqs[eligible] = min_freq
+
+    if selection == "all":
+        freqs[eligible] = 1
         return freqs
+
+    # selection == "scored"
+    max_freq = max(min_freq, min_freq * int(freq_ratio))
+    if max_freq <= 0:
+        return freqs
+
+    s_clean = np.where(np.isfinite(scores), scores, 0.0)
+    pos_mask = eligible & (s_clean > 0)
+    if not pos_mask.any():
+        # No positive |dh/dt| anywhere yet → fall back to uniform among eligibles.
+        freqs[eligible] = max(1, min_freq)
+        return freqs
+
+    s_max = float(s_clean[pos_mask].max())
+    if not np.isfinite(s_max) or s_max <= 0.0:
+        freqs[eligible] = max(1, min_freq)
+        return freqs
+
     span = max(1, max_freq - min_freq)
     for i in range(n):
         if not eligible[i]:
-            freqs[i] = 0
-        elif scores[i] < min_dhdt:
-            freqs[i] = 0 if min_freq == 0 else min_freq
-        else:
-            f = min_freq + span * scores[i] / s_max
-            freqs[i] = int(np.clip(round(f), max(1, min_freq), max_freq))
+            continue
+        f = min_freq + span * (s_clean[i] / s_max)
+        freqs[i] = int(np.clip(round(f), max(1, min_freq), max_freq))
     return freqs
 
 
-def _build_schedule(scores, cfg_ap, n_windows, bs, rng):
-    """Round-robin pass scheduler: pass k contains every window with freq>=k.
+# ===========================================================================
+# Step 3 — Build training_windows (length N_train, indices into list_windows)
+# ===========================================================================
 
-    Each pass is split into batches of size `bs` with distinct window
-    indices, guaranteeing no duplicate index inside any returned batch.
+def _build_training_windows(freqs: np.ndarray, selection: str, n_train: int,
+                            rng: np.random.Generator) -> np.ndarray:
+    """Return a length-N_train int array of indices into list_windows.
+
+    - selection == "all": deterministic. Take every eligible window in
+      order and wrap (cyclically) to fill N_train. Ineligible (freq=0)
+      windows are skipped. If every window is ineligible (cold start),
+      falls back to filling with index 0 — the solver will still receive
+      a valid shape and the optimizer will train on those slots, but it's
+      a "no real signal yet" case worth flagging in logs.
+    - selection == "scored": N_train independent draws with replacement,
+      probability ∝ freq.
     """
-    min_freq = int(cfg_ap.min_freq)
-    max_freq = max(min_freq, min_freq * int(cfg_ap.freq_ratio))
-    freqs = _scores_to_freqs(scores, min_freq, max_freq, float(cfg_ap.min_dhdt))
+    n = len(freqs)
 
-    batches = []
-    batch_pass_k = []
-    for k in range(1, max_freq + 1):
-        eligible = np.where(freqs >= k)[0]
-        if eligible.size == 0:
-            continue
-        if cfg_ap.shuffle_within_pass:
-            rng.shuffle(eligible)
-        for c0 in range(0, eligible.size, bs):
-            batches.append(eligible[c0:c0+bs].astype(np.int32))
-            batch_pass_k.append(k)
+    if selection == "all":
+        eligible_idx = np.where(freqs > 0)[0]
+        if eligible_idx.size == 0:
+            return np.zeros(n_train, dtype=np.int32)
+        # Tile + truncate so the array is exactly n_train long.
+        reps = int(np.ceil(n_train / eligible_idx.size))
+        out = np.tile(eligible_idx, reps)[:n_train]
+        return out.astype(np.int32)
 
-    if cfg_ap.shuffle_pass_order and len(batches) > 1:
-        order = np.arange(len(batches))
-        rng.shuffle(order)
-        batches = [batches[i] for i in order]
-        batch_pass_k = [batch_pass_k[i] for i in order]
-
-    return {
-        "batches": batches,
-        "batch_pass_k": batch_pass_k,
-        "cursor": 0,
-        "freqs": freqs,
-        "scores": scores.copy(),
-        "n_windows": n_windows,
-    }
-
-
-def _select_scheduled(scores, cfg_ap, state, windows):
-    """Frequency-weighted, memory-bounded round-robin schedule.
-
-    Schedule state is parked on state._patch_schedule across calls. Rebuilt
-    when absent, exhausted, on grid changes, or every schedule_rebuild_freq
-    retrain-step calls.
-    """
-    n = len(scores)
-    if n == 0:
-        return np.array([], dtype=np.int32)
-    ly = windows[0][2]
-    lx = windows[0][3]
-
-    # bs derived from GPU-capacity (Scenario A): we know one tile of
-    # (framemax_capacity, framemax_capacity) fits at bs=1. For tiles of
-    # (ly, lx) ≤ (framemax_capacity, framemax_capacity) we can stack:
-    #     bs = floor(framemax_capacity^2 / (ly * lx))
-    # framemax_capacity = data_preparation.framesizemax. The actual tile
-    # size (ly, lx) is derived from `adaptive_patching.patch_size`
-    # (overrides framesizemax in the window generators) when set.
-    framemax_cap = int(getattr(cfg_ap, "framemax_capacity", 0) or 0)
-    bs = max(1, framemax_cap ** 2 // max(1, ly * lx)) if framemax_cap > 0 else n
-    bs = max(1, min(bs, n))
-
-    rng = (np.random.default_rng(int(cfg_ap.rng_seed))
-           if cfg_ap.rng_seed is not None
-           else np.random.default_rng())
-
-    sched = getattr(state, "_patch_schedule", None)
-    step_now = _current_step(state)
-    rebuild_freq = int(cfg_ap.schedule_rebuild_freq)
-    age = step_now - (sched["last_build_step"] if sched else 0)
-    needs_rebuild = (
-        sched is None
-        or sched["cursor"] >= len(sched["batches"])
-        or (rebuild_freq > 0 and age >= rebuild_freq)
-        or sched.get("bs") != bs
-        or sched.get("n_windows") != n
-    )
-
-    if needs_rebuild:
-        sched = _build_schedule(scores, cfg_ap, n_windows=n, bs=bs, rng=rng)
-        sched["last_build_step"] = step_now
-        sched["bs"] = bs
-        state._patch_schedule = sched
-
-    # All windows ineligible (e.g. domain has no ice yet, so the
-    # `min_thk_in_window` filter rejected every window) → empty schedule.
-    # Fall back to a single highest-scoring window so the optimizer
-    # always has at least one patch to train on, even if it doesn't meet
-    # any criterion. Avoids the downstream empty-tensor handling.
-    if len(sched["batches"]) == 0:
-        return np.array([int(np.argmax(scores))], dtype=np.int32)
-
-    cursor = sched["cursor"]
-    batch_idx = sched["batches"][cursor]
-    pass_k = sched["batch_pass_k"][cursor]
-    sched["cursor"] = cursor + 1
-
-    if cfg_ap.record_schedule:
-        record = {
-            "step": step_now,
-            "t": float(state.t.numpy()) if hasattr(state, "t") and hasattr(state.t, "numpy") else None,
-            "pass_k": int(pass_k),
-            "cursor": int(cursor),
-            "patch_idx": batch_idx.tolist(),
-            "windows": [list(w) for w in (windows[int(i)] for i in batch_idx.tolist())],
-            "freqs": sched["freqs"].tolist() if cursor == 0 else None,
-        }
-        # In-memory list for downstream introspection in the same process.
-        rec = getattr(state, "_patch_schedule_record", None)
-        if rec is None:
-            rec = []
-            state._patch_schedule_record = rec
-        rec.append(record)
-        # Persistent JSON-lines file in the run cwd so an external plot
-        # script can read the schedule after the simulation finishes.
-        import json, os
-        path = getattr(cfg_ap, "record_path", None) or "schedule_record.jsonl"
-        with open(path, "a") as fh:
-            fh.write(json.dumps(record) + "\n")
-
-    return batch_idx
-
-
-_SELECTORS = {
-    "all": _select_all,
-    "top_k": _select_top_k,
-    "nms": _select_nms,
-    "scheduled": _select_scheduled,
-}
+    # selection == "scored"
+    if freqs.sum() <= 0:
+        # No eligible window has positive freq → fall back to argmax of
+        # the freq vector (which itself is 0 → index 0).
+        return np.zeros(n_train, dtype=np.int32)
+    p = freqs.astype(np.float64) / float(freqs.sum())
+    return rng.choice(n, size=n_train, replace=True, p=p).astype(np.int32)
 
 
 # ===========================================================================
 # Patch extraction
 # ===========================================================================
 
-def _gather_patches(state, windows, indices):
-    """Slice patches at windows[indices] from the cached full field."""
-    X = state._adaptive_patching_X  # set by select_patches dispatcher below
+def _gather_patches(state, windows, indices) -> tf.Tensor:
+    """Slice patches at windows[indices] from the cached full field.
+
+    Returns a tensor of shape [N, ly, lx, C] where N = len(indices).
+    """
+    X = state._adaptive_patching_X
     patches = [X[w[0]:w[0]+w[2], w[1]:w[1]+w[3], :]
                for w in (windows[int(i)] for i in indices)]
     return tf.stack(patches, axis=0) if patches else tf.zeros((0,) + tuple(X.shape[1:]), dtype=X.dtype)
@@ -457,19 +336,21 @@ def _gather_patches(state, windows, indices):
 # Dispatcher
 # ===========================================================================
 
-def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tensor:
-    """Two-layer adaptive patch selection.
+_SELECTORS = ("all", "scored")
 
-    Pipeline per call:
-      1. Generate covering windows (cfg.windows).
-      2. Score each window by |dh/dt| reduction (cfg.scoring).
-      3. Pick window indices (cfg.selection).
-      4. Slice patches at those windows from the full field and return.
 
-    Called from solve_iceflow() between input preparation and
-    optimizer.minimize(). The `inputs` argument (the pre-split regular
-    grid tensor) is accepted but not used — we slice patches directly
-    from the full field for uniform handling of off-grid windows.
+def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
+    """4-step adaptive patch selection.
+
+    Returns a tuple `(training_inputs, bs)`:
+      - training_inputs : tf.Tensor of shape [N_train, ly, lx, C]
+      - bs              : int — batch size for the solver loop. N_train is
+                          guaranteed to be a multiple of bs.
+
+    See module docstring for the full pipeline.
+
+    The `inputs` argument (the pre-split regular-grid tensor) is accepted but
+    unused; we slice patches directly from the cached full field.
     """
     cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
 
@@ -480,40 +361,29 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
         except Exception:
             return default
 
-    # Pack all knobs (with defaults) into a plain namespace.
     class _Cfg:
         pass
     ap = _Cfg()
-    ap.windows               = str(_get("windows", "peak_augmented"))
-    ap.selection             = str(_get("selection", "scheduled"))
-    ap.scoring               = str(_get("scoring", "max"))
-    ap.min_dhdt              = float(_get("min_dhdt", 0.0))
-    # Skip windows whose max(thk) is below this (m). 0 = no ice-mask filter.
-    ap.min_thk_in_window     = float(_get("min_thk_in_window", 0.0))
-    # Capacity = data_preparation.framesizemax (= "framemax" in the bs formula:
-    # the max single-tile size that fits on the GPU at bs=1). Used only by
-    # the scheduled selector to derive batch size.
-    ap.framemax_capacity     = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
-    # Actual tile size used by the window generators (= "ps" in the bs formula).
-    # When patch_size = 0 (default) we fall back to framesizemax, preserving the
-    # original single-knob behaviour. The generators read this as ap.framesizemax.
-    _patch_size              = int(_get("patch_size", 0) or 0)
-    ap.framesizemax          = _patch_size if _patch_size > 0 else ap.framemax_capacity
-    # Generator-specific
-    ap.stride_factor         = float(_get("stride_factor", 1.0))
-    ap.n_extra_peaks         = int(_get("n_extra_peaks", -1))
-    # Selector-specific (top_k / nms)
-    ap.max_retrain_patches   = int(_get("max_retrain_patches", 2))
-    ap.forgetting_prevention = bool(_get("forgetting_prevention", False))
-    # Selector-specific (scheduled)
-    ap.min_freq              = int(_get("min_freq", 1))
-    ap.freq_ratio            = int(_get("freq_ratio", 10))
-    ap.schedule_rebuild_freq = int(_get("schedule_rebuild_freq", 10))
-    ap.shuffle_within_pass   = bool(_get("shuffle_within_pass", True))
-    ap.shuffle_pass_order    = bool(_get("shuffle_pass_order", False))
-    ap.record_schedule       = bool(_get("record_schedule", False))
-    ap.record_path           = _get("record_path", None)  # default: schedule_record.jsonl in cwd
-    ap.rng_seed              = _get("rng_seed", None)
+    ap.windows                    = str(_get("windows", "peak_augmented"))
+    ap.selection                  = str(_get("selection", "scored"))
+    ap.scoring                    = str(_get("scoring", "max"))
+    ap.min_thk_in_window          = float(_get("min_thk_in_window", 0.0))
+    ap.min_freq                   = int(_get("min_freq", 1))
+    ap.freq_ratio                 = int(_get("freq_ratio", 10))
+    ap.stride_factor              = float(_get("stride_factor", 1.0))
+    ap.n_extra_peaks              = int(_get("n_extra_peaks", -1))
+    ap.shuffle_training_windows   = bool(_get("shuffle_training_windows", True))
+    ap.record_training_windows    = bool(_get("record_training_windows", False))
+    ap.record_path                = _get("record_path", None) or "training_windows.jsonl"
+    ap.rng_seed                   = _get("rng_seed", None)
+    ap.rescore_freq               = int(_get("rescore_freq", 10))
+
+    # Capacity = data_preparation.framesizemax (one tile of this size fits at bs=1).
+    framemax = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
+    # Actual tile size used by the window generators. When > 0 overrides framemax;
+    # when 0 falls back to framemax (legacy single-knob behaviour).
+    _patch_size = int(_get("patch_size", 0) or 0)
+    ap.framesizemax = _patch_size if _patch_size > 0 else framemax
 
     if ap.windows not in _WINDOW_GENS:
         raise ValueError(
@@ -523,28 +393,96 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor) -> tf.Tenso
     if ap.selection not in _SELECTORS:
         raise ValueError(
             f"unknown selection: {ap.selection!r}; "
-            f"available: {list(_SELECTORS)}"
+            f"available: {list(_SELECTORS)} (top_k/nms archived — see patch_selection_archive.py)"
         )
 
-    # 1. Generate covering windows
-    windows = _WINDOW_GENS[ap.windows](state, ap)
+    # --- Once early: bs and N_train, computed from grid dims and framesizemax ---
+    dhdt = _get_dhdt(state)
+    ny, nx = dhdt.shape
+    _, _, ly, lx = _patch_grid_dims(ny, nx, ap.framesizemax)
+    bs = max(1, framemax ** 2 // max(1, ly * lx))
+    grid_cover_count = (ny // ap.framesizemax + 1) * (nx // ap.framesizemax + 1)
+    n_train = max(bs, (grid_cover_count // bs) * bs)
 
-    # 2. Score each window
-    scores = _score_windows(state, windows, ap.scoring, ap.min_thk_in_window)
+    rng = (np.random.default_rng(int(ap.rng_seed))
+           if ap.rng_seed is not None else np.random.default_rng())
 
-    # 3. Pick window indices
-    indices = _SELECTORS[ap.selection](scores, ap, state, windows)
+    # --- Steps 1+2: cached across calls, rebuilt every `rescore_freq` calls ---
+    # Cache lives on state._ap_cache. It carries list_windows, scores,
+    # eligible mask, freqs, and the call-counter at last rebuild. The cache
+    # is invalidated when:
+    #   - it doesn't exist yet (first call)
+    #   - the call counter has advanced by >= rescore_freq since last rebuild
+    #   - the configured selection/scoring/thk-filter/freq knobs changed
+    #     (so a per-trial sweep starting fresh always rebuilds)
+    #   - the bs/ly/lx changed (e.g. grid size changed mid-run)
+    cache = getattr(state, "_ap_cache", None)
+    cache_key = (ap.windows, ap.selection, ap.scoring, ap.min_thk_in_window,
+                 ap.min_freq, ap.freq_ratio, ap.framesizemax, ap.n_extra_peaks)
+    call_n = (cache["call_n"] + 1) if cache is not None else 0
+    needs_rebuild = (
+        cache is None
+        or cache.get("key") != cache_key
+        or (ap.rescore_freq > 0 and call_n % ap.rescore_freq == 0)
+    )
+    if needs_rebuild:
+        # Step 1: generate list_windows
+        list_windows = _WINDOW_GENS[ap.windows](state, ap)
+        # Step 2: scoring → freqs (thk filter folded in here)
+        scores = _score_windows(state, list_windows, ap.scoring)
+        eligible = _eligibility_mask(state, list_windows, ap.min_thk_in_window)
+        freqs = _scores_to_freqs(scores, eligible, ap.selection,
+                                 ap.min_freq, ap.freq_ratio)
+        cache = {
+            "key": cache_key,
+            "list_windows": list_windows,
+            "scores": scores,
+            "eligible": eligible,
+            "freqs": freqs,
+            "call_n": call_n,
+        }
+        state._ap_cache = cache
+    else:
+        list_windows = cache["list_windows"]
+        scores = cache["scores"]
+        eligible = cache["eligible"]
+        freqs = cache["freqs"]
+        cache["call_n"] = call_n
 
-    # 4. Cache the full field and slice the chosen windows out of it
+    # --- Step 3: build training_windows (length n_train, indices into list_windows) ---
+    training_idx = _build_training_windows(freqs, ap.selection, n_train, rng)
+    if ap.shuffle_training_windows:
+        rng.shuffle(training_idx)
+
+    if ap.record_training_windows:
+        _append_training_record(state, ap, list_windows, scores, freqs,
+                                training_idx, bs, n_train)
+
+    # --- Step 4 prep: cache the full field, gather the training patches ---
     _cache_full_field(state, cfg)
-    selected = _gather_patches(state, windows, indices)
+    training_inputs = _gather_patches(state, list_windows, training_idx)
 
-    # Bookkeep previous thickness so |dh/dt| is computable next call
+    # Bookkeep previous thickness so |dh/dt| is computable next call.
     state._thk_prev = tf.identity(state.thk)
 
-    n_total = len(windows)
-    n_selected = int(indices.shape[0]) if hasattr(indices, "shape") else len(indices)
-#    print(f"  Adaptive patching ({ap.windows} × {ap.selection}): "
-#          f"{n_selected}/{n_total} windows")
+    return training_inputs, bs
 
-    return selected
+
+def _append_training_record(state, ap, list_windows, scores, freqs,
+                            training_idx, bs, n_train):
+    """One JSONL line per call describing the training_windows."""
+    rec = {
+        "step": _current_step(state),
+        "t": (float(state.t.numpy()) if hasattr(state, "t") and hasattr(state.t, "numpy")
+              else None),
+        "selection": ap.selection,
+        "bs": int(bs),
+        "n_train": int(n_train),
+        "n_list_windows": int(len(list_windows)),
+        "windows": [list(w) for w in list_windows],
+        "scores": [float(s) for s in scores],
+        "freqs": [int(f) for f in freqs],
+        "training_idx": [int(i) for i in training_idx],
+    }
+    with open(ap.record_path, "a") as fh:
+        fh.write(json.dumps(rec) + "\n")

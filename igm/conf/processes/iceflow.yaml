@@ -171,26 +171,30 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     adaptive_patching:
-      # Two-layer API (see solver/patch_selection.py for details).
-      enabled: false 
+      # 4-step pipeline (see solver/patch_selection.py + clever-patch/patch_selection.md).
+      enabled: false
+      # Step 1 — window generation
       windows: regular_grid          # regular_grid | sliding_overlap | peak_augmented
       stride_factor: 1.0             # sliding_overlap only (1.0 = no overlap)
-      n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count → 2N windows total)
-      selection: all                 # all | top_k | nms | scheduled
-      scoring: max                   # max | mean — reduction within each window
-      min_dhdt: 0.0                  # threshold (m/yr): skip windows below this
-      min_thk_in_window: 0.0         # (m) skip windows whose max(thk) is below this; 0 = no filter
-      max_retrain_patches: 10        # K: max patches per retraining step
-      forgetting_prevention: true    # add 1 random ice-covered patch
-      min_freq: 1                    # every kept window retrains ≥1× per epoch
-      freq_ratio: 10                 # hottest window retrains ≤ min_freq * freq_ratio× per epoch
-      patch_size: 0                  # actual tile size for window generators (= "ps"). 0 = use framesizemax  bs derived as floor(framesizemax^2 / patch_size^2).
-      schedule_rebuild_freq: 10      # rebuild schedule every N retrain-step calls
-      shuffle_within_pass: true
-      shuffle_pass_order: false
-      record_schedule: false
-      record_path: null              # null = schedule_record.jsonl in cwd
-      rng_seed: null                 # null = nondeterministic
+      n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count)
+      patch_size: 0                  # actual tile side (= "ps"). 0 = use framesizemax.
+                                     # bs = floor(framesizemax² / (ly·lx)), computed once.
+      # Step 2 — scoring + freq
+      selection: all                 # all (uniform freq=1) | scored (freq ∝ score).
+                                     # top_k/nms are archived; see patch_selection_archive.py.
+      scoring: max                   # max | mean — within-window reduction of |dh/dt|
+      min_thk_in_window: 0.0         # (m) windows with max(thk) < this get freq=0 (filter)
+      min_freq: 1                    # freq floor for the scheduled formula
+      freq_ratio: 10                 # max_freq = min_freq · freq_ratio
+      # Step 3 — training_windows
+      shuffle_training_windows: true # shuffle the N_train indices before batching
+      record_training_windows: false # write one JSONL line per call to record_path
+      record_path: null              # null → training_windows.jsonl in cwd
+      rng_seed: null                 # null → fresh randomness per call
+      # Caching: steps 1+2 (windows + scoring + freqs) are recomputed every
+      # rescore_freq retrain calls. In between, the cache is reused; only step 3
+      # (sampling) runs every call. 1 = recompute every call. Default 10.
+      rescore_freq: 10
     data_preparation:
       framesizemax: 1000
       patches_per_batch: 1
