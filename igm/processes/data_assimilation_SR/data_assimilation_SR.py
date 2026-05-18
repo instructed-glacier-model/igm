@@ -4,71 +4,21 @@
 
 from __future__ import annotations
 
-import re
-
-import tensorflow as tf
 import keras
-
-_MIN_TF_VERSION = (2, 19, 1)
-_MIN_KERAS_VERSION = (3, 12, 1)
-
-def _parse_version_tuple(version: str, n: int = 3) -> tuple[int, ...]:
-    """
-    Convert version strings like '2.19.1', '3.12.1rc0', '3.12' into
-    comparable integer tuples.
-    """
-    parts = [int(x) for x in re.findall(r"\d+", version)]
-    if len(parts) < n:
-        parts.extend([0] * (n - len(parts)))
-    return tuple(parts[:n])
-
-def _format_version(version_tuple: tuple[int, ...]) -> str:
-    return ".".join(str(x) for x in version_tuple)
-
-def _require_supported_tf_keras_versions() -> None:
-    tf_version = getattr(tf, "__version__", "unknown")
-    keras_version = getattr(keras, "__version__", "unknown")
-
-    tf_ok = _parse_version_tuple(tf_version) >= _MIN_TF_VERSION
-    keras_ok = _parse_version_tuple(keras_version) >= _MIN_KERAS_VERSION
-
-    if tf_ok and keras_ok:
-        return
-
-    border = "═" * 90
-    req_tf = _format_version(_MIN_TF_VERSION)
-    req_keras = _format_version(_MIN_KERAS_VERSION)
-
-    raise RuntimeError(
-        "\n"
-        f"{border}\n"
-        "❌  UNSUPPORTED TENSORFLOW / KERAS VERSION\n"
-        f"{border}\n"
-        "This data assimilation module wont to run with older package versions.\n\n"
-        "Minimum required versions:\n"
-        f"  • tensorflow >= {req_tf}\n"
-        f"  • keras      >= {req_keras}\n\n"
-        "Detected versions:\n"
-        f"  • tensorflow == {tf_version}\n"
-        f"  • keras      == {keras_version}\n\n"
-        "Why this is blocked:\n"
-        "  This code depends on newer TensorFlow / Keras behavior.\n"
-        "  It might be possible to get it working, I haven't bothered trying yet.\n\n"
-        "Fix:\n"
-        "  Upgrade the environment, then rerun.\n"
-        f"{border}\n"
-    )
-
-_require_supported_tf_keras_versions()
+import tensorflow as tf
 
 from igm.processes.iceflow.unified.halt import Halt
 from igm.processes.iceflow.unified.halt.criteria import Criteria
 from igm.processes.iceflow.unified.halt.metrics import Metrics
 from igm.processes.iceflow.unified.mappings.data_assimilation import MappingDataAssimilation
 from igm.processes.iceflow.unified.mappings.interfaces.data_assimilation import InterfaceDataAssimilation
-from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS
+from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS, InterfaceSPG
 from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoundsDA
 from igm.utils.math.precision import normalize_precision
+
+from igm.processes.iceflow.unified.optimizers.spectral_projected_gradient import (
+    OptimizerSpectralProjectedGradient,
+)
 
 from .phase_runner import (
     DataAssimilationRuntime,
@@ -83,27 +33,50 @@ from .retraining import (
 )
 from .utils import _initialize_inverted_fields
 
+def _require_supported_keras_version() -> None:
+    major = int(str(getattr(keras, "__version__", "0")).split(".", 1)[0])
+    if major < 3:
+        raise RuntimeError(
+            f"data_assimilation_SR requires Keras 3 or newer. "
+            f"Detected keras == {keras.__version__}."
+        )
 
 def _build_halt(cfg) -> Halt:
     cfg_da = cfg.processes.data_assimilation_SR
-    patience_metric = Metrics["cost"]()
-    patience_halt_crit = Criteria["patience"](
-        metric=patience_metric,
+
+    log_burst_crit = Criteria["log_burst"](
+        metric=Metrics["cost"](),
         dtype=cfg.processes.iceflow.numerics.precision,
-        tol=1e-2,
         patience=cfg_da.optimization.minimizer_patience,
+        log_tol=1.0e-4,
+        burst_log_tol=9.53e-2,
+        patience_growth= 1.5,
+        max_patience= 5 * cfg_da.optimization.minimizer_patience,
+        min_iter= 0,
+        cost_floor=1.0e-6,
     )
+
+    grad_crit = Criteria["abs_tol"](
+        metric=Metrics["grad_theta_norm"](),
+        tol=1.0e-4,
+        ord="id",
+    )
+
     return Halt(
-        crit_success=[patience_halt_crit],
+        crit_success=[log_burst_crit, grad_crit],
         crit_failure=[],
         freq=1,
         dtype=cfg.processes.iceflow.numerics.precision,
+        success_mode="all",
     )
 
 
 def data_assimilation_initialize(cfg, state) -> None:
+    _require_supported_keras_version()
+
     cfg_da = cfg.processes.data_assimilation_SR
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+    retrain_iter = int(cfg_da.optimization.retrain_iter)
 
     _initialize_inverted_fields(cfg, state, dtype)
 
@@ -116,14 +89,22 @@ def data_assimilation_initialize(cfg, state) -> None:
     optimizer_args["halt"] = _build_halt(cfg)
     optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
 
+    # optimizer_args = InterfaceSPG.get_optimizer_args(cfg, cost_fn, da_map)
+    # optimizer_args["halt"] = _build_halt(cfg)
+    # optimizer = OptimizerSpectralProjectedGradient(**optimizer_args)
+
+    retraining = None
+    if retrain_iter > 0:
+        retraining = initialize_retraining(cfg, state, da_map)
+
     da = DataAssimilationRuntime(
         map=da_map,
         opt=optimizer,
         cost_fn=cost_fn,
         objective=objective,
         out_freq=int(cfg_da.output.freq),
-        retrain_iter=int(cfg_da.optimization.retrain_iter),
-        retraining=initialize_retraining(cfg, state, da_map),
+        retrain_iter=retrain_iter,
+        retraining=retraining,
     )
     state.data_assimilation = da
 
@@ -135,10 +116,13 @@ def initialize(cfg, state) -> None:
 def update(cfg, state) -> None:
     da = state.data_assimilation
     reset_da_run_state(da)
-    reset_retraining_run_state(da.retraining)
+
+    if da.retraining is not None:
+        reset_retraining_run_state(da.retraining)
 
     da.retrain_iter_num = 0
     run_da_phase(cfg, state, da)
+
     for retrain_iter_num in range(1, da.retrain_iter + 1):
         da.retrain_iter_num = retrain_iter_num
         run_retraining_phase(cfg, state, da)

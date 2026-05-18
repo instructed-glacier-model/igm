@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -13,6 +14,9 @@ import tensorflow as tf
 from .phase_runner import build_current_inputs
 from .utils import _safe_loss_scale
 from igm.processes.pretraining.cost_tmp import get_cost_fn
+
+logger = logging.getLogger(__name__)
+
 from igm.processes.pretraining.training_utils import (
     _anchor_loss,
     build_tfrecord_datasets_for_nz,
@@ -237,7 +241,7 @@ def _build_replay_runtime(cfg, settings: ReplaySettings, enable_replay: bool) ->
         x_b, y_b = next(val_it)
         replay.val_buffer.append((tf.identity(x_b), tf.identity(y_b)))
 
-    print(
+    logger.info(
         "[replay] enabled "
         f"batch_size={settings.batch_size} "
         f"val_batches={settings.val_batches} "
@@ -374,7 +378,7 @@ def run_retraining_phase(cfg, state, da) -> None:
         "steps": [],
     }
 
-    print(
+    logger.info(
         f"[retrain {retr.phase}] start "
         f"local_phys={history['local_phys_before']:.6e} "
         f"replay_val_data={history['replay_val_data_before']:.6e} "
@@ -419,7 +423,7 @@ def run_retraining_phase(cfg, state, da) -> None:
                 "replay_val_phys": float(replay_val_phys.numpy()),
             }
             history["steps"].append(rec)
-            print(
+            logger.info(
                 f"[retrain {retr.phase}] step {step:4d}/{retr.settings.steps} "
                 f"total={rec['total']:.6e} "
                 f"local_phys={rec['local_phys']:.6e} "
@@ -442,7 +446,7 @@ def run_retraining_phase(cfg, state, da) -> None:
     state.retrain_replay_val_data = history["replay_val_data_after"]
     state.retrain_replay_val_phys = history["replay_val_phys_after"]
 
-    print(
+    logger.info(
         f"[retrain {retr.phase}] end   "
         f"local_phys={history['local_phys_after']:.6e} "
         f"replay_val_data={history['replay_val_data_after']:.6e} "

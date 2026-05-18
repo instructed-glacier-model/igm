@@ -11,15 +11,16 @@ def _as_list(x):
     return [x]
 
 
+def optional_state_name(value):
+    """
+    Convert an optional config value into a literal state-field name.
 
-def masked_mean(x: tf.Tensor, mask: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
-    m = tf.cast(mask, x.dtype)
-    num = tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
-    den = tf.reduce_sum(m) + tf.cast(eps, x.dtype)
-    return num / den
+    None means "not supplied" and lets the caller apply its own default. Any
+    non-None value is treated as a state attribute name after str().
+    """
+    return None if value is None else str(value)
 
-def masked_sum(x: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
-    return tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
+
 
 def cell_area_like(dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
     """
@@ -34,6 +35,14 @@ def masked_integral(x: tf.Tensor, mask: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
     """
     area = cell_area_like(dx, x)
     return tf.reduce_sum(tf.where(mask, x * area, tf.zeros_like(x)))
+
+
+def masked_area(mask: tf.Tensor, dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
+    """
+    Area covered by `mask`, using the same dA = dx^2 convention as masked_integral.
+    """
+    one = tf.ones_like(like, dtype=like.dtype)
+    return masked_integral(one, tf.cast(mask, tf.bool), dx)
 
 
 def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e-6) -> tf.Tensor:
@@ -126,8 +135,6 @@ def initial_thickness(
 
     if not (np.isfinite(n) and n > 0.0):
         raise ValueError(f"initial_thickness: n must be finite and > 0. Got n={n}.")
-
-    Ny, Nx = s.shape
 
     # --- sanitize mask: treat NaN/inf as non-ice; then cast to bool
     if mask.dtype != bool:
