@@ -176,6 +176,11 @@ class MappingDataAssimilation(Mapping):
             self._L_list.append(tf.fill(theta.shape, Ls))
             self._U_list.append(tf.fill(theta.shape, Us))
 
+        # Bounds are static during a DA phase. Flatten once; the bounded optimizer
+        # queries these inside every accepted iteration and line search setup.
+        self._L_flat = tf.concat([tf.reshape(Li, [-1]) for Li in self._L_list], axis=0)
+        self._U_flat = tf.concat([tf.reshape(Ui, [-1]) for Ui in self._U_list], axis=0)
+
     @staticmethod
     def _resolve_mask(state, path: str) -> tf.Tensor:
         obj = state
@@ -308,9 +313,7 @@ class MappingDataAssimilation(Mapping):
     # ------- Bounds (θ-space) for optimizer ----------------------------------
 
     def get_box_bounds_flat(self) -> Tuple[tf.Tensor, tf.Tensor]:
-        L_flat = tf.concat([tf.reshape(Li, [-1]) for Li in self._L_list], axis=0)
-        U_flat = tf.concat([tf.reshape(Ui, [-1]) for Ui in self._U_list], axis=0)
-        return L_flat, U_flat
+        return self._L_flat, self._U_flat
 
     # ------- Parameter plumbing ----------------------------------------------
 
@@ -356,22 +359,39 @@ class MappingDataAssimilation(Mapping):
     def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         """
         Patch BHWC inputs with current physical-space values for selected fields.
-        Channel mapping follows the configured mapping.
+
+        This builds the output channels once instead of repeatedly slicing and
+        concatenating the full BHWC tensor for each inverted variable.
         """
-        updated = inputs
-        B, H, W, C = tf.unstack(tf.shape(inputs))
+        patches = []
         for idx, spec in enumerate(self.vars):
             ch = self.field_to_channel.get(spec.name, None)
-            if ch is None:
-                continue
-            val = self._theta_to_field(idx)
-            val = tf.cast(val, updated.dtype)
-            phys_b = tf.tile(tf.reshape(val, [1, H, W, 1]), [B, 1, 1, 1])
+            if ch is not None:
+                patches.append((idx, int(ch)))
 
-            left = updated[:, :, :, :ch]
-            right = updated[:, :, :, ch + 1 :]
-            updated = tf.concat([left, phys_b, right], axis=-1)
-        return updated
+        if not patches:
+            return inputs
+
+        n_channels = inputs.shape[-1]
+        if n_channels is None:
+            n_channels = max(self.field_to_channel.values()) + 1
+
+        n_channels = int(n_channels)
+        channels = tf.unstack(inputs, num=n_channels, axis=-1)
+
+        shape = tf.shape(inputs)
+        B, H, W = shape[0], shape[1], shape[2]
+
+        for idx, ch in patches:
+
+            val = tf.cast(self._theta_to_field(idx), inputs.dtype)
+
+            channels[ch] = tf.broadcast_to(
+                tf.reshape(val, [1, H, W]),
+                [B, H, W],
+            )
+
+        return tf.stack(channels, axis=-1)
 
     def get_physical_field(self, name: str) -> tf.Tensor:
         """

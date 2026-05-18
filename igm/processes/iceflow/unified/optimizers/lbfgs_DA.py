@@ -7,7 +7,7 @@ from __future__ import annotations
 import collections
 
 import tensorflow as tf
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Sequence
 from ..halt import HaltStatus
 
 from .lbfgs_bounds import OptimizerLBFGSBounds
@@ -72,16 +72,23 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         self.accepted_cost_reg_hist = empty
         return super().minimize(inputs)
 
+    @staticmethod
+    def _stack_history(values: Sequence[tf.Tensor], dtype: tf.DType) -> tf.Tensor:
+        if not values:
+            return tf.zeros([0], dtype=dtype)
+        return tf.stack([tf.cast(v, dtype) for v in values], axis=0)
+
     def _publish_cost_history(
         self,
-        cost_total_hist: tf.TensorArray,
-        cost_data_hist: tf.TensorArray,
-        cost_reg_hist: tf.TensorArray,
+        cost_total_hist: Sequence[tf.Tensor],
+        cost_data_hist: Sequence[tf.Tensor],
+        cost_reg_hist: Sequence[tf.Tensor],
         n_keep: int,
     ) -> None:
-        self.accepted_cost_total_hist = cost_total_hist.stack()[:n_keep]
-        self.accepted_cost_data_hist = cost_data_hist.stack()[:n_keep]
-        self.accepted_cost_reg_hist = cost_reg_hist.stack()[:n_keep]
+        dtype = self.last_total.dtype
+        self.accepted_cost_total_hist = self._stack_history(cost_total_hist[:n_keep], dtype)
+        self.accepted_cost_data_hist = self._stack_history(cost_data_hist[:n_keep], dtype)
+        self.accepted_cost_reg_hist = self._stack_history(cost_reg_hist[:n_keep], dtype)
 
     @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
@@ -99,14 +106,29 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         return tf.cond(self.rho_count >= self.rho_warmup, cap, lambda: inf)
 
     @tf.function(reduce_retracing=True)
+    def _ordered_memory(
+        self,
+        mem: tf.Tensor,
+        next_memory: tf.Tensor,
+        num_memory: tf.Tensor,
+    ) -> tf.Tensor:
+        """Return L-BFGS memory in oldest-to-newest order."""
+        return tf.cond(
+            num_memory < self.memory,
+            lambda: mem[:num_memory],
+            lambda: tf.concat([mem[next_memory:], mem[:next_memory]], axis=0),
+        )
+
+    @tf.function(reduce_retracing=True)
     def _update_memory(
         self,
         s_flat_mem: tf.Tensor,
         y_flat_mem: tf.Tensor,
-        idx_memory: tf.Tensor,
+        next_memory: tf.Tensor,
+        num_memory: tf.Tensor,
         s: tf.Tensor,
         y: tf.Tensor,
-    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         dot_ys = self._dot(y, s)
         finite = tf.math.is_finite(dot_ys)
         accept = finite & (dot_ys > self.eps)
@@ -135,23 +157,18 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         )
 
         def update():
-            def append():
-                return (
-                    tf.tensor_scatter_nd_update(s_flat_mem, [[idx_memory]], [s]),
-                    tf.tensor_scatter_nd_update(y_flat_mem, [[idx_memory]], [y]),
-                    idx_memory + 1,
-                )
+            slot = next_memory
+            s_new = tf.tensor_scatter_nd_update(s_flat_mem, [[slot]], [s])
+            y_new = tf.tensor_scatter_nd_update(y_flat_mem, [[slot]], [y])
+            next_new = tf.math.floormod(slot + 1, tf.cast(self.memory, slot.dtype))
+            num_new = tf.minimum(num_memory + 1, tf.cast(self.memory, num_memory.dtype))
+            return s_new, y_new, next_new, num_new
 
-            def shift():
-                return (
-                    tf.concat([s_flat_mem[1:], [s]], axis=0),
-                    tf.concat([y_flat_mem[1:], [y]], axis=0),
-                    idx_memory,
-                )
-
-            return tf.cond(idx_memory < self.memory, append, shift)
-
-        return tf.cond(accept, update, lambda: (s_flat_mem, y_flat_mem, idx_memory))
+        return tf.cond(
+            accept,
+            update,
+            lambda: (s_flat_mem, y_flat_mem, next_memory, num_memory),
+        )
 
     @tf.function(reduce_retracing=True)
     def _compute_direction(
@@ -354,21 +371,25 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
 
-        # Memory variables
+        # Memory variables. Use a ring buffer to avoid shifting O(memory * n_params)
+        # vectors on every accepted step.
         w_dim = tf.shape(theta_flat)[0]
-        idx_memory = tf.constant(0, dtype=tf.int32)
+        next_memory = tf.constant(0, dtype=tf.int32)
+        num_memory = tf.constant(0, dtype=tf.int32)
         s_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
         y_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
 
-        # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
-        iter_last = tf.constant(-1, dtype=tf.int32)
-        costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
-        cost_total_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
-        cost_data_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
-        cost_reg_hist = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        iter_last = -1
+        costs_hist: list[tf.Tensor] = []
+        cost_total_hist: list[tf.Tensor] = []
+        cost_data_hist: list[tf.Tensor] = []
+        cost_reg_hist: list[tf.Tensor] = []
 
-        for iter in tf.range(self.iter_max):
+        iter_max = int(self.iter_max.numpy())
+        debug_freq = int(tf.convert_to_tensor(self.debug_freq).numpy()) if self.debug_mode else 1
+        for iter_py in range(iter_max):
+            iter = tf.constant(iter_py, dtype=tf.int32)
             input = inputs
 
             theta_prev = theta_flat
@@ -385,8 +406,8 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             grad_search_prev = self._search_grad(grad_base_flat, mask_base)
 
             # Restrict memory to the active subspace if needed.
-            s_list = s_flat_mem[:idx_memory]
-            y_list = y_flat_mem[:idx_memory]
+            s_list = self._ordered_memory(s_flat_mem, next_memory, num_memory)
+            y_list = self._ordered_memory(y_flat_mem, next_memory, num_memory)
             s_list, y_list = self._mask_memory_for_subspace(s_list, y_list, mask_base)
 
             # Search direction is built from the quasi-Newton model gradient.
@@ -394,11 +415,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 grad_search_prev,
                 s_list,
                 y_list,
-                idx_memory,
+                num_memory,
                 tau,
             )
 
-            # Force descent uses TRUE base gradient
+            # Force descent uses TRUE base gradient.
             p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
 
             # Line search uses TRUE gradients internally.
@@ -412,7 +433,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
 
             theta_flat, theta_trial = self._apply_step(theta_base, alpha, p_flat)
 
-            # New weights, cost, and TRUE grads
+            # New weights, cost, and TRUE grads.
             self.map.set_theta(self.map.unflatten_theta(theta_flat))
             cost, grad_u, grad_theta = self._get_grad(input)
             grad_theta_flat = self.map.flatten_theta(grad_theta)
@@ -430,19 +451,17 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat
             )
 
-            # Update memory (DA override handles rho spike clamping etc.)
-            s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
-                s_flat_mem, y_flat_mem, idx_memory, s, y
+            # Update memory (DA override handles rho spike clamping etc.).
+            s_flat_mem, y_flat_mem, next_memory, num_memory = self._update_memory(
+                s_flat_mem, y_flat_mem, next_memory, num_memory, s, y
             )
 
-            costs = costs.write(iter, cost)
-            cost_total_hist = cost_total_hist.write(iter, self.last_total.read_value())
-            cost_data_hist = cost_data_hist.write(iter, self.last_data.read_value())
-            cost_reg_hist = cost_reg_hist.write(iter, self.last_reg.read_value())
+            costs_hist.append(tf.identity(cost))
+            cost_total_hist.append(tf.identity(self.last_total.read_value()))
+            cost_data_hist.append(tf.identity(self.last_data.read_value()))
+            cost_reg_hist.append(tf.identity(self.last_reg.read_value()))
 
-            iter_py = int(iter.numpy())
             accepted_iter = iter_py + 1
-
             if self.map._da_out_freq > 0 and accepted_iter % self.map._da_out_freq == 0:
                 self._publish_cost_history(
                     cost_total_hist,
@@ -461,18 +480,17 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             halt_status = self._check_stopping()
             self._update_display()
 
-            if self.debug_mode and iter % self.debug_freq == 0:
+            if self.debug_mode and debug_freq > 0 and iter_py % debug_freq == 0:
                 self._update_debug_state(iter, cost, grad_u, grad_theta)
                 self._debug_display()
 
-            iter_last = iter
-
-            if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
+            iter_last = iter_py
+            if bool(tf.not_equal(halt_status, HaltStatus.CONTINUE.value).numpy()):
                 break
 
         self._finalize_display(halt_status)
 
-        n_keep = max(0, int(iter_last.numpy()) + 1)
+        n_keep = max(0, iter_last + 1)
         self._publish_cost_history(
             cost_total_hist,
             cost_data_hist,
@@ -480,7 +498,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             n_keep,
         )
 
-        return costs.stack()[:n_keep]
+        return self._stack_history(costs_hist[:n_keep], cost.dtype)
 
     def _update_display(self) -> None:
         if not getattr(self.display, "enabled", False):
