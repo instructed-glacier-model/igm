@@ -14,9 +14,9 @@ import tensorflow as tf
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.emulate.utils.artifacts import (
-    rebuild_emulator_from_manifest,
+    load_emulator_artifact,
     save_emulator_artifact,
-    write_emulator_manifest,
+    wrap_emulator_artifact,
 )
 from igm.processes.pretraining.cost_tmp import get_cost_fn
 from igm.utils.math.precision import normalize_precision
@@ -25,8 +25,6 @@ from igm.utils.math.precision import normalize_precision
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
 from .training_utils import build_tfrecord_datasets_for_nz, build_velocity_data_loss
-
-from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 
 def update(cfg, state):
@@ -300,63 +298,41 @@ def initialize(cfg, state):
     # ----------------------------
     # get_mapping_args() constructs the non-old-format model from cfg when
     # pretrained=False. For resume runs we immediately replace that temporary
-    # cfg-built skeleton with the exact manifest-defined skeleton before any
-    # restore occurs.
+    # cfg-built skeleton with the saved Keras artifact before any restore occurs.
     mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
 
     # ----------------------------
     # E2) Attach final normalization / build final skeleton
     # ----------------------------
-    manifest_path = out_dir / "manifest.yaml"
     desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
-    dummy0 = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
 
     if resume:
-        state.iceflow_model, state.iceflow_manifest = rebuild_emulator_from_manifest(
-            artifact_dir=out_dir,
-            cfg=cfg,
-            load_weights=False,
-        )
+        state.iceflow_model = load_emulator_artifact(artifact_dir=out_dir)
         mapping_args["network"] = state.iceflow_model
-        print("[resume] rebuilt model skeleton from manifest; checkpoint will restore weights/optimizer state")
+        print("[resume] loaded emulator.keras; checkpoint will restore weights/optimizer state")
     else:
-        tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float32)
-        tmp.adapt(
+        state.iceflow_model = wrap_emulator_artifact(state.iceflow_model)
+        state.iceflow_model.input_normalizer.adapt(
             train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000)
         )
-
-        _ = next(iter(train_ds))
-
-        mean_1d = np.asarray(tmp.mean.numpy()).reshape(-1).astype(np.float64)
-        var_1d = np.asarray(tmp.variance.numpy()).reshape(-1).astype(np.float64)
-        eps = 1e-7
-        print(f"[norm-stats] computed once: mean={mean_1d} var={var_1d}")
-
-        state.iceflow_model.input_normalizer = FixedChannelStandardization(
-            mean_1d=mean_1d,
-            var_1d=var_1d,
-            epsilon=eps,
-            dtype=desired_dtype,
-            name="input_norm",
+        print(
+            f"[norm-stats] adapted: "
+            f"mean={np.asarray(state.iceflow_model.input_normalizer.mean).reshape(-1)} "
+            f"var={np.asarray(state.iceflow_model.input_normalizer.variance).reshape(-1)}"
         )
-        _ = state.iceflow_model.input_normalizer(dummy0)
 
-        # Build AFTER final normalizer is attached.
         state.iceflow_model.build(dummy_x.shape)
+        _ = state.iceflow_model(dummy_x, training=False)
+        mapping_args["network"] = state.iceflow_model
 
         if save_model:
-            if not manifest_path.exists():
-                write_emulator_manifest(
-                    artifact_dir=out_dir,
-                    cfg=cfg,
-                    model=state.iceflow_model,
-                    inputs=list(inputs),
-                )
-                print(f"[manifest] wrote schema v3 {manifest_path}")
-            else:
-                print(f"[manifest] exists, not overwriting: {manifest_path}")
+            artifact_path = save_emulator_artifact(
+                artifact_dir=out_dir,
+                model=state.iceflow_model,
+            )
+            print(f"[artifact] wrote {artifact_path}")
 
     # ----------------------------
     # E3) Only now instantiate the Mapping
@@ -677,13 +653,11 @@ def initialize(cfg, state):
     # K) Export + score (export optional)
     # ----------------------------
     if save_model:
-        save_emulator_artifact(
+        artifact_path = save_emulator_artifact(
             artifact_dir=out_dir,
-            cfg=cfg,
             model=state.iceflow_model,
-            inputs=list(inputs),
         )
-        print(f"[export] saved emulator artifact to {out_dir}")
+        print(f"[export] saved emulator artifact to {artifact_path}")
 
     k = min(5, len(history.val_total))
     state.score = float(np.mean(history.val_total[-k:]))

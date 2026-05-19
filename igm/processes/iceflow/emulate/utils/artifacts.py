@@ -5,28 +5,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any
 
 import tensorflow as tf
-import yaml
 
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.theme import Theme
 
-from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
-from igm.utils.math.precision import normalize_precision
 
-from .artifacts_schema_v3 import (
-    SUPPORTED_SCHEMA_VERSION,
-    EmulatorManifestV3,
-    build_manifest_v3,
-    build_fixed_input_normalizer_from_manifest,
-    load_supported_manifest,
-    validate_manifest_against_cfg_v3,
-)
+
+EMULATOR_FILENAME = "emulator.keras"
 
 
 _emulator_theme = Theme(
@@ -41,29 +32,26 @@ _emulator_theme = Theme(
 _console = Console(theme=_emulator_theme)
 
 
-def _print_loaded_banner(
-    artifact_dir: Path,
-    manifest: EmulatorManifestV3,
-    dtype: tf.DType,
-) -> None:
+def _resolve_emulator_path(path: str | Path) -> Path:
+    path = Path(path)
+    return path if path.suffix == ".keras" else path / EMULATOR_FILENAME
+
+
+def _print_loaded_banner(artifact_path: Path, model: "EmulatorArtifact") -> None:
     info = Table(show_header=False, border_style="green", expand=False)
     info.add_column("Label", style="label")
     info.add_column("Value", style="value")
-
-    info.add_row("Architecture", str(manifest.architecture.name))
+    info.add_row("Architecture", model.architecture_name)
     info.add_row(
-        "I/O",
-        f"{manifest.nb_inputs} → {manifest.nb_outputs}   "
-        f"(Nz={manifest.Nz}, dtype={dtype.name})",
+        "I/O", f"{model.nb_inputs} -> {model.nb_outputs} (Nz={model.Nz})"
     )
-    info.add_row("Artifact", f"[path]{artifact_dir}[/path]")
+    info.add_row("Artifact", f"[path]{artifact_path}[/path]")
 
     _console.print()
     _console.print(
         Panel(
             Group(info),
-            title="[ok]✅ Emulator loaded successfully[/ok]",
-            subtitle=f"[muted]Schema v{SUPPORTED_SCHEMA_VERSION}[/muted]",
+            title="[ok]Emulator loaded successfully[/ok]",
             border_style="cyan",
             padding=(1, 2),
         )
@@ -71,212 +59,151 @@ def _print_loaded_banner(
     _console.print()
 
 
-def _build_model_from_cfg_constructor(cfg) -> tf.keras.Model:
-    cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_unified = cfg.processes.iceflow.unified
-    cfg_emulator = cfg.processes.iceflow.emulator
-
-    arch_name = str(cfg_unified.network.architecture)
-    if arch_name not in Architectures:
-        raise ValueError(
-            f"Unknown network architecture: {arch_name}. "
-            f"Available: {list(Architectures.keys())}"
-        )
-
-    if not hasattr(cfg_emulator.network, "params") or cfg_emulator.network.params is None:
-        raise ValueError(
-            "cfg.processes.iceflow.emulator.network.params must be defined "
-            "for non-old-format architectures."
-        )
-
-    input_names = [str(x) for x in cfg_unified.inputs]
-    network_params = dict(cfg_emulator.network.params)
-    Nz = int(cfg_numerics.Nz)
-
-    dx_const = None if "dX" in input_names else 90.0
-
-    return Architectures[arch_name](
-        input_names=input_names,
-        Nz=Nz,
-        network_params=network_params,
-        dx_const=dx_const,
+def _architecture_name_for(core_model: tf.keras.Model) -> str:
+    for name, cls in Architectures.items():
+        if cls is type(core_model):
+            return name
+    raise ValueError(
+        f"Architecture class {type(core_model).__name__} is not registered "
+        f"in Architectures."
     )
 
 
-def _attach_config_normalizer(cfg, model: tf.keras.Model) -> None:
-    cfg_unified = cfg.processes.iceflow.unified
-    nb_inputs = len(cfg_unified.inputs)
-
-    method = str(cfg_unified.normalization.method)
-    if method not in NormalizationsDict:
-        raise ValueError(f"Unknown normalizing method: {method}")
-
-    normalizing_class = NormalizationsDict[method]
-
-    if method == "adaptive":
-        normalizing_layer = normalizing_class(nb_inputs)
-    elif method == "fixed":
-        offsets = cfg_unified.normalization.fixed.inputs_offsets
-        variances = cfg_unified.normalization.fixed.inputs_variances
-        normalizing_layer = normalizing_class(offsets, variances)
-    elif method in ("automatic", "none"):
-        normalizing_layer = normalizing_class()
-    else:
-        raise ValueError(f"Unknown normalizing method: {method}")
-
-    #model.input_normalizer = normalizing_layer
-    object.__setattr__(model, "input_normalizer", normalizing_layer)
-
-def build_emulator_from_cfg(
-    cfg,
-    *,
-    attach_config_normalizer: bool,
-) -> tf.keras.Model:
+@tf.keras.utils.register_keras_serializable(package="igm")
+class EmulatorArtifact(tf.keras.Model):
     """
-    Construct a new-format emulator purely from cfg.
+    Thin wrapper that bundles an architecture and its input normalizer
+    into a single .keras-serializable model.
 
-    Use this when no manifest exists yet, i.e. fresh training from scratch.
+    The wrapper exists because:
+      - The underlying architectures are not @register_keras_serializable, so
+        Keras cannot rebuild them from a saved config on its own. The wrapper
+        records the architecture name + constructor kwargs and re-instantiates
+        the architecture at load time.
+      - It owns a `tf.keras.layers.Normalization` sublayer; its mean/variance
+        round-trip through model.save / load_model as ordinary layer weights.
+
+    To compute normalization statistics before training, adapt the layer
+    directly on a dataset of x batches:
+
+        artifact.input_normalizer.adapt(dataset)
     """
-    model = _build_model_from_cfg_constructor(cfg)
-    if attach_config_normalizer:
-        _attach_config_normalizer(cfg, model)
-    else:
-        model.input_normalizer = None
-    return model
 
+    def __init__(
+        self,
+        *,
+        architecture_name: str,
+        architecture_params: dict[str, Any],
+        core_model: tf.keras.Model | None = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.architecture_name = str(architecture_name)
+        self.architecture_params = dict(architecture_params)
 
-def rebuild_emulator_from_manifest(
-    artifact_dir: str | Path,
-    cfg,
-    *,
-    load_weights: bool = False,
-    input_hw: tuple[int, int] | None = None,
-) -> Tuple[tf.keras.Model, EmulatorManifestV3]:
-    """
-    Rebuild a new-format emulator purely from manifest.
-
-    This always restores the exact fixed input normalizer from the manifest.
-    If load_weights=True, exported weights are loaded from export/weights.weights.h5.
-    If load_weights=False, the returned model is only a structural skeleton suitable
-    for subsequent checkpoint.restore(...).
-    """
-    artifact_dir = Path(artifact_dir)
-    manifest_path = artifact_dir / "manifest.yaml"
-    if not manifest_path.exists():
-        raise FileNotFoundError(f"Missing manifest.yaml at {manifest_path}")
-
-    manifest = load_supported_manifest(manifest_path)
-    validate_manifest_against_cfg_v3(cfg, manifest, artifact_dir)
-
-    arch_name = str(manifest.architecture.name)
-    if arch_name not in Architectures:
-        raise ValueError(
-            f"Unknown architecture {arch_name!r}. "
-            f"Available: {list(Architectures.keys())}"
-        )
-
-    desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
-    constructor_kwargs = dict(manifest.architecture.params)
-    model = Architectures[arch_name](**constructor_kwargs)
-
-    model.input_normalizer = build_fixed_input_normalizer_from_manifest(
-        manifest,
-        desired_dtype,
-        expected_nb_inputs=manifest.nb_inputs,
-        name="input_norm",
-    )
-
-    if input_hw is None:
-        input_shape = tf.TensorShape([None, 4, 4, manifest.nb_inputs])
-        verify_h, verify_w = 4, 4
-    else:
-        H, W = map(int, input_hw)
-        input_shape = tf.TensorShape([None, H, W, manifest.nb_inputs])
-        verify_h, verify_w = H, W
-
-    model.build(input_shape)
-
-    if load_weights:
-        weights_path = artifact_dir / "export" / "weights.weights.h5"
-        if not weights_path.exists():
-            raise FileNotFoundError(f"Missing weights file at {weights_path}")
-        model.load_weights(str(weights_path))
-
-        dummy = tf.zeros((1, verify_h, verify_w, manifest.nb_inputs), dtype=desired_dtype)
-        y = model(dummy, training=False)
-
-        if int(y.shape[-1]) != int(manifest.nb_outputs):
-            raise RuntimeError(
-                f"Loaded model output mismatch: got {int(y.shape[-1])}, "
-                f"expected {int(manifest.nb_outputs)}."
+        if core_model is None:
+            if self.architecture_name not in Architectures:
+                raise ValueError(
+                    f"Unknown architecture {self.architecture_name!r}. "
+                    f"Available: {list(Architectures.keys())}"
+                )
+            self.core = Architectures[self.architecture_name](
+                **self.architecture_params
             )
+        else:
+            self.core = core_model
 
-        if tf.as_dtype(y.dtype) != desired_dtype:
-            raise RuntimeError(
-                f"Model forward dtype is {tf.as_dtype(y.dtype).name}, "
-                f"expected {desired_dtype.name}."
+        self.input_normalizer = tf.keras.layers.Normalization(
+            axis=-1, name="input_norm"
+        )
+        self.core.input_normalizer = self.input_normalizer
+
+        self.nb_inputs = int(self.core.nb_inputs)
+        self.nb_outputs = int(self.core.nb_outputs)
+        self.Nz = int(self.core.Nz)
+        self.input_names = list(self.core.input_names)
+        self._build_input_shape = [None, None, None, self.nb_inputs]
+
+    def build(self, input_shape) -> None:
+        if self.built:
+            return
+        input_shape = tf.TensorShape(input_shape)
+        if input_shape.rank != 4:
+            raise ValueError(
+                f"EmulatorArtifact expects rank-4 inputs, got {input_shape}"
             )
+        self._build_input_shape = input_shape.as_list()
+        self.core.build(input_shape)
+        super().build(input_shape)
 
-        _print_loaded_banner(artifact_dir, manifest, desired_dtype)
+    def call(self, inputs, training=False):
+        return self.core(inputs, training=training)
 
-    return model, manifest
+    def get_config(self) -> dict[str, Any]:
+        config = super().get_config()
+        config["architecture_name"] = self.architecture_name
+        config["architecture_params"] = self.architecture_params
+        return config
+
+    def get_build_config(self) -> dict[str, Any]:
+        return {"input_shape": self._build_input_shape}
+
+    def build_from_config(self, config: dict[str, Any]) -> None:
+        self.build(
+            config.get("input_shape", [None, None, None, self.nb_inputs])
+        )
 
 
-def write_emulator_manifest(
-    artifact_dir: str | Path,
-    cfg,
-    model: tf.keras.Model,
-    inputs: List[str],
-) -> Path:
-    artifact_dir = Path(artifact_dir)
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+def wrap_emulator_artifact(core_model: tf.keras.Model) -> EmulatorArtifact:
+    """
+    Wrap a constructed architecture instance so it can be saved as a .keras file.
+    """
+    if isinstance(core_model, EmulatorArtifact):
+        return core_model
 
-    manifest = build_manifest_v3(
-        cfg=cfg,
-        model=model,
-        inputs=inputs,
+    if not hasattr(core_model, "resolved_params"):
+        raise TypeError(
+            f"{type(core_model).__name__} does not expose resolved_params(); "
+            "cannot wrap it for saving."
+        )
+
+    return EmulatorArtifact(
+        architecture_name=_architecture_name_for(core_model),
+        architecture_params=core_model.resolved_params(),
+        core_model=core_model,
     )
-
-    manifest_path = artifact_dir / "manifest.yaml"
-    manifest_path.write_text(yaml.safe_dump(manifest.to_dict(), sort_keys=False))
-    return manifest_path
 
 
 def save_emulator_artifact(
-    artifact_dir: str | Path,
-    cfg,
-    model: tf.keras.Model,
-    inputs: List[str],
+    artifact_dir: str | Path, model: tf.keras.Model
 ) -> Path:
-    """
-    Save a single supported manifest format plus exported weights.
-    """
-    artifact_dir = Path(artifact_dir)
-    export_dir = artifact_dir / "export"
-    export_dir.mkdir(parents=True, exist_ok=True)
+    """Save the model as a Keras emulator artifact (architecture + weights + normalizer)."""
+    artifact_path = _resolve_emulator_path(artifact_dir)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
-    write_emulator_manifest(
-        artifact_dir=artifact_dir,
-        cfg=cfg,
-        model=model,
-        inputs=inputs,
+    if not isinstance(model, EmulatorArtifact):
+        model = wrap_emulator_artifact(model)
+
+    model.save(str(artifact_path), overwrite=True)
+    return artifact_path
+
+
+def load_emulator_artifact(artifact_dir: str | Path) -> EmulatorArtifact:
+    """Load a Keras emulator artifact from emulator.keras."""
+    artifact_path = _resolve_emulator_path(artifact_dir)
+    if not artifact_path.exists():
+        raise FileNotFoundError(
+            f"Missing Keras emulator artifact at {artifact_path}"
+        )
+
+    model = tf.keras.models.load_model(
+        str(artifact_path), compile=False, safe_mode=True
     )
+    if not isinstance(model, EmulatorArtifact):
+        raise TypeError(
+            f"Expected {artifact_path} to contain an EmulatorArtifact, "
+            f"got {type(model)}"
+        )
 
-    weights_path = export_dir / "weights.weights.h5"
-    model.save_weights(str(weights_path))
-
-    return artifact_dir
-
-
-def load_emulator_artifact(
-    artifact_dir: str | Path,
-    cfg,
-) -> Tuple[tf.keras.Model, EmulatorManifestV3]:
-    """
-    Load a finished exported artifact: manifest + exported weights.
-    """
-    return rebuild_emulator_from_manifest(
-        artifact_dir=artifact_dir,
-        cfg=cfg,
-        load_weights=True,
-    )
+    _print_loaded_banner(artifact_path, model)
+    return model
