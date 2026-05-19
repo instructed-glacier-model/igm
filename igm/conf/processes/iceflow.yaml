@@ -200,6 +200,9 @@ iceflow:
       temporal_history_K: 5          # rolling buffer length for scoring=temporal_variance.
                                      # K=2 is "change since last rescore"; K=5 smooths it
                                      # over ~5 rescore steps.
+      temporal_downsample: 4         # downsampling factor for the full-field history
+                                     # used by scoring=temporal_variance (memory =
+                                     # H/d × W/d × C × K × 4 bytes; d=4 → ~85 MB).
       # Step 3 — training_windows
       shuffle_training_windows: true # shuffle the N_train indices before batching
       record_training_windows: false # write one JSONL line per call to record_path

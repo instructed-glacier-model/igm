@@ -236,25 +236,32 @@ _WINDOW_GENS = {
 # ===========================================================================
 
 def _score_windows(state, windows, scoring: str,
-                   X_full=None, temporal_history_K: int = 5) -> np.ndarray:
+                   X_full=None, temporal_history_K: int = 5,
+                   temporal_downsample: int = 4) -> np.ndarray:
     """Score each window. Two scoring families are supported:
 
       "max" / "mean"          → reduction of |dh/dt| inside each window
                                  (the legacy proxy; no extra state needed).
-      "temporal_variance"     → variance over the last K snapshots of the
-                                 per-channel mean of the input tensor in
-                                 each window. Captures "this region is
-                                 locally evolving" using the network's own
-                                 inputs rather than a geometric proxy.
+      "temporal_variance"     → cell-level temporal variance of the input
+                                 field, aggregated into each window. The
+                                 rolling buffer is over the FULL field
+                                 (downsampled to keep memory bounded), so
+                                 the proxy is robust to windows being
+                                 regenerated each rescore (e.g. peak peaks
+                                 moving between calls).
 
     For temporal_variance, `X_full` (the cached [H, W, C] input tensor) is
-    required, and the rolling history is parked on
-    `state._patch_temporal_history` (dict: corners → deque of patch-means).
-    Bootstrap (window has <2 samples in its history) falls back to a single
-    |dh/dt| max for that window so cold-start patches still score sensibly.
+    required; the rolling history is parked on
+    `state._full_field_history` (a deque of length K of downsampled [H_lr,
+    W_lr, C] arrays). Bootstrap (history has <2 samples) falls back to
+    per-window |dh/dt| max so the cold-start case is well-defined.
     """
     if scoring == "temporal_variance":
-        return _score_temporal_variance(state, windows, X_full, temporal_history_K)
+        return _score_temporal_variance(
+            state, windows, X_full,
+            K=temporal_history_K,
+            downsample=temporal_downsample,
+        )
     # default: dh/dt max / mean
     dhdt = _get_dhdt(state)
     scores = np.zeros(len(windows), dtype=np.float64)
@@ -264,48 +271,75 @@ def _score_windows(state, windows, scoring: str,
     return scores
 
 
-def _score_temporal_variance(state, windows, X_full, K):
-    """Per-window temporal variance of the patch input-mean over the last K snapshots.
+def _score_temporal_variance(state, windows, X_full, K, downsample=4):
+    """Per-window temporal variance, computed at the CELL level (not the window
+    level) so the proxy is robust to windows being regenerated each rescore
+    (e.g. peak_augmented placing the extras at fresh peak locations).
 
-    The history is keyed by (y0, x0, ly, lx) so that — across rescore rebuilds
-    where new peak-windows replace older ones — stable grid windows keep their
-    history, while transient extras get bootstrapped from |dh/dt|.
+    Mechanism:
+        1. Maintain a rolling buffer of the FULL input field at a downsampled
+           resolution (factor `downsample`) on state._full_field_history.
+        2. Once per rescore, compute the per-cell temporal variance summed
+           across channels — a static field defined over the whole domain.
+        3. Score each window by averaging that per-cell variance inside its
+           extent. Windows can move freely between calls; the temporal signal
+           lives on the (stable) grid.
 
-    Memory cost: ~M × K × C × 8 bytes ≈ a few KB even at large M.
+    Memory: H/downsample × W/downsample × C × K × 4 bytes.  For our typical
+    grid (3010 × 4510 × 5) at downsample=4, K=5: ~85 MB.
+
+    Bootstrap (history < 2 snapshots): per-window |dh/dt| max — same as before.
     """
     if X_full is None:
         raise ValueError("temporal_variance scoring requires X_full (cached input tensor).")
+    if K < 2:
+        raise ValueError(f"temporal_history_K must be >= 2; got {K}.")
 
     X = X_full.numpy() if hasattr(X_full, "numpy") else np.asarray(X_full)
+    Xd = X[::downsample, ::downsample, :].astype(np.float32)  # [H_lr, W_lr, C]
 
-    hist = getattr(state, "_patch_temporal_history", None)
-    if hist is None:
-        hist = {}
-        state._patch_temporal_history = hist
+    hist = getattr(state, "_full_field_history", None)
+    # Reset the buffer if K or downsample (i.e. the cached shape) changed.
+    if (hist is None
+            or not isinstance(hist, collections.deque)
+            or hist.maxlen != K
+            or (len(hist) > 0 and hist[0].shape != Xd.shape)):
+        hist = collections.deque(hist or [], maxlen=K)
+        # filter out entries with incompatible shapes (e.g. downsample changed)
+        for _ in range(len(hist)):
+            x = hist.popleft()
+            if x.shape == Xd.shape:
+                hist.append(x)
+        state._full_field_history = hist
+    hist.append(Xd)
 
     scores = np.zeros(len(windows), dtype=np.float64)
-    dhdt = None  # lazily computed only for bootstrap windows
 
-    for i, (y0, x0, ly, lx) in enumerate(windows):
-        patch = X[y0:y0+ly, x0:x0+lx, :]
-        patch_means = patch.mean(axis=(0, 1)).astype(np.float64)  # [C]
-        key = (int(y0), int(x0), int(ly), int(lx))
-        buf = hist.get(key)
-        if buf is None or buf.maxlen != K:
-            new_buf = collections.deque(buf or [], maxlen=K)
-            hist[key] = new_buf
-            buf = new_buf
-        buf.append(patch_means)
-
-        if len(buf) >= 2:
-            arr = np.stack(buf, axis=0)               # [k, C]
-            scores[i] = float(arr.var(axis=0).sum())  # sum of per-channel variances
-        else:
-            # Bootstrap: this window is new (or first call); fall back to
-            # |dh/dt| max so it isn't starved while the buffer fills.
-            if dhdt is None:
-                dhdt = _get_dhdt(state)
+    if len(hist) < 2:
+        # Bootstrap from |dh/dt| max per window so the proxy is sensible while
+        # the rolling buffer is filling.
+        dhdt = _get_dhdt(state)
+        for i, (y0, x0, ly, lx) in enumerate(windows):
             scores[i] = float(np.max(dhdt[y0:y0+ly, x0:x0+lx]))
+        return scores
+
+    # Per-cell variance summed across channels — a [H_lr, W_lr] field.
+    arr = np.stack(hist, axis=0)             # [k, H_lr, W_lr, C]
+    cell_var = arr.var(axis=0).sum(axis=-1)  # [H_lr, W_lr]
+
+    # Aggregate to each (possibly newly-regenerated) window by averaging the
+    # downsampled cells that fall inside its (y0, x0, ly, lx) extent.
+    for i, (y0, x0, ly, lx) in enumerate(windows):
+        y0d = int(y0) // downsample
+        y1d = int(y0 + ly) // downsample
+        x0d = int(x0) // downsample
+        x1d = int(x0 + lx) // downsample
+        if y1d > y0d and x1d > x0d:
+            sub = cell_var[y0d:y1d, x0d:x1d]
+            scores[i] = float(sub.mean())
+        else:
+            # Window smaller than one downsampled cell — use the nearest cell.
+            scores[i] = float(cell_var[y0d, x0d])
 
     return scores
 
@@ -502,6 +536,7 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     ap.weighting                  = str(_get("weighting", "integer"))
     ap.score_alpha                = float(_get("score_alpha", 2.0))
     ap.temporal_history_K         = int(_get("temporal_history_K", 5))
+    ap.temporal_downsample        = int(_get("temporal_downsample", 4))
 
     # Capacity = data_preparation.framesizemax (one tile of this size fits at bs=1).
     framemax = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
@@ -553,7 +588,8 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     cache = getattr(state, "_ap_cache", None)
     cache_key = (ap.windows, ap.selection, ap.scoring, ap.min_thk_in_window,
                  ap.min_freq, ap.freq_ratio, ap.framesizemax, ap.n_extra_peaks,
-                 ap.weighting, ap.score_alpha, ap.temporal_history_K)
+                 ap.weighting, ap.score_alpha, ap.temporal_history_K,
+                 ap.temporal_downsample)
     call_n = (cache["call_n"] + 1) if cache is not None else 0
     needs_rebuild = (
         cache is None
@@ -569,7 +605,8 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
         X_full = _cache_full_field(state, cfg)
         scores = _score_windows(state, list_windows, ap.scoring,
                                 X_full=X_full,
-                                temporal_history_K=ap.temporal_history_K)
+                                temporal_history_K=ap.temporal_history_K,
+                                temporal_downsample=ap.temporal_downsample)
         eligible = _eligibility_mask(state, list_windows, ap.min_thk_in_window)
         freqs = _scores_to_freqs(scores, eligible, ap.selection,
                                  ap.min_freq, ap.freq_ratio)
