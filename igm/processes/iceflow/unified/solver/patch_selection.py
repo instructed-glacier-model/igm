@@ -20,19 +20,37 @@ PIPELINE (one call to `select_patches`):
         - "peak_augmented"   regular_grid + n_extra_peaks windows at score peaks (DEFAULT)
 
   STEP 2 — SCORING (with freq computation, including the thk filter)
-      score[i] = max/mean of |dh/dt| in window i
-      freq[i]  = 0                       if max(thk in window i) < min_thk_in_window
-                 1                       if selection == "all"
-                 clip(round(min_freq + (max_freq - min_freq) · score[i] / s_max),
-                      1, max_freq)       if selection == "scored"
-      where max_freq = min_freq · freq_ratio  (defaults: min_freq=1, freq_ratio=10).
+      score[i] is computed by one of three modes (cfg.scoring):
+        - "max" / "mean"          → reduction of |dh/dt| inside window i
+        - "temporal_variance"     → variance over the last K rescore-time
+                                     snapshots of the per-channel mean of
+                                     the input tensor in window i. Captures
+                                     "this region is locally evolving" without
+                                     using |dh/dt| directly. Bootstrap (k<2
+                                     samples) falls back to |dh/dt| max.
+
+      freq[i] / weight[i] is computed by one of two modes (cfg.weighting):
+        - "integer" (default — legacy)
+              freq[i] = 0                   if max(thk in window i) < min_thk_in_window
+                        1                   if selection == "all"
+                        clip(round(min_freq + (max_freq − min_freq) · score[i] / s_max),
+                             1, max_freq)   if selection == "scored"
+                        where max_freq = min_freq · freq_ratio.
+        - "continuous"
+              p[i]    ∝ (score[i] + eps)^score_alpha           if eligible
+                       0                                       if not eligible
+              No integer clamping; only relative ratios matter, so the result
+              is scale-invariant and works irrespectively of the window size.
 
   STEP 3 — TRAINING WINDOWS (Layer 2)
       training_windows = length-N_train int array of indices into list_windows.
         - selection == "all"        → deterministic: list_windows truncated or
                                         padded (cyclically) to N_train.
-        - selection == "scored"  → N_train independent draws with replacement,
-                                        weighted by freq.
+        - selection == "scored", weighting == "integer"
+                                    → N_train draws with replacement weighted by freq.
+        - selection == "scored", weighting == "continuous"
+                                    → N_train draws with replacement weighted by
+                                       (score + eps)^score_alpha.
       If shuffle_training_windows (default true), the resulting indices are shuffled.
       If record_training_windows, one JSONL line is appended to record_path.
 
@@ -49,10 +67,15 @@ KEY CONFIG KNOBS
       adaptive_patching.patch_size      Actual tile side. 0 → fall back to framesizemax.
       adaptive_patching.windows         Window generator (Step 1)
       adaptive_patching.selection       "all" | "scored"  (Step 2/3 weighting)
-      adaptive_patching.scoring         "max" | "mean"  (within-window reduction)
+      adaptive_patching.scoring         "max" | "mean" | "temporal_variance"
       adaptive_patching.min_thk_in_window  (m) Drop windows below this thk → freq=0.
-      adaptive_patching.min_freq        Floor of the freq formula (default 1)
-      adaptive_patching.freq_ratio      max_freq / min_freq (default 10)
+      adaptive_patching.weighting       "integer" (default) | "continuous"
+      adaptive_patching.score_alpha     Continuous-weighting exponent (default 2.0).
+                                          Only used when weighting=continuous.
+      adaptive_patching.temporal_history_K  Rolling buffer length used by the
+                                          temporal_variance scoring (default 5).
+      adaptive_patching.min_freq        Integer-weighting freq floor (default 1)
+      adaptive_patching.freq_ratio      Integer-weighting max_freq / min_freq (default 10)
       adaptive_patching.shuffle_training_windows  bool (default true)
       adaptive_patching.record_training_windows   bool (default false)
       adaptive_patching.record_path     JSONL output path (default training_windows.jsonl)
@@ -67,6 +90,7 @@ ARCHIVE: the prior multi-pass round-robin `scheduled` selector, the `top_k` and
 `nms` selectors, and `_build_schedule` live in `patch_selection_archive.py`.
 """
 
+import collections
 import json
 import os
 
@@ -211,13 +235,78 @@ _WINDOW_GENS = {
 # Step 2 — Scoring + freq
 # ===========================================================================
 
-def _score_windows(state, windows, scoring: str) -> np.ndarray:
-    """Score each window by max or mean of |dh/dt| inside its extent."""
+def _score_windows(state, windows, scoring: str,
+                   X_full=None, temporal_history_K: int = 5) -> np.ndarray:
+    """Score each window. Two scoring families are supported:
+
+      "max" / "mean"          → reduction of |dh/dt| inside each window
+                                 (the legacy proxy; no extra state needed).
+      "temporal_variance"     → variance over the last K snapshots of the
+                                 per-channel mean of the input tensor in
+                                 each window. Captures "this region is
+                                 locally evolving" using the network's own
+                                 inputs rather than a geometric proxy.
+
+    For temporal_variance, `X_full` (the cached [H, W, C] input tensor) is
+    required, and the rolling history is parked on
+    `state._patch_temporal_history` (dict: corners → deque of patch-means).
+    Bootstrap (window has <2 samples in its history) falls back to a single
+    |dh/dt| max for that window so cold-start patches still score sensibly.
+    """
+    if scoring == "temporal_variance":
+        return _score_temporal_variance(state, windows, X_full, temporal_history_K)
+    # default: dh/dt max / mean
     dhdt = _get_dhdt(state)
     scores = np.zeros(len(windows), dtype=np.float64)
     for i, (y0, x0, ly, lx) in enumerate(windows):
         p = dhdt[y0:y0+ly, x0:x0+lx]
         scores[i] = float(np.mean(p)) if scoring == "mean" else float(np.max(p))
+    return scores
+
+
+def _score_temporal_variance(state, windows, X_full, K):
+    """Per-window temporal variance of the patch input-mean over the last K snapshots.
+
+    The history is keyed by (y0, x0, ly, lx) so that — across rescore rebuilds
+    where new peak-windows replace older ones — stable grid windows keep their
+    history, while transient extras get bootstrapped from |dh/dt|.
+
+    Memory cost: ~M × K × C × 8 bytes ≈ a few KB even at large M.
+    """
+    if X_full is None:
+        raise ValueError("temporal_variance scoring requires X_full (cached input tensor).")
+
+    X = X_full.numpy() if hasattr(X_full, "numpy") else np.asarray(X_full)
+
+    hist = getattr(state, "_patch_temporal_history", None)
+    if hist is None:
+        hist = {}
+        state._patch_temporal_history = hist
+
+    scores = np.zeros(len(windows), dtype=np.float64)
+    dhdt = None  # lazily computed only for bootstrap windows
+
+    for i, (y0, x0, ly, lx) in enumerate(windows):
+        patch = X[y0:y0+ly, x0:x0+lx, :]
+        patch_means = patch.mean(axis=(0, 1)).astype(np.float64)  # [C]
+        key = (int(y0), int(x0), int(ly), int(lx))
+        buf = hist.get(key)
+        if buf is None or buf.maxlen != K:
+            new_buf = collections.deque(buf or [], maxlen=K)
+            hist[key] = new_buf
+            buf = new_buf
+        buf.append(patch_means)
+
+        if len(buf) >= 2:
+            arr = np.stack(buf, axis=0)               # [k, C]
+            scores[i] = float(arr.var(axis=0).sum())  # sum of per-channel variances
+        else:
+            # Bootstrap: this window is new (or first call); fall back to
+            # |dh/dt| max so it isn't starved while the buffer fills.
+            if dhdt is None:
+                dhdt = _get_dhdt(state)
+            scores[i] = float(np.max(dhdt[y0:y0+ly, x0:x0+lx]))
+
     return scores
 
 
@@ -284,18 +373,46 @@ def _scores_to_freqs(scores: np.ndarray, eligible: np.ndarray,
 # Step 3 — Build training_windows (length N_train, indices into list_windows)
 # ===========================================================================
 
-def _build_training_windows(freqs: np.ndarray, selection: str, n_train: int,
-                            rng: np.random.Generator) -> np.ndarray:
+def _continuous_probs(scores: np.ndarray, eligible: np.ndarray,
+                      score_alpha: float, eps: float = 1e-9) -> np.ndarray:
+    """Probability vector p[i] ∝ (score[i] + eps)^score_alpha for eligible windows.
+
+    Scale-invariant: only relative scores matter, so the same `score_alpha`
+    works irrespectively of the patch size (whose mean magnitude is otherwise
+    a confound for both `|dh/dt|`-based and temporal_variance scoring).
+
+    Falls back to uniform-over-eligibles if all eligible scores are zero
+    (e.g. the field is exactly stationary). All-ineligible → all-zero vector
+    (the caller must handle that edge).
+    """
+    p = np.zeros_like(scores, dtype=np.float64)
+    if not eligible.any():
+        return p
+    s = np.asarray(scores[eligible], dtype=np.float64)
+    p[eligible] = (np.maximum(s, 0.0) + eps) ** float(score_alpha)
+    total = p.sum()
+    if not np.isfinite(total) or total <= 0.0:
+        p[eligible] = 1.0
+        total = p.sum()
+    return p / total
+
+
+def _build_training_windows(freqs: np.ndarray, scores: np.ndarray,
+                            eligible: np.ndarray, selection: str,
+                            weighting: str, score_alpha: float,
+                            n_train: int, rng: np.random.Generator) -> np.ndarray:
     """Return a length-N_train int array of indices into list_windows.
 
-    - selection == "all": deterministic. Take every eligible window in
-      order and wrap (cyclically) to fill N_train. Ineligible (freq=0)
-      windows are skipped. If every window is ineligible (cold start),
-      falls back to filling with index 0 — the solver will still receive
-      a valid shape and the optimizer will train on those slots, but it's
-      a "no real signal yet" case worth flagging in logs.
-    - selection == "scored": N_train independent draws with replacement,
-      probability ∝ freq.
+    `selection == "all"`:
+        Deterministic. Tile the eligible-window indices cyclically to fill
+        N_train. Ineligible (freq=0) windows are skipped. `weighting` has
+        no effect in this mode.
+
+    `selection == "scored"`:
+        N_train independent draws with replacement, with weights derived
+        from `weighting`:
+          - "integer"     → p ∝ freqs (the legacy clamped-integer values)
+          - "continuous"  → p ∝ (scores+eps)^score_alpha (scale-invariant)
     """
     n = len(freqs)
 
@@ -303,15 +420,19 @@ def _build_training_windows(freqs: np.ndarray, selection: str, n_train: int,
         eligible_idx = np.where(freqs > 0)[0]
         if eligible_idx.size == 0:
             return np.zeros(n_train, dtype=np.int32)
-        # Tile + truncate so the array is exactly n_train long.
         reps = int(np.ceil(n_train / eligible_idx.size))
         out = np.tile(eligible_idx, reps)[:n_train]
         return out.astype(np.int32)
 
     # selection == "scored"
+    if weighting == "continuous":
+        p = _continuous_probs(scores, eligible, score_alpha)
+        if p.sum() <= 0:
+            return np.zeros(n_train, dtype=np.int32)
+        return rng.choice(n, size=n_train, replace=True, p=p).astype(np.int32)
+
+    # weighting == "integer" (legacy): probability ∝ freqs
     if freqs.sum() <= 0:
-        # No eligible window has positive freq → fall back to argmax of
-        # the freq vector (which itself is 0 → index 0).
         return np.zeros(n_train, dtype=np.int32)
     p = freqs.astype(np.float64) / float(freqs.sum())
     return rng.choice(n, size=n_train, replace=True, p=p).astype(np.int32)
@@ -377,6 +498,10 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     ap.record_path                = _get("record_path", None) or "training_windows.jsonl"
     ap.rng_seed                   = _get("rng_seed", None)
     ap.rescore_freq               = int(_get("rescore_freq", 10))
+    # New (back-compat defaults preserve legacy behaviour):
+    ap.weighting                  = str(_get("weighting", "integer"))
+    ap.score_alpha                = float(_get("score_alpha", 2.0))
+    ap.temporal_history_K         = int(_get("temporal_history_K", 5))
 
     # Capacity = data_preparation.framesizemax (one tile of this size fits at bs=1).
     framemax = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
@@ -394,6 +519,15 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
         raise ValueError(
             f"unknown selection: {ap.selection!r}; "
             f"available: {list(_SELECTORS)} (top_k/nms archived — see patch_selection_archive.py)"
+        )
+    if ap.scoring not in ("max", "mean", "temporal_variance"):
+        raise ValueError(
+            f"unknown scoring: {ap.scoring!r}; "
+            f"available: max, mean, temporal_variance"
+        )
+    if ap.weighting not in ("integer", "continuous"):
+        raise ValueError(
+            f"unknown weighting: {ap.weighting!r}; available: integer, continuous"
         )
 
     # --- Once early: bs and N_train, computed from grid dims and framesizemax ---
@@ -418,7 +552,8 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     #   - the bs/ly/lx changed (e.g. grid size changed mid-run)
     cache = getattr(state, "_ap_cache", None)
     cache_key = (ap.windows, ap.selection, ap.scoring, ap.min_thk_in_window,
-                 ap.min_freq, ap.freq_ratio, ap.framesizemax, ap.n_extra_peaks)
+                 ap.min_freq, ap.freq_ratio, ap.framesizemax, ap.n_extra_peaks,
+                 ap.weighting, ap.score_alpha, ap.temporal_history_K)
     call_n = (cache["call_n"] + 1) if cache is not None else 0
     needs_rebuild = (
         cache is None
@@ -428,8 +563,13 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     if needs_rebuild:
         # Step 1: generate list_windows
         list_windows = _WINDOW_GENS[ap.windows](state, ap)
-        # Step 2: scoring → freqs (thk filter folded in here)
-        scores = _score_windows(state, list_windows, ap.scoring)
+        # Step 2: scoring → freqs (thk filter folded in here).
+        #         temporal_variance scoring needs the cached input field, so
+        #         build it BEFORE _score_windows; it is anyway needed in Step 4.
+        X_full = _cache_full_field(state, cfg)
+        scores = _score_windows(state, list_windows, ap.scoring,
+                                X_full=X_full,
+                                temporal_history_K=ap.temporal_history_K)
         eligible = _eligibility_mask(state, list_windows, ap.min_thk_in_window)
         freqs = _scores_to_freqs(scores, eligible, ap.selection,
                                  ap.min_freq, ap.freq_ratio)
@@ -448,9 +588,14 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
         eligible = cache["eligible"]
         freqs = cache["freqs"]
         cache["call_n"] = call_n
+        # Step 4 still needs X_full each call to gather the chosen patches.
+        _cache_full_field(state, cfg)
 
     # --- Step 3: build training_windows (length n_train, indices into list_windows) ---
-    training_idx = _build_training_windows(freqs, ap.selection, n_train, rng)
+    training_idx = _build_training_windows(
+        freqs, scores, eligible, ap.selection,
+        ap.weighting, ap.score_alpha, n_train, rng,
+    )
     if ap.shuffle_training_windows:
         rng.shuffle(training_idx)
 
@@ -458,8 +603,7 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
         _append_training_record(state, ap, list_windows, scores, freqs,
                                 training_idx, bs, n_train)
 
-    # --- Step 4 prep: cache the full field, gather the training patches ---
-    _cache_full_field(state, cfg)
+    # --- Step 4 prep: gather the training patches (full field already cached above) ---
     training_inputs = _gather_patches(state, list_windows, training_idx)
 
     # Bookkeep previous thickness so |dh/dt| is computable next call.
