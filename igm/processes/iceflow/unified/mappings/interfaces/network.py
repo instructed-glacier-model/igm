@@ -70,6 +70,30 @@ def _build_cfg_model(cfg: DictConfig, attach_normalizer: bool) -> tf.keras.Model
     return model
 
 
+def mapping_args_for_model(
+    cfg: DictConfig, state: State, model: tf.keras.Model
+) -> Dict[str, Any]:
+    """
+    Pack the network-mapping kwargs around an already-constructed model.
+
+    Use this when the caller (e.g. pretraining resume) has loaded the model
+    itself and just needs the surrounding BCs / Nz / output_scale / precision.
+    """
+    cfg_numerics = cfg.processes.iceflow.numerics
+    cfg_unified = cfg.processes.iceflow.unified
+
+    state.iceflow_model = model
+    bcs = init_bcs(cfg, state, cfg_unified.bcs)
+
+    return {
+        "bcs": bcs,
+        "network": state.iceflow_model,
+        "Nz": cfg_numerics.Nz,
+        "output_scale": float(cfg_unified.network.output_scale),
+        "precision": cfg_numerics.precision,
+    }
+
+
 class InterfaceNetwork(InterfaceMapping):
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
@@ -117,7 +141,6 @@ class InterfaceNetwork(InterfaceMapping):
                 )
 
         state.iceflow_model = iceflow_model
-        state.iceflow_model.compile(jit_compile=False)
 
         bcs = init_bcs(cfg, state, cfg_unified.bcs)
 
