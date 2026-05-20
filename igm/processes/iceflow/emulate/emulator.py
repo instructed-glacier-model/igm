@@ -230,6 +230,15 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
         arch_name = cfg_emulator.network.architecture.upper()
         state.iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
 
+    # Pre-build the retrain optimizer's momentum/velocity state outside any
+    # @tf.function context. Keras 3 builds optimizer state lazily on the first
+    # apply_gradients call, but that call happens inside @tf.function update_emulator,
+    # which forbids new tf.Variable creation. Forcing the build here avoids the
+    # "tf.function only supports singleton tf.Variables ..." failure.
+    if not state.iceflow_model.built:
+        state.iceflow_model.build((None, None, None, len(cfg_emulator.fieldin)))
+    state.opti_retrain.build(state.iceflow_model.trainable_variables)
+
     @tf.function(jit_compile=True)
     def fast_inference(x):
         return state.iceflow_model(x)
