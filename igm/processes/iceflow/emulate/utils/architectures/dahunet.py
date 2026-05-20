@@ -10,7 +10,7 @@ Backends: "cnn" (default, DahuNet_5-style), "fno" (FNO2-style), "mlp".
 """
 
 import tensorflow as tf
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from .nos import SpectralConv2D
 
@@ -199,7 +199,6 @@ class DahuNet(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: Dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -219,11 +218,6 @@ class DahuNet(tf.keras.Model):
                 "(used by central-difference surface gradients)."
             )
         self.idx_dX = self.input_names.index("dX")
-
-        # dx_const is recorded for manifest round-trip only; dahunet always
-        # reads dX from the input channels at runtime.
-        self.dx_const_value = None if dx_const is None else float(dx_const)
-        self.dx_const = None
 
         # Settable from outside (pretraining attaches FixedChannelStandardization).
         self.input_normalizer = None
@@ -356,7 +350,6 @@ class DahuNet(tf.keras.Model):
             "input_names": [str(n) for n in self.input_names],
             "Nz": int(self.Nz),
             "network_params": network_params,
-            "dx_const": None if self.dx_const_value is None else float(self.dx_const_value),
         }
 
     def build(self, input_shape) -> None:

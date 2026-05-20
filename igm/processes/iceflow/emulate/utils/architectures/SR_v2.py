@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List
 
 import tensorflow as tf
 
@@ -63,7 +63,6 @@ class SIADecompNetV2(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -120,14 +119,12 @@ class SIADecompNetV2(tf.keras.Model):
             if "arrhenius" in self.input_names
             else None
         )
-        self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
-
-        if self.idx_dX is None:
-            self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
-            self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
-        else:
-            self.dx_const_value = None
-            self.dx_const = None
+        if "dX" not in self.input_names:
+            raise ValueError(
+                "SIADecompNetV2 requires 'dX' in input_names "
+                "(grid spacing is read per-pixel from the dX channel)."
+            )
+        self.idx_dX = self.input_names.index("dX")
 
         # ------------------------------------------------------------------
         # Learned normalizer for the context branch
@@ -374,9 +371,6 @@ class SIADecompNetV2(tf.keras.Model):
                 "anchor_deformation_at_bed": bool(self.anchor_deformation_at_bed),
                 "zero_mean_residual_over_depth": bool(self.zero_mean_residual_over_depth),
             },
-            "dx_const": None
-            if self.dx_const_value is None
-            else float(self.dx_const_value),
         }
 
     # ----------------------------------------------------------------------
@@ -452,10 +446,7 @@ class SIADecompNetV2(tf.keras.Model):
     # Finite differences  (identical to SIADecompNet)
     # ----------------------------------------------------------------------
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
-        if self.idx_dX is not None:
-            return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
-        thk = x[..., self.idx_thk : self.idx_thk + 1]
-        return tf.ones_like(thk, dtype=tf.float32) * self.dx_const
+        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
         fpad = tf.pad(field, [[0, 0], [0, 0], [1, 1], [0, 0]], mode="SYMMETRIC")
@@ -782,7 +773,6 @@ class SIADecompNetV2SharedHead(SIADecompNetV2):
         input_names: list[str],
         Nz: int,
         network_params: dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs,
     ):
         tf.keras.Model.__init__(self, **kwargs)
@@ -839,14 +829,12 @@ class SIADecompNetV2SharedHead(SIADecompNetV2):
             if "arrhenius" in self.input_names
             else None
         )
-        self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
-
-        if self.idx_dX is None:
-            self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
-            self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
-        else:
-            self.dx_const_value = None
-            self.dx_const = None
+        if "dX" not in self.input_names:
+            raise ValueError(
+                "SIADecompNetV2SharedHead requires 'dX' in input_names "
+                "(grid spacing is read per-pixel from the dX channel)."
+            )
+        self.idx_dX = self.input_names.index("dX")
 
         self.input_normalizer = None
 
@@ -1037,9 +1025,6 @@ class SIADecompNetV2SharedHead(SIADecompNetV2):
                     self.zero_mean_residual_over_depth
                 ),
             },
-            "dx_const": None
-            if self.dx_const_value is None
-            else float(self.dx_const_value),
         }
 
     def build(self, input_shape) -> None:

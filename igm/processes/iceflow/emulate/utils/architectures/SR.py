@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, Tuple
+from typing import Dict, Any, Tuple
 
 import tensorflow as tf
 
@@ -60,7 +60,6 @@ class SIADecompNet(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -117,15 +116,12 @@ class SIADecompNet(tf.keras.Model):
             if "arrhenius" in self.input_names
             else None
         )
-        self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
-
-        # Fixed grid spacing fallback when no dX channel is present
-        if self.idx_dX is None:
-            self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
-            self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
-        else:
-            self.dx_const_value = None
-            self.dx_const = None
+        if "dX" not in self.input_names:
+            raise ValueError(
+                "SIADecompNet requires 'dX' in input_names "
+                "(grid spacing is read per-pixel from the dX channel)."
+            )
+        self.idx_dX = self.input_names.index("dX")
 
         # ------------------------------------------------------------------
         # Input normalizer for the context branch
@@ -339,9 +335,6 @@ class SIADecompNet(tf.keras.Model):
                     int(v) for v in self.context_dilation_schedule
                 ],
             },
-            "dx_const": None
-            if self.dx_const_value is None
-            else float(self.dx_const_value),
         }
 
     # ----------------------------------------------------------------------
@@ -425,11 +418,7 @@ class SIADecompNet(tf.keras.Model):
     # ----------------------------------------------------------------------
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
         """Return dX with shape [B, H, W, 1]."""
-        if self.idx_dX is not None:
-            return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
-
-        thk = x[..., self.idx_thk : self.idx_thk + 1]
-        return tf.ones_like(thk, dtype=tf.float32) * self.dx_const
+        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
         """Central difference in x with symmetric padding."""

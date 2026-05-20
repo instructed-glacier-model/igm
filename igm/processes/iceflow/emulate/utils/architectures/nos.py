@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import tensorflow as tf
 from igm.utils.math.precision import normalize_precision
 
@@ -308,7 +308,6 @@ class FNO2(tf.keras.Model):
             input_names=[...],
             Nz=...,
             network_params={...},
-            dx_const=None,
         )
 
     Output convention:
@@ -324,7 +323,6 @@ class FNO2(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: Dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -340,8 +338,6 @@ class FNO2(tf.keras.Model):
 
         self.nb_inputs = len(self.input_names)
         self.nb_outputs = 2 * self.Nz
-
-        self.dx_const_value = None if dx_const is None else float(dx_const)
 
         # External normalizer, attached elsewhere.
         self.input_normalizer = None
@@ -461,9 +457,6 @@ class FNO2(tf.keras.Model):
             "input_names": [str(n) for n in self.input_names],
             "Nz": int(self.Nz),
             "network_params": dict(self.network_params),
-            "dx_const": None
-            if self.dx_const_value is None
-            else float(self.dx_const_value),
         }
 
     # ----------------------------------------------------------------------

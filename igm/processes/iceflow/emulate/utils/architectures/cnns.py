@@ -12,7 +12,7 @@ from .utils import (
     PeriodicBCLayer,
     DTypeActivation,
 )
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 class CNN(tf.keras.Model):
     """
@@ -24,7 +24,6 @@ class CNN(tf.keras.Model):
             input_names=[...],
             Nz=...,
             network_params={...},
-            dx_const=None,
         )
 
     Expected output convention:
@@ -40,7 +39,6 @@ class CNN(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -56,8 +54,6 @@ class CNN(tf.keras.Model):
 
         self.nb_inputs = len(self.input_names)
         self.nb_outputs = 2 * self.Nz
-
-        self.dx_const_value = None if dx_const is None else float(dx_const)
 
         # External normalizer. This is attached by the emulator/artifact path,
         # not serialized as part of the architecture params.
@@ -334,9 +330,6 @@ class CNN(tf.keras.Model):
             "input_names": list(self.input_names),
             "Nz": int(self.Nz),
             "network_params": dict(self.network_params),
-            "dx_const": None
-            if self.dx_const_value is None
-            else float(self.dx_const_value),
         }
 
     # ----------------------------------------------------------------------

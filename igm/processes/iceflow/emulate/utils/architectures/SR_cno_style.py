@@ -410,7 +410,6 @@ class CNO_DecompNet(tf.keras.Model):
         input_names: list[str],
         Nz: int,
         network_params: dict[str, Any],
-        dx_const: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -447,14 +446,12 @@ class CNO_DecompNet(tf.keras.Model):
         self.idx_usurf = self.input_names.index("usurf")
         self.idx_slidingco = self.input_names.index("slidingco") if "slidingco" in self.input_names else None
         self.idx_arrhenius = self.input_names.index("arrhenius") if "arrhenius" in self.input_names else None
-        self.idx_dX = self.input_names.index("dX") if "dX" in self.input_names else None
-
-        if self.idx_dX is None:
-            self.dx_const_value = 90.0 if dx_const is None else float(dx_const)
-            self.dx_const = tf.constant(self.dx_const_value, dtype=tf.float32)
-        else:
-            self.dx_const_value = None
-            self.dx_const = None
+        if "dX" not in self.input_names:
+            raise ValueError(
+                "CNO_DecompNet requires 'dX' in input_names "
+                "(grid spacing is read per-pixel from the dX channel)."
+            )
+        self.idx_dX = self.input_names.index("dX")
 
         self.input_normalizer = None
 
@@ -574,7 +571,6 @@ class CNO_DecompNet(tf.keras.Model):
             "input_names": list(self.input_names),
             "Nz": int(self.Nz),
             "network_params": dict(self.network_params),
-            "dx_const": None if self.dx_const_value is None else float(self.dx_const_value),
         }
 
     def _init_context_encoder(self, input_hw: tuple[int, int]) -> None:
@@ -645,10 +641,7 @@ class CNO_DecompNet(tf.keras.Model):
         return tf.tile(slide_xy, multiples)
 
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
-        if self.idx_dX is not None:
-            return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
-        thk = x[..., self.idx_thk : self.idx_thk + 1]
-        return tf.ones_like(thk, dtype=tf.float32) * self.dx_const
+        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
         fpad = tf.pad(field, [[0, 0], [0, 0], [1, 1], [0, 0]], mode="SYMMETRIC")

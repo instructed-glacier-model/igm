@@ -46,7 +46,6 @@ def _build_cfg_model(cfg: DictConfig, attach_normalizer: bool) -> tf.keras.Model
         input_names=input_names,
         Nz=int(cfg_numerics.Nz),
         network_params=dict(cfg_emulator.network.params),
-        dx_const=None if "dX" in input_names else 90.0,
     )
 
     if attach_normalizer:
