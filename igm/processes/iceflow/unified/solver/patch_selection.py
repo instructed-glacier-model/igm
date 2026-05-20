@@ -336,16 +336,23 @@ def _eligibility_mask(state, windows, min_thk_in_window: float) -> np.ndarray:
     """Boolean mask: which windows have enough ice to be considered for training.
 
     Windows with max(thk) < min_thk_in_window are ineligible → freq=0 → never picked,
-    regardless of selector. Returns all-True when min_thk_in_window <= 0.
+    regardless of selector. Returns all-True when min_thk_in_window <= 0, or as a
+    fallback when zero windows pass the filter (e.g. INIT step of an ice-free
+    bootstrap simulation) — there is nothing to filter by, so a no-op is the right
+    behaviour; the alternative is sampling 'window 0' bs times and overfitting
+    the init pass to a single corner of the grid.
     """
     if min_thk_in_window <= 0.0:
         return np.ones(len(windows), dtype=bool)
     thk = state.thk.numpy() if hasattr(state.thk, "numpy") else np.array(state.thk)
-    return np.array(
+    mask = np.array(
         [float(np.max(thk[y0:y0+ly, x0:x0+lx])) >= min_thk_in_window
          for (y0, x0, ly, lx) in windows],
         dtype=bool,
     )
+    if not mask.any():
+        return np.ones(len(windows), dtype=bool)
+    return mask
 
 
 def _scores_to_freqs(scores: np.ndarray, eligible: np.ndarray,
