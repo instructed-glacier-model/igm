@@ -17,66 +17,13 @@ from igm.processes.iceflow.emulate.utils.misc import (
 )
 
 
-def _build_cfg_model(cfg: DictConfig, attach_normalizer: bool) -> tf.keras.Model:
-    """
-    Build a fresh architecture from cfg for the non-pretrained path.
-
-    When `attach_normalizer` is True, a cfg-driven normalization layer
-    (FixedAffineLayer / AdaptiveAffineLayer / StandardizationLayer /
-    IdentityTransformation) is attached. When False, the caller (typically
-    pretraining) supplies its own normalizer.
-    """
-    cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_unified = cfg.processes.iceflow.unified
-    cfg_emulator = cfg.processes.iceflow.emulator
-
-    arch_name = str(cfg_unified.network.architecture)
-    if arch_name not in Architectures:
-        raise ValueError(
-            f"Unknown network architecture: {arch_name}. "
-            f"Available: {list(Architectures.keys())}"
-        )
-    if cfg_emulator.network.params is None:
-        raise ValueError(
-            "cfg.processes.iceflow.emulator.network.params must be defined."
-        )
-
-    input_names = [str(x) for x in cfg_unified.inputs]
-    model = Architectures[arch_name](
-        input_names=input_names,
-        Nz=int(cfg_numerics.Nz),
-        network_params=dict(cfg_emulator.network.params),
-    )
-
-    if attach_normalizer:
-        method = str(cfg_unified.normalization.method)
-        if method not in NormalizationsDict:
-            raise ValueError(f"Unknown normalizing method: {method}")
-        normalizing_class = NormalizationsDict[method]
-
-        if method == "adaptive":
-            model.input_normalizer = normalizing_class(len(input_names))
-        elif method == "fixed":
-            model.input_normalizer = normalizing_class(
-                cfg_unified.normalization.fixed.inputs_offsets,
-                cfg_unified.normalization.fixed.inputs_variances,
-            )
-        else:
-            model.input_normalizer = normalizing_class()
-    else:
-        model.input_normalizer = None
-
-    return model
-
-
 def mapping_args_for_model(
     cfg: DictConfig, state: State, model: tf.keras.Model
 ) -> Dict[str, Any]:
-    """
-    Pack the network-mapping kwargs around an already-constructed model.
+    """Pack the network-mapping kwargs around an already-constructed model.
 
-    Use this when the caller (e.g. pretraining resume) has loaded the model
-    itself and just needs the surrounding BCs / Nz / output_scale / precision.
+    Used by the pretraining-resume path, which loads the model from disk and
+    just needs the surrounding BCs / Nz / output_scale / precision.
     """
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_unified = cfg.processes.iceflow.unified
@@ -99,8 +46,6 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_numerics = cfg.processes.iceflow.numerics
         cfg_unified = cfg.processes.iceflow.unified
 
-        mapping_output_scale = float(cfg_unified.network.output_scale)
-
         if cfg_unified.network.pretrained:
             if cfg_unified.network.pretrained_path:
                 dtype = normalize_precision(cfg_numerics.precision)
@@ -117,27 +62,42 @@ class InterfaceNetwork(InterfaceMapping):
                 )
                 dir_path = get_pretrained_emulator_path(cfg, state)
                 iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
-
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
-            do_pretraining = "pretraining" in cfg.processes.keys()
-            if cfg_unified.network.old_format and not do_pretraining:
-                nb_inputs = len(cfg_unified.inputs)
-                nb_outputs = 2 * int(cfg_numerics.Nz)
+            nb_inputs = len(cfg_unified.inputs)
+            nb_outputs = 2 * int(cfg_numerics.Nz)
 
-                arch_name = str(cfg_unified.network.architecture)
-                if arch_name not in Architectures:
-                    raise ValueError(
-                        f"Unknown network architecture: {arch_name}. "
-                        f"Available: {list(Architectures.keys())}"
-                    )
-
-                iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
-            else:
-                iceflow_model = _build_cfg_model(
-                    cfg, attach_normalizer=not do_pretraining
+            arch_name = str(cfg_unified.network.architecture)
+            if arch_name not in Architectures:
+                raise ValueError(
+                    f"Unknown network architecture: {arch_name}. "
+                    f"Available: {list(Architectures.keys())}"
                 )
+
+            iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
+
+            # Attach the input normalizer. During pretraining the trainer
+            # supplies its own; otherwise read the cfg.
+            if "pretraining" in cfg.processes.keys():
+                iceflow_model.input_normalizer = None
+            else:
+                method = str(cfg_unified.normalization.method)
+                if method not in NormalizationsDict:
+                    raise ValueError(f"Unknown normalizing method: {method}")
+                normalizing_class = NormalizationsDict[method]
+
+                if method == "adaptive":
+                    normalizing_layer = normalizing_class(nb_inputs)
+                elif method == "fixed":
+                    normalizing_layer = normalizing_class(
+                        cfg_unified.normalization.fixed.inputs_offsets,
+                        cfg_unified.normalization.fixed.inputs_variances,
+                    )
+                else:
+                    normalizing_layer = normalizing_class()
+
+                iceflow_model.input_normalizer = normalizing_layer
 
         state.iceflow_model = iceflow_model
 
@@ -147,6 +107,6 @@ class InterfaceNetwork(InterfaceMapping):
             "bcs": bcs,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
-            "output_scale": mapping_output_scale,
+            "output_scale": float(cfg_unified.network.output_scale),
             "precision": cfg_numerics.precision,
         }

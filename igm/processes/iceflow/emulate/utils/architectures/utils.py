@@ -2,6 +2,44 @@ import tensorflow as tf
 import numpy as np
 
 
+def parse_cfg_input_names_Nz(cfg, nb_inputs=None, nb_outputs=None):
+    """Extract input_names and Nz from cfg with optional sanity checks.
+
+    Helper for the architecture constructor's cfg-positional calling path
+    (``Architecture(cfg, nb_inputs, nb_outputs)``).
+    """
+    input_names = list(cfg.processes.iceflow.unified.inputs)
+    Nz = int(cfg.processes.iceflow.numerics.Nz)
+    if nb_inputs is not None and len(input_names) != int(nb_inputs):
+        raise ValueError(
+            f"nb_inputs={nb_inputs} does not match "
+            f"len(cfg.processes.iceflow.unified.inputs)={len(input_names)}"
+        )
+    if nb_outputs is not None and 2 * Nz != int(nb_outputs):
+        raise ValueError(
+            f"nb_outputs={nb_outputs} does not match "
+            f"2 * cfg.processes.iceflow.numerics.Nz = {2 * Nz}"
+        )
+    return input_names, Nz
+
+
+def parse_cfg_network_params_strict(cfg, arch_name):
+    """Return ``cfg.processes.iceflow.emulator.network.params`` as a dict.
+
+    Raises ``ValueError`` if the node is absent, ``None``, or an empty mapping.
+    Used by architectures that have no legacy individual-field fallback.
+    """
+    network_node = cfg.processes.iceflow.emulator.network
+    params_node = getattr(network_node, "params", None)
+    params = dict(params_node) if params_node is not None else {}
+    if not params:
+        raise ValueError(
+            f"{arch_name} requires cfg.processes.iceflow.emulator.network.params "
+            "to be a non-empty mapping. This architecture has no legacy field fallback."
+        )
+    return params
+
+
 class DTypeActivation(tf.keras.layers.Layer):
     """Activation layer that preserves dtype using tf.nn functions (keras was overriding float64 and casting it to float32...)."""
 
