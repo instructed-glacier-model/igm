@@ -184,10 +184,10 @@ iceflow:
                                      # top_k/nms are archived; see patch_selection_archive.py.
       scoring: max                   # max | mean | temporal_variance
                                      #   max/mean → reduction of |dh/dt| inside the window
-                                     #   temporal_variance → variance of the patch's per-channel
-                                     #     input mean over the last `temporal_history_K`
-                                     #     scoring rebuilds. Bootstraps from |dh/dt| while the
-                                     #     history is shorter than 2.
+                                     #   temporal_variance → per-cell squared change of the
+                                     #     input field between the previous and current scoring
+                                     #     snapshot, aggregated to each window. Bootstraps from
+                                     #     |dh/dt| on the first call.
       min_thk_in_window: 0.0         # (m) windows with max(thk) < this get freq=0 (filter)
       # Integer-weighting knobs (used when weighting=integer, the default):
       min_freq: 1                    # freq floor for the scheduled formula
@@ -197,12 +197,12 @@ iceflow:
       score_alpha: 2.0               # p[i] ∝ (score[i] + eps)^score_alpha. Only used in
                                      # weighting=continuous mode. α=0 → uniform; α=1 →
                                      # linear in score; α=2-4 → moderate focus; α≥8 → near argmax.
-      temporal_history_K: 5          # rolling buffer length for scoring=temporal_variance.
-                                     # K=2 is "change since last rescore"; K=5 smooths it
-                                     # over ~5 rescore steps.
-      temporal_downsample: 4         # downsampling factor for the full-field history
-                                     # used by scoring=temporal_variance (memory =
-                                     # H/d × W/d × C × K × 4 bytes; d=4 → ~85 MB).
+      temporal_downsample: 1         # downsampling factor for the full-field
+                                     # snapshot used by scoring=temporal_variance.
+                                     # Memory = H/d × W/d × C × 4 bytes ≈ 270 MB at d=1
+                                     # on the 3010×4510 grid; ≈ 17 MB at d=4. Run_06
+                                     # showed d=1 and d=4 indistinguishable on accuracy;
+                                     # d=4 is ~10 % faster wall.
       # Step 3 — training_windows
       shuffle_training_windows: true # shuffle the N_train indices before batching
       record_training_windows: false # write one JSONL line per call to record_path
