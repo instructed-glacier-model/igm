@@ -56,13 +56,35 @@ class SIADecompNet(tf.keras.Model):
 
     def __init__(
         self,
+        cfg=None,
+        nb_inputs=None,
+        nb_outputs=None,
         *,
-        input_names: list[str],
-        Nz: int,
-        network_params: dict[str, Any],
+        input_names: list[str] | None = None,
+        Nz: int | None = None,
+        network_params: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        # ------------------------------------------------------------------
+        # Dual calling convention:
+        #   - cfg-positional: SIADecompNet(cfg, nb_inputs, nb_outputs)
+        #   - kwargs (used by .keras reconstruction):
+        #     SIADecompNet(input_names=..., Nz=..., network_params=...)
+        # No legacy individual-field fallback for this architecture; the cfg
+        # path requires a non-empty network.params mapping.
+        # ------------------------------------------------------------------
+        if cfg is not None:
+            from .utils import parse_cfg_input_names_Nz, parse_cfg_network_params_strict
+            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
+            network_params = parse_cfg_network_params_strict(cfg, "SIADecompNet")
+
+        if input_names is None or Nz is None or network_params is None:
+            raise ValueError(
+                "SIADecompNet: must provide either (cfg, nb_inputs, nb_outputs) or "
+                "(input_names, Nz, network_params)."
+            )
 
         # ------------------------------------------------------------------
         # Reconstruction inputs

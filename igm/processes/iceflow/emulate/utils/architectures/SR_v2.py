@@ -59,13 +59,32 @@ class SIADecompNetV2(tf.keras.Model):
 
     def __init__(
         self,
+        cfg=None,
+        nb_inputs=None,
+        nb_outputs=None,
         *,
-        input_names: list[str],
-        Nz: int,
-        network_params: dict[str, Any],
+        input_names: list[str] | None = None,
+        Nz: int | None = None,
+        network_params: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        # ------------------------------------------------------------------
+        # Dual calling convention. The kwargs path is used by the .keras
+        # wrapper at reconstruction time. The cfg path is used by the
+        # network interface for fresh construction.
+        # ------------------------------------------------------------------
+        if cfg is not None:
+            from .utils import parse_cfg_input_names_Nz, parse_cfg_network_params_strict
+            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
+            network_params = parse_cfg_network_params_strict(cfg, "SIADecompNetV2")
+
+        if input_names is None or Nz is None or network_params is None:
+            raise ValueError(
+                "SIADecompNetV2: must provide either (cfg, nb_inputs, nb_outputs) or "
+                "(input_names, Nz, network_params)."
+            )
 
         # ------------------------------------------------------------------
         # Minimal reconstruction inputs
@@ -769,13 +788,33 @@ class SIADecompNetV2SharedHead(SIADecompNetV2):
 
     def __init__(
         self,
+        cfg=None,
+        nb_inputs=None,
+        nb_outputs=None,
         *,
-        input_names: list[str],
-        Nz: int,
-        network_params: dict[str, Any],
+        input_names: list[str] | None = None,
+        Nz: int | None = None,
+        network_params: dict[str, Any] | None = None,
         **kwargs,
     ):
         tf.keras.Model.__init__(self, **kwargs)
+
+        # ------------------------------------------------------------------
+        # Dual calling convention. Mirrors SIADecompNetV2.
+        # ------------------------------------------------------------------
+        if cfg is not None:
+            from .utils import parse_cfg_input_names_Nz, parse_cfg_network_params_strict
+            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
+            network_params = parse_cfg_network_params_strict(
+                cfg, "SIADecompNetV2SharedHead"
+            )
+
+        if input_names is None or Nz is None or network_params is None:
+            raise ValueError(
+                "SIADecompNetV2SharedHead: must provide either "
+                "(cfg, nb_inputs, nb_outputs) or "
+                "(input_names, Nz, network_params)."
+            )
 
         # ------------------------------------------------------------------
         # Minimal reconstruction inputs

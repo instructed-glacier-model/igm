@@ -35,13 +35,33 @@ class CNN(tf.keras.Model):
 
     def __init__(
         self,
+        cfg=None,
+        nb_inputs=None,
+        nb_outputs=None,
         *,
-        input_names: list[str],
-        Nz: int,
-        network_params: dict[str, Any],
+        input_names: list[str] | None = None,
+        Nz: int | None = None,
+        network_params: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        # ------------------------------------------------------------------
+        # Dual calling convention:
+        #   - cfg-positional: CNN(cfg, nb_inputs, nb_outputs)
+        #   - kwargs (used by .keras reconstruction):
+        #     CNN(input_names=..., Nz=..., network_params=...)
+        # ------------------------------------------------------------------
+        if cfg is not None:
+            from .utils import parse_cfg_input_names_Nz
+            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
+            network_params = self._parse_cfg_network_params(cfg)
+
+        if input_names is None or Nz is None or network_params is None:
+            raise ValueError(
+                "CNN: must provide either (cfg, nb_inputs, nb_outputs) or "
+                "(input_names, Nz, network_params)."
+            )
 
         # ------------------------------------------------------------------
         # Minimal reconstruction inputs
@@ -171,6 +191,63 @@ class CNN(tf.keras.Model):
         self._build_layers()
 
     # ----------------------------------------------------------------------
+    # cfg-positional fallback: build network_params from cfg
+    # ----------------------------------------------------------------------
+    @staticmethod
+    def _parse_cfg_network_params(cfg) -> Dict[str, Any]:
+        """Return a network_params dict from cfg.
+
+        If ``cfg.processes.iceflow.emulator.network.params`` is a non-empty
+        mapping, use it directly. Otherwise fall back to reading the
+        individual legacy fields scattered under
+        ``cfg.processes.iceflow.emulator.network.*`` (the pre-params-dict
+        yaml convention used on the main IGM branch).
+        """
+        network_node = cfg.processes.iceflow.emulator.network
+
+        params_node = getattr(network_node, "params", None)
+        params = dict(params_node) if params_node is not None else {}
+        if params:
+            return params
+
+        required = (
+            "nb_layers",
+            "nb_out_filter",
+            "conv_ker_size",
+            "activation",
+            "weight_initialization",
+        )
+        for k in required:
+            if getattr(network_node, k, None) is None:
+                raise ValueError(
+                    "CNN legacy cfg fallback: missing required field "
+                    f"cfg.processes.iceflow.emulator.network.{k}"
+                )
+        params = {k: getattr(network_node, k) for k in required}
+
+        optional = (
+            "batch_norm",
+            "residual",
+            "separable",
+            "dropout_rate",
+            "l2_reg",
+            "cnn3d_for_vertical",
+            "leakyrelu_alpha",
+            "use_skip",
+        )
+        for k in optional:
+            v = getattr(network_node, k, None)
+            if v is not None:
+                params[k] = v
+
+        if "precision" not in params:
+            precision = getattr(cfg.processes.iceflow.numerics, "precision", None)
+            if precision is not None:
+                params["precision"] = str(precision)
+
+        return params
+
+    # ----------------------------------------------------------------------
     # Layer construction
     # ----------------------------------------------------------------------
     def _build_layers(self) -> None:
@@ -293,7 +370,6 @@ class CNN(tf.keras.Model):
 
         if activation_name == "leakyrelu":
             return tf.keras.layers.LeakyReLU(
-                negative_slope=self.leakyrelu_alpha,
                 dtype=self.dtype_model,
                 name=f"leakyrelu_{i}",
             )

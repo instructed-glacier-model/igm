@@ -195,13 +195,28 @@ class DahuNet(tf.keras.Model):
 
     def __init__(
         self,
+        cfg=None,
+        nb_inputs=None,
+        nb_outputs=None,
         *,
-        input_names: list[str],
-        Nz: int,
-        network_params: Dict[str, Any],
+        input_names: list[str] | None = None,
+        Nz: int | None = None,
+        network_params: Dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+
+        # Dual calling convention. See SIADecompNet for rationale.
+        if cfg is not None:
+            from .utils import parse_cfg_input_names_Nz, parse_cfg_network_params_strict
+            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
+            network_params = parse_cfg_network_params_strict(cfg, "DahuNet")
+
+        if input_names is None or Nz is None or network_params is None:
+            raise ValueError(
+                "DahuNet: must provide either (cfg, nb_inputs, nb_outputs) or "
+                "(input_names, Nz, network_params)."
+            )
 
         # Reconstruction inputs
         self.input_names = list(input_names)
