@@ -194,9 +194,11 @@ iceflow:
       freq_ratio: 10                 # max_freq = min_freq · freq_ratio
       # Continuous-weighting knob (used when weighting=continuous):
       weighting: integer             # integer (legacy, default) | continuous
-      score_alpha: 2.0               # p[i] ∝ (score[i] + eps)^score_alpha. Only used in
+      score_alpha: 1.0               # p[i] ∝ (score[i] + eps)^score_alpha. Only used in
                                      # weighting=continuous mode. α=0 → uniform; α=1 →
                                      # linear in score; α=2-4 → moderate focus; α≥8 → near argmax.
+                                     # run_07 (clever-patch/exp3) showed α=1 is the sweet
+                                     # spot: best L2 accuracy AND no wall penalty vs α=2/4.
       temporal_downsample: 1         # downsampling factor for the full-field
                                      # snapshot used by scoring=temporal_variance.
                                      # Memory = H/d × W/d × C × 4 bytes ≈ 270 MB at d=1

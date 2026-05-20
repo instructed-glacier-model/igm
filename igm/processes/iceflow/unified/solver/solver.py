@@ -99,13 +99,16 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Adaptive patch selection
+    # Adaptive patch selection — applies to INIT, WARM_UP, and DEFAULT alike so
+    # that the optimizer graph is JIT-compiled on a single (bs, ly, lx, C) shape
+    # for the whole run. Prior to 2026-05-20 INIT used the splitter's framesizemax-
+    # tiled tensor while DEFAULT used patch_size-tiled patches, which triggered an
+    # expensive XLA recompile at the first DEFAULT step on small grids and could
+    # hang for >10 minutes when the shape change was drastic (e.g. 1×244×179 →
+    # 75×30×29). Routing INIT through select_patches uses the same patch
+    # geometry and (bs, ly, lx, C) shape as the subsequent DEFAULT calls.
     cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
-    use_adaptive = (
-        do_solve
-        and status == Status.DEFAULT
-        and bool(getattr(cfg_ap, "enabled", False))
-    )
+    use_adaptive = do_solve and bool(getattr(cfg_ap, "enabled", False))
 
     # Optimize and save cost
     if do_solve and use_adaptive:
