@@ -163,7 +163,6 @@ iceflow:
           X: 1.0
           Y: 1.0
     network:
-      old_format: true
       debug_mode: false
       debug_freq: 100
       pretrained: true
