@@ -9,16 +9,16 @@ iceflow:
       weertman:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
       coulomb:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
         mu: 0.4
       budd:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
         N_ref: 1.0
     gravity_cst: 9.81
     ice_density: 910.0
