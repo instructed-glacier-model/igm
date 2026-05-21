@@ -171,49 +171,23 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     adaptive_patching:
-      # 4-step pipeline (see solver/patch_selection.py + clever-patch/patch_selection.md).
       enabled: false
       # Step 1 — window generation
-      windows: regular_grid          # regular_grid | sliding_overlap | peak_augmented
-      stride_factor: 1.0             # sliding_overlap only (1.0 = no overlap)
+      windows: peak_augmented        # regular_grid | peak_augmented (default)
       n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count)
       patch_size: 0                  # actual tile side (= "ps"). 0 = use framesizemax.
                                      # bs = floor(framesizemax² / (ly·lx)), computed once.
-      # Step 2 — scoring + freq
-      selection: all                 # all (uniform freq=1) | scored (freq ∝ score).
-                                     # top_k/nms are archived; see patch_selection_archive.py.
-      scoring: max                   # max | mean | temporal_variance
-                                     #   max/mean → reduction of |dh/dt| inside the window
-                                     #   temporal_variance → per-cell squared change of the
-                                     #     input field between the previous and current scoring
-                                     #     snapshot, aggregated to each window. Bootstraps from
-                                     #     |dh/dt| on the first call.
-      min_thk_in_window: 0.0         # (m) windows with max(thk) < this get freq=0 (filter)
-      # Integer-weighting knobs (used when weighting=integer, the default):
-      min_freq: 1                    # freq floor for the scheduled formula
-      freq_ratio: 10                 # max_freq = min_freq · freq_ratio
-      # Continuous-weighting knob (used when weighting=continuous):
-      weighting: integer             # integer (legacy, default) | continuous
-      score_alpha: 1.0               # p[i] ∝ (score[i] + eps)^score_alpha. Only used in
-                                     # weighting=continuous mode. α=0 → uniform; α=1 →
-                                     # linear in score; α=2-4 → moderate focus; α≥8 → near argmax.
-                                     # run_07 (clever-patch/exp3) showed α=1 is the sweet
-                                     # spot: best L2 accuracy AND no wall penalty vs α=2/4.
-      temporal_downsample: 1         # downsampling factor for the full-field
-                                     # snapshot used by scoring=temporal_variance.
-                                     # Memory = H/d × W/d × C × 4 bytes ≈ 270 MB at d=1
-                                     # on the 3010×4510 grid; ≈ 17 MB at d=4. Run_06
-                                     # showed d=1 and d=4 indistinguishable on accuracy;
-                                     # d=4 is ~10 % faster wall.
+      # Step 2 — scoring + thk eligibility filter
+      selection: scored              # all (uniform over eligibles) | scored
+      min_thk_in_window: 0.0         # (m) max(thk) below this → ineligible. 
+      score_alpha: 1.0               # p[i] ∝ (score[i] + eps)^score_alpha. α=0 → uniform;
+      temporal_downsample: 1         # downsampling factor for the cached input snapshot.
       # Step 3 — training_windows
       shuffle_training_windows: true # shuffle the N_train indices before batching
       record_training_windows: false # write one JSONL line per call to record_path
       record_path: null              # null → training_windows.jsonl in cwd
-      rng_seed: null                 # null → fresh randomness per call
-      # Caching: steps 1+2 (windows + scoring + freqs) are recomputed every
-      # rescore_freq retrain calls. In between, the cache is reused; only step 3
-      # (sampling) runs every call. 1 = recompute every call. Default 10.
-      rescore_freq: 10
+      rng_seed: null                 # null → fresh randomness per call 
+      rescore_freq: 10               # Caching: steps 1+2 recomputed every rescore_freq
     data_preparation:
       framesizemax: 1000
       patches_per_batch: 1
