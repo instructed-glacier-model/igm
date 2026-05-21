@@ -108,19 +108,19 @@ class NiceNet(tf.keras.Model):
         n_grad_features = 0
         if self.multi_scale:
             self.grad_conv_3 = tf.keras.layers.Conv2D(
-                8, 3, padding="same", dtype=tf.float32, name="grad_3x3"
+                8, 3, padding="same", dtype=self.compute_dtype, name="grad_3x3"
             )
             self.grad_conv_5 = tf.keras.layers.Conv2D(
-                8, 5, padding="same", dtype=tf.float32, name="grad_5x5"
+                8, 5, padding="same", dtype=self.compute_dtype, name="grad_5x5"
             )
             self.grad_conv_7 = tf.keras.layers.Conv2D(
-                4, 7, padding="same", dtype=tf.float32, name="grad_7x7"
+                4, 7, padding="same", dtype=self.compute_dtype, name="grad_7x7"
             )
             n_grad_features = 20
 
         # ── Stage 2: Feature combination ──
         self.combine = tf.keras.layers.Dense(
-            n_filters, dtype=tf.float32, name="combine"
+            n_filters, dtype=self.compute_dtype, name="combine"
         )
 
         # ── Stage 3: Backbone CNN ──
@@ -128,19 +128,19 @@ class NiceNet(tf.keras.Model):
         for i in range(n_layers):
             self.backbone_convs.append(
                 tf.keras.layers.Conv2D(
-                    n_filters, ker_size, padding="same", dtype=tf.float32,
+                    n_filters, ker_size, padding="same", dtype=self.compute_dtype,
                     name=f"backbone_{i}",
                 )
             )
 
         # Skip projection (from combined features to output)
         self.skip_proj = tf.keras.layers.Conv2D(
-            n_filters, 1, padding="same", dtype=tf.float32, name="skip_proj"
+            n_filters, 1, padding="same", dtype=self.compute_dtype, name="skip_proj"
         )
 
         # Output projection
         self.output_layer = tf.keras.layers.Conv2D(
-            nb_outputs, 1, padding="same", dtype=tf.float32, name="output"
+            nb_outputs, 1, padding="same", dtype=self.compute_dtype, name="output"
         )
 
         self.build(input_shape=[None, None, None, nb_inputs])
@@ -152,7 +152,7 @@ class NiceNet(tf.keras.Model):
         All features are kept in O(1) range for float32 stability.
         The physics_level controls how many features are computed.
         """
-        x = tf.cast(raw_inputs, tf.float32)
+        x = tf.cast(raw_inputs, self.compute_dtype)
         n = self.n_glen
 
         thk = x[..., self.idx_thk : self.idx_thk + 1]
@@ -189,12 +189,12 @@ class NiceNet(tf.keras.Model):
                 log_A = tf.math.log(tf.maximum(arrhenius, 1e-30))
             else:
                 log_A = tf.constant(
-                    np.log(self.A_ref), dtype=tf.float32
+                    np.log(self.A_ref), dtype=self.compute_dtype
                 ) * tf.ones_like(thk)
 
             log_u_sia = (
                 log_A
-                + n * tf.math.log(tf.constant(self.rho_g, dtype=tf.float32))
+                + n * tf.math.log(tf.constant(self.rho_g, dtype=self.compute_dtype))
                 + (n + 1.0) * tf.math.log(thk + 1.0)
                 + n * tf.math.log(grad_s + 1e-10)
             )
@@ -208,7 +208,7 @@ class NiceNet(tf.keras.Model):
                 log_C = tf.math.log(tf.maximum(slidingco, 1e-30))
             else:
                 log_C = tf.constant(
-                    np.log(self.C_ref), dtype=tf.float32
+                    np.log(self.C_ref), dtype=self.compute_dtype
                 ) * tf.ones_like(thk)
 
             tau_mag = tf.sqrt(tau_x ** 2 + tau_y ** 2 + 1e-20)
@@ -216,7 +216,7 @@ class NiceNet(tf.keras.Model):
             features.append((log_u_slide - self.log_u_slide_ref) / 10.0)
 
             # Flow direction unit vector (ice flows down-gradient)
-            ice_mask = tf.cast(thk > 1.0, tf.float32)
+            ice_mask = tf.cast(thk > 1.0, self.compute_dtype)
             features.append(-dsdx / (grad_s + 1e-10) * ice_mask)
             features.append(-dsdy / (grad_s + 1e-10) * ice_mask)
 
@@ -267,7 +267,7 @@ class NiceNet(tf.keras.Model):
         return tf.concat(features, axis=-1)
 
     def call(self, inputs, training=False):
-        x = tf.cast(inputs, tf.float32)
+        x = tf.cast(inputs, self.compute_dtype)
         raw_inputs = x
 
         if self.input_normalizer is not None:

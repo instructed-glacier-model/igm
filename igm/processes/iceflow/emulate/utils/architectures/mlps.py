@@ -79,7 +79,9 @@ class FourierMLP(tf.keras.Model):
         coord_input_dim = nb_inputs + 2
 
         self.B = tf.Variable(
-            tf.random.normal([coord_input_dim, self.fourier_dim]) * self.fourier_scale,
+            tf.random.normal(
+                [coord_input_dim, self.fourier_dim], dtype=self.dtype_model
+            ) * self.fourier_scale,
             trainable=False,
             dtype=self.dtype_model,
         )

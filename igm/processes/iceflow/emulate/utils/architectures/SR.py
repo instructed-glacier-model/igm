@@ -114,13 +114,13 @@ class SIADecompNet(tf.keras.Model):
         )
 
         self.H_proxy_floor_value = float(self.FIXED_H_PROXY_FLOOR)
-        self.H_proxy_floor = tf.constant(self.H_proxy_floor_value, dtype=tf.float32)
+        self.H_proxy_floor = tf.constant(self.H_proxy_floor_value, dtype=self.compute_dtype)
 
-        self.eps = tf.constant(self.eps_value, dtype=tf.float32)
-        self.H_ref = tf.constant(self.H_ref_value, dtype=tf.float32)
-        self.slope_ref = tf.constant(self.slope_ref_value, dtype=tf.float32)
-        self.tau_ref_scale = tf.constant(self.tau_ref_scale_value, dtype=tf.float32)
-        self.A_ref = tf.constant(self.A_ref_value, dtype=tf.float32)
+        self.eps = tf.constant(self.eps_value, dtype=self.compute_dtype)
+        self.H_ref = tf.constant(self.H_ref_value, dtype=self.compute_dtype)
+        self.slope_ref = tf.constant(self.slope_ref_value, dtype=self.compute_dtype)
+        self.tau_ref_scale = tf.constant(self.tau_ref_scale_value, dtype=self.compute_dtype)
+        self.A_ref = tf.constant(self.A_ref_value, dtype=self.compute_dtype)
 
         # ------------------------------------------------------------------
         # Input channel bookkeeping
@@ -202,7 +202,7 @@ class SIADecompNet(tf.keras.Model):
         self.log_B_ref = tf.math.log(self.B_ref + self.eps)
 
         self.log_u_slide_ref = tf.math.log(
-            tf.constant(self.u_ref, dtype=tf.float32) + self.eps
+            tf.constant(self.u_ref, dtype=self.compute_dtype) + self.eps
         )
         self.log_u_def_ref = (
             self.log_A_ref
@@ -217,7 +217,7 @@ class SIADecompNet(tf.keras.Model):
             self.nb_out_filter,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="context_in",
         )
 
@@ -229,7 +229,7 @@ class SIADecompNet(tf.keras.Model):
                     3,
                     padding="same",
                     dilation_rate=int(dilation),
-                    dtype=tf.float32,
+                    dtype=self.compute_dtype,
                     name=f"context_block_{i}_conv1",
                 ),
                 "conv2": tf.keras.layers.Conv2D(
@@ -237,7 +237,7 @@ class SIADecompNet(tf.keras.Model):
                     3,
                     padding="same",
                     dilation_rate=int(dilation),
-                    dtype=tf.float32,
+                    dtype=self.compute_dtype,
                     name=f"context_block_{i}_conv2",
                 ),
                 "act1": tf.keras.layers.Activation(
@@ -257,7 +257,7 @@ class SIADecompNet(tf.keras.Model):
             self.nb_out_filter,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="slide_head_conv1",
         )
         self.slide_head_act1 = tf.keras.layers.Activation(
@@ -267,14 +267,14 @@ class SIADecompNet(tf.keras.Model):
             self.nb_out_filter,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="slide_head_conv2",
         )
         self.slide_head_act2 = tf.keras.layers.Activation(
             tf.nn.gelu, name="slide_head_gelu2"
         )
         self.slide_head_out = tf.keras.layers.Conv2D(
-            2, 1, padding="same", dtype=tf.float32, name="slide_head_out"
+            2, 1, padding="same", dtype=self.compute_dtype, name="slide_head_out"
         )
 
         # ------------------------------------------------------------------
@@ -285,7 +285,7 @@ class SIADecompNet(tf.keras.Model):
             self.nb_out_filter,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="def_head_conv1",
         )
         self.def_head_act1 = tf.keras.layers.Activation(
@@ -295,14 +295,14 @@ class SIADecompNet(tf.keras.Model):
             self.nb_out_filter,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="def_head_conv2",
         )
         self.def_head_act2 = tf.keras.layers.Activation(
             tf.nn.gelu, name="def_head_gelu2"
         )
         self.def_head_out = tf.keras.layers.Conv2D(
-            2 * self.Nz, 1, padding="same", dtype=tf.float32, name="def_head_out"
+            2 * self.Nz, 1, padding="same", dtype=self.compute_dtype, name="def_head_out"
         )
 
         # ------------------------------------------------------------------
@@ -316,7 +316,7 @@ class SIADecompNet(tf.keras.Model):
             self.res_head_filters,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="res_head_conv1",
         )
         self.res_head_act1 = tf.keras.layers.Activation(
@@ -326,7 +326,7 @@ class SIADecompNet(tf.keras.Model):
             self.res_head_filters,
             3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="res_head_conv2",
         )
         self.res_head_act2 = tf.keras.layers.Activation(
@@ -336,7 +336,7 @@ class SIADecompNet(tf.keras.Model):
             2 * self.Nz,
             1,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             kernel_initializer="zeros",
             bias_initializer="zeros",
             name="res_head_out",
@@ -391,7 +391,7 @@ class SIADecompNet(tf.keras.Model):
 
         dummy = tf.zeros(
             shape=(batch_dim, height_dim, width_dim, channel_dim),
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
 
         # Build sublayers in forward-pass order.
@@ -440,7 +440,7 @@ class SIADecompNet(tf.keras.Model):
     # ----------------------------------------------------------------------
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
         """Return dX with shape [B, H, W, 1]."""
-        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
+        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], self.compute_dtype)
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
         """Central difference in x with symmetric padding."""
@@ -473,7 +473,7 @@ class SIADecompNet(tf.keras.Model):
         self, raw_inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, Dict[str, tf.Tensor]]:
         """Build explicit physics features for the three heads."""
-        x = tf.cast(raw_inputs, tf.float32)
+        x = tf.cast(raw_inputs, self.compute_dtype)
 
         H = tf.maximum(x[..., self.idx_thk : self.idx_thk + 1], 0.0)
         s = x[..., self.idx_usurf : self.idx_usurf + 1]
@@ -485,7 +485,7 @@ class SIADecompNet(tf.keras.Model):
             [[1.0, 2.0, 1.0],
             [2.0, 4.0, 2.0],
             [1.0, 2.0, 1.0]],
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         ) / 16.0
         binomial_kernel = binomial_kernel[:, :, tf.newaxis, tf.newaxis]  # [3, 3, 1, 1]
 
@@ -568,7 +568,7 @@ class SIADecompNet(tf.keras.Model):
         log_tau_d = (log_tau_d_raw - self.log_tau_ref_scale) / 5.0
 
         # Downhill unit vector, masked off ice
-        ice_mask = tf.cast(H > 1.0, tf.float32)
+        ice_mask = tf.cast(H > 1.0, self.compute_dtype)
         dir_x = -dsdx / (grad_s + self.eps) * ice_mask
         dir_y = -dsdy / (grad_s + self.eps) * ice_mask
 
@@ -603,7 +603,7 @@ class SIADecompNet(tf.keras.Model):
             log_tau_ref = (log_tau_ref_raw - self.log_tau_ref_scale) / 5.0
 
             log_u_slide_proxy_raw = (
-                tf.math.log(tf.constant(self.u_ref, dtype=tf.float32) + self.eps)
+                tf.math.log(tf.constant(self.u_ref, dtype=self.compute_dtype) + self.eps)
                 + self.m_slide * (log_tau_d_raw - log_tau_ref_raw)
             )
             log_u_slide_proxy = (
@@ -707,7 +707,7 @@ class SIADecompNet(tf.keras.Model):
     # ----------------------------------------------------------------------
     def _context_features(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
         """Compute learned context features from normalized inputs."""
-        x = tf.cast(inputs, tf.float32)
+        x = tf.cast(inputs, self.compute_dtype)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x, training=training)
@@ -735,7 +735,7 @@ class SIADecompNet(tf.keras.Model):
         return_components: bool = False,
     ) -> tf.Tensor | Dict[str, Any]:
         """Return total velocity, or the decomposed components if requested."""
-        raw_inputs = tf.cast(inputs, tf.float32)
+        raw_inputs = tf.cast(inputs, self.compute_dtype)
 
         # 1. Explicit physics features from raw inputs
         slide_phys, def_phys, all_phys, aux = self._physics_features(raw_inputs)

@@ -80,13 +80,13 @@ class _CNNBackend(tf.keras.layers.Layer):
         super().__init__(**kw)
         self.use_residual = use_residual
         Conv = tf.keras.layers.Conv2D
-        self.combine = tf.keras.layers.Dense(n_filters, dtype=tf.float32)
+        self.combine = tf.keras.layers.Dense(n_filters, dtype=self.compute_dtype)
         self.backbone = [
-            Conv(n_filters, ker_size, padding="same", dtype=tf.float32, name=f"bb_{i}")
+            Conv(n_filters, ker_size, padding="same", dtype=self.compute_dtype, name=f"bb_{i}")
             for i in range(n_layers)
         ]
-        self.skip_proj = Conv(n_filters, 1, padding="same", dtype=tf.float32)
-        self.out = Conv(n_out, 1, padding="same", dtype=tf.float32)
+        self.skip_proj = Conv(n_filters, 1, padding="same", dtype=self.compute_dtype)
+        self.out = Conv(n_out, 1, padding="same", dtype=self.compute_dtype)
 
     def call(
         self, x: tf.Tensor, training: bool = False
@@ -122,16 +122,22 @@ class _FNOBackend(tf.keras.layers.Layer):
             width, 1, data_format="channels_first", use_bias=True
         )
 
-        self.fc0 = tf.keras.layers.Dense(width, dtype=tf.float32)
+        self.fc0 = tf.keras.layers.Dense(width, dtype=self.compute_dtype)
         self.convs = [SpectralConv2D(width, width, modes1, modes2) for _ in range(4)]
         self.ws = [Conv1() for _ in range(4)]
-        self.fc1 = tf.keras.layers.Dense(128, dtype=tf.float32)
-        self.fc2 = tf.keras.layers.Dense(n_out, dtype=tf.float32)
+        self.fc1 = tf.keras.layers.Dense(128, dtype=self.compute_dtype)
+        self.fc2 = tf.keras.layers.Dense(n_out, dtype=self.compute_dtype)
 
     def _grid(self, x: tf.Tensor) -> tf.Tensor:  # [B,H,W,C] → [B,H,W,2]
         B, H, W = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
-        gx = tf.tile(tf.reshape(tf.linspace(0.0, 1.0, H), [1, H, 1, 1]), [B, 1, W, 1])
-        gy = tf.tile(tf.reshape(tf.linspace(0.0, 1.0, W), [1, 1, W, 1]), [B, H, 1, 1])
+        gx = tf.tile(
+            tf.reshape(tf.cast(tf.linspace(0.0, 1.0, H), x.dtype), [1, H, 1, 1]),
+            [B, 1, W, 1],
+        )
+        gy = tf.tile(
+            tf.reshape(tf.cast(tf.linspace(0.0, 1.0, W), x.dtype), [1, 1, W, 1]),
+            [B, H, 1, 1],
+        )
         return tf.concat([gx, gy], axis=-1)
 
     def call(
@@ -166,10 +172,10 @@ class _MLPBackend(tf.keras.layers.Layer):
     ) -> None:
         super().__init__(**kw)
         self.hidden = [
-            tf.keras.layers.Dense(n_filters, activation="gelu", dtype=tf.float32)
+            tf.keras.layers.Dense(n_filters, activation="gelu", dtype=self.compute_dtype)
             for _ in range(n_layers)
         ]
-        self.out = tf.keras.layers.Dense(n_out, dtype=tf.float32)
+        self.out = tf.keras.layers.Dense(n_out, dtype=self.compute_dtype)
 
     def call(
         self, x: tf.Tensor, training: bool = False
@@ -384,14 +390,14 @@ class DahuNet(tf.keras.Model):
             )
         H = self._dummy_H if input_shape[1] is None else max(self._dummy_H, int(input_shape[1]))
         W = self._dummy_W if input_shape[2] is None else max(self._dummy_W, int(input_shape[2]))
-        dummy = tf.zeros((1, H, W, self.nb_inputs), dtype=tf.float32)
+        dummy = tf.zeros((1, H, W, self.nb_inputs), dtype=self.compute_dtype)
         _ = self.call(dummy, training=False)
         super().build(input_shape)
 
     def call(
         self, inputs: tf.Tensor, training: bool = False
     ) -> tf.Tensor:  # [B,H,W,C_in] → [B,H,W,C_out]
-        raw = tf.cast(inputs, tf.float32)
+        raw = tf.cast(inputs, self.compute_dtype)
         x = raw
 
         if self.input_normalizer is not None:

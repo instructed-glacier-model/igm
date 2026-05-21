@@ -43,7 +43,7 @@ def parse_cfg_network_params_strict(cfg, arch_name):
 class DTypeActivation(tf.keras.layers.Layer):
     """Activation layer that preserves dtype using tf.nn functions (keras was overriding float64 and casting it to float32...)."""
 
-    def __init__(self, activation_name, dtype=tf.float32, **kwargs):
+    def __init__(self, activation_name, dtype=None, **kwargs):
         super().__init__(dtype=dtype, **kwargs)
         self.activation_name = activation_name.lower()
 
@@ -215,21 +215,15 @@ class PeriodicBCFourier(tf.keras.layers.Layer):
         # (batch, height, width, channels) -> (batch, channels, height, width)
         x = tf.transpose(inputs, [0, 3, 1, 2])
 
-        # Cast to complex
-        x_complex = tf.cast(
-            x, tf.complex64
-        )  # ! make this 2x what the real precision is (i.e if inputs are float64, this should be complex128 etc.)
+        complex_dtype = (
+            tf.complex128 if x.dtype == tf.float64 else tf.complex64
+        )
 
-        # 2D FFT
+        x_complex = tf.cast(x, complex_dtype)
         x_fft = tf.signal.fft2d(x_complex)
-
-        # Inverse FFT (this inherently enforces periodicity)
         x_ifft = tf.signal.ifft2d(x_fft)
-
-        # Take real part
         x_real = tf.math.real(x_ifft)
 
-        # Transpose back
         output = tf.transpose(x_real, [0, 2, 3, 1])
 
         return output

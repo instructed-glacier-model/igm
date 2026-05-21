@@ -5,6 +5,13 @@ import tensorflow as tf
 from igm.utils.math.precision import normalize_precision
 
 
+def _matching_complex(float_dtype) -> tf.dtypes.DType:
+    """Return the complex dtype that preserves precision for a given float dtype."""
+    if tf.as_dtype(float_dtype) == tf.float64:
+        return tf.complex128
+    return tf.complex64
+
+
 class FNO(tf.keras.Model):
     """
     Simplified Fourier Neural Operator - operates in frequency domain for global information
@@ -60,8 +67,10 @@ class FNO(tf.keras.Model):
         for fourier_layer, conv_layer in zip(self.fourier_layers, self.conv_layers):
             residual = x
 
+            complex_dtype = _matching_complex(self.dtype_model)
+
             # FFT to frequency domain
-            x_freq = tf.signal.fft2d(tf.cast(x, tf.complex64))
+            x_freq = tf.signal.fft2d(tf.cast(x, complex_dtype))
 
             # Apply spectral convolution (simplified: using real part)
             x_freq_real = tf.cast(tf.math.real(x_freq), self.dtype_model)
@@ -71,7 +80,7 @@ class FNO(tf.keras.Model):
             x_freq_processed = fourier_layer(x_freq_real)
 
             # IFFT back to spatial domain
-            x_freq_complex = tf.cast(x_freq_processed, tf.complex64)
+            x_freq_complex = tf.cast(x_freq_processed, complex_dtype)
             x = tf.cast(
                 tf.math.real(tf.signal.ifft2d(x_freq_complex)), self.dtype_model
             )
@@ -164,7 +173,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
                     f"modes2 must be <= W//2 + 1."
                 )
 
-        limit = tf.math.sqrt(tf.cast(self.scale, tf.float32))
+        limit = tf.math.sqrt(tf.cast(self.scale, self.compute_dtype))
         init = tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
         weight_shape = (
@@ -180,14 +189,14 @@ class SpectralConv2D(tf.keras.layers.Layer):
             shape=weight_shape,
             initializer=init,
             trainable=True,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
         self.w1_imag = self.add_weight(
             name="w1_imag",
             shape=weight_shape,
             initializer=init,
             trainable=True,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
 
         # Bottom-frequency block
@@ -196,14 +205,14 @@ class SpectralConv2D(tf.keras.layers.Layer):
             shape=weight_shape,
             initializer=init,
             trainable=True,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
         self.w2_imag = self.add_weight(
             name="w2_imag",
             shape=weight_shape,
             initializer=init,
             trainable=True,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
 
         super().build(input_shape)
@@ -228,7 +237,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
         """
         x: [B, C_in, H, W], real
         """
-        x = tf.cast(x, tf.float32)
+        x = tf.cast(x, self.compute_dtype)
 
         height = tf.shape(x)[2]
         width = tf.shape(x)[3]
@@ -422,7 +431,7 @@ class FNO2(tf.keras.Model):
         # ------------------------------------------------------------------
         self.fc0 = tf.keras.layers.Dense(
             self.width,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="fc0",
         )
 
@@ -443,7 +452,7 @@ class FNO2(tf.keras.Model):
                 kernel_size=1,
                 data_format="channels_first",
                 use_bias=True,
-                dtype=tf.float32,
+                dtype=self.compute_dtype,
                 name=f"pointwise_skip_{i}",
             )
             for i in range(4)
@@ -451,12 +460,12 @@ class FNO2(tf.keras.Model):
 
         self.fc1 = tf.keras.layers.Dense(
             self.projection_width,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="fc1",
         )
         self.fc2 = tf.keras.layers.Dense(
             self.nb_outputs,
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name="fc2",
         )
 
@@ -518,7 +527,7 @@ class FNO2(tf.keras.Model):
 
         dummy = tf.zeros(
             shape=(batch_dim, height_dim, width_dim, channel_dim),
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
 
         _ = self.call(dummy, training=False)
@@ -547,11 +556,11 @@ class FNO2(tf.keras.Model):
         size_x = shape[1]
         size_y = shape[2]
 
-        gridx = tf.linspace(0.0, 1.0, size_x)
+        gridx = tf.cast(tf.linspace(0.0, 1.0, size_x), x.dtype)
         gridx = tf.reshape(gridx, [1, size_x, 1, 1])
         gridx = tf.tile(gridx, [batch_size, 1, size_y, 1])
 
-        gridy = tf.linspace(0.0, 1.0, size_y)
+        gridy = tf.cast(tf.linspace(0.0, 1.0, size_y), x.dtype)
         gridy = tf.reshape(gridy, [1, 1, size_y, 1])
         gridy = tf.tile(gridy, [batch_size, size_x, 1, 1])
 
@@ -565,11 +574,11 @@ class FNO2(tf.keras.Model):
         inputs:  [B, H, W, C_in]
         returns: [B, H, W, 2*Nz]
         """
-        x = tf.cast(inputs, tf.float32)
+        x = tf.cast(inputs, self.compute_dtype)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x, training=training)
-            x = tf.cast(x, tf.float32)
+            x = tf.cast(x, self.compute_dtype)
 
         if self.use_grid:
             grid = self._get_grid(x)
@@ -684,7 +693,7 @@ class CNOBlock(tf.keras.layers.Layer):
         super().__init__(**kwargs)
         self.convolution = tf.keras.layers.Conv2D(
             int(out_channels), kernel_size=3, padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
         self.act = CNOActivation(in_h, in_w, out_h, out_w)
 
@@ -707,7 +716,7 @@ class LiftProjectBlock(tf.keras.layers.Layer):
         )
         self.convolution = tf.keras.layers.Conv2D(
             int(out_channels), kernel_size=3, padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         )
 
     def call(self, x):
@@ -724,10 +733,10 @@ class ResidualBlock(tf.keras.layers.Layer):
         super().__init__(**kwargs)
         ch = int(channels)
         self.convolution1 = tf.keras.layers.Conv2D(
-            ch, kernel_size=3, padding="same", dtype=tf.float32,
+            ch, kernel_size=3, padding="same", dtype=self.compute_dtype,
         )
         self.convolution2 = tf.keras.layers.Conv2D(
-            ch, kernel_size=3, padding="same", dtype=tf.float32,
+            ch, kernel_size=3, padding="same", dtype=self.compute_dtype,
         )
         self.act = CNOActivation(size_h, size_w, size_h, size_w)
 
@@ -888,16 +897,16 @@ class CNO2d(tf.keras.Model):
         self._built_cno = True
 
         # Dummy pass to initialize weights
-        dummy = tf.zeros((1, pH, pW, eff_in), dtype=tf.float32)
+        dummy = tf.zeros((1, pH, pW, eff_in), dtype=self.compute_dtype)
         self._forward_body(dummy)
 
     # ------------------------------------------------------------------
     def _get_grid(self, x):
         shape = tf.shape(x)
         bsz, sx, sy = shape[0], shape[1], shape[2]
-        gx = tf.reshape(tf.linspace(0.0, 1.0, sx), [1, sx, 1, 1])
+        gx = tf.reshape(tf.cast(tf.linspace(0.0, 1.0, sx), x.dtype), [1, sx, 1, 1])
         gx = tf.tile(gx, [bsz, 1, sy, 1])
-        gy = tf.reshape(tf.linspace(0.0, 1.0, sy), [1, 1, sy, 1])
+        gy = tf.reshape(tf.cast(tf.linspace(0.0, 1.0, sy), x.dtype), [1, 1, sy, 1])
         gy = tf.tile(gy, [bsz, sx, 1, 1])
         return tf.concat([gx, gy], axis=-1)
 
@@ -928,10 +937,19 @@ class CNO2d(tf.keras.Model):
         return x
 
     # ------------------------------------------------------------------
+    def build(self, input_shape):
+        if self._built_cno:
+            super().build(input_shape)
+            return
+        shape = tf.TensorShape(input_shape)
+        H = int(shape[1]) if shape[1] is not None else 16
+        W = int(shape[2]) if shape[2] is not None else 16
+        self._build_cno_layers(H, W)
+        super().build(input_shape)
+
+    # ------------------------------------------------------------------
     def call(self, inputs):
-        x = inputs
-        if x.dtype != tf.float32:
-            x = tf.cast(x, tf.float32)
+        x = tf.cast(inputs, self.compute_dtype)
 
         if self.input_normalizer is not None:
             x = self.input_normalizer(x)

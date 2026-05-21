@@ -28,7 +28,7 @@ class CNO_LReLU(tf.keras.layers.Layer):
         negative_slope: float = 0.01,
         name: Optional[str] = None,
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
         self.in_size = _as_hw_tuple(in_size)
         self.out_size = _as_hw_tuple(out_size)
         self.up_size = (2 * self.in_size[0], 2 * self.in_size[1])
@@ -64,12 +64,12 @@ class CNOBlock(tf.keras.layers.Layer):
         use_bn: bool = True,
         name: Optional[str] = None,
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
         self.convolution = tf.keras.layers.Conv2D(
             filters=int(out_channels),
             kernel_size=3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name=None if name is None else f"{name}_conv",
         )
         self.batch_norm = (
@@ -77,7 +77,7 @@ class CNOBlock(tf.keras.layers.Layer):
                 axis=-1,
                 momentum=0.99,
                 epsilon=1e-5,
-                dtype=tf.float32,
+                dtype=self.compute_dtype,
                 name=None if name is None else f"{name}_bn",
             )
             if use_bn
@@ -108,7 +108,7 @@ class LiftProjectBlock(tf.keras.layers.Layer):
         latent_dim: int = 64,
         name: Optional[str] = None,
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
         self.inter_block = CNOBlock(
             in_channels=in_channels,
             out_channels=int(latent_dim),
@@ -121,7 +121,7 @@ class LiftProjectBlock(tf.keras.layers.Layer):
             filters=int(out_channels),
             kernel_size=3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name=None if name is None else f"{name}_conv",
         )
 
@@ -142,19 +142,19 @@ class ResidualBlock(tf.keras.layers.Layer):
         use_bn: bool = True,
         name: Optional[str] = None,
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
         self.convolution1 = tf.keras.layers.Conv2D(
             filters=int(channels),
             kernel_size=3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name=None if name is None else f"{name}_conv1",
         )
         self.convolution2 = tf.keras.layers.Conv2D(
             filters=int(channels),
             kernel_size=3,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             name=None if name is None else f"{name}_conv2",
         )
         self.batch_norm1 = (
@@ -162,7 +162,7 @@ class ResidualBlock(tf.keras.layers.Layer):
                 axis=-1,
                 momentum=0.99,
                 epsilon=1e-5,
-                dtype=tf.float32,
+                dtype=self.compute_dtype,
                 name=None if name is None else f"{name}_bn1",
             )
             if use_bn
@@ -173,7 +173,7 @@ class ResidualBlock(tf.keras.layers.Layer):
                 axis=-1,
                 momentum=0.99,
                 epsilon=1e-5,
-                dtype=tf.float32,
+                dtype=self.compute_dtype,
                 name=None if name is None else f"{name}_bn2",
             )
             if use_bn
@@ -206,7 +206,7 @@ class ResNetStage(tf.keras.layers.Layer):
         use_bn: bool = True,
         name: Optional[str] = None,
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
         self.blocks = [
             ResidualBlock(
                 channels=channels,
@@ -243,7 +243,7 @@ class CNOContextEncoder(tf.keras.layers.Layer):
         lift_project_latent_dim: int = 64,
         name: str = "cno_context",
     ):
-        super().__init__(name=name, dtype=tf.float32)
+        super().__init__(name=name)
 
         self.in_dim = int(in_dim)
         self.out_dim = int(out_dim)
@@ -450,12 +450,12 @@ class CNO_DecompNet(tf.keras.Model):
             self.rho * self.g * self.H_ref_value * self.slope_ref_value
         )
 
-        self.eps = tf.constant(self.eps_value, dtype=tf.float32)
-        self.H_ref = tf.constant(self.H_ref_value, dtype=tf.float32)
-        self.slope_ref = tf.constant(self.slope_ref_value, dtype=tf.float32)
-        self.tau_ref_scale = tf.constant(self.tau_ref_scale_value, dtype=tf.float32)
-        self.A_ref = tf.constant(self.A_ref_value, dtype=tf.float32)
-        self.dx_ref = tf.constant(self.dx_ref_value, dtype=tf.float32)
+        self.eps = tf.constant(self.eps_value, dtype=self.compute_dtype)
+        self.H_ref = tf.constant(self.H_ref_value, dtype=self.compute_dtype)
+        self.slope_ref = tf.constant(self.slope_ref_value, dtype=self.compute_dtype)
+        self.tau_ref_scale = tf.constant(self.tau_ref_scale_value, dtype=self.compute_dtype)
+        self.A_ref = tf.constant(self.A_ref_value, dtype=self.compute_dtype)
+        self.dx_ref = tf.constant(self.dx_ref_value, dtype=self.compute_dtype)
 
         self.idx_thk = self.input_names.index("thk")
         self.idx_usurf = self.input_names.index("usurf")
@@ -525,7 +525,7 @@ class CNO_DecompNet(tf.keras.Model):
         self.log_B_ref = tf.math.log(self.B_ref + self.eps)
 
         self.log_u_slide_ref = tf.math.log(
-            tf.constant(self.u_ref, dtype=tf.float32) + self.eps
+            tf.constant(self.u_ref, dtype=self.compute_dtype) + self.eps
         )
         self.log_u_def_ref = (
             self.log_A_ref
@@ -541,41 +541,41 @@ class CNO_DecompNet(tf.keras.Model):
             self.context_extra_channels += 2
 
         self.slide_head_conv1 = tf.keras.layers.Conv2D(
-            self.nb_out_filter, 3, padding="same", dtype=tf.float32, name="slide_head_conv1"
+            self.nb_out_filter, 3, padding="same", dtype=self.compute_dtype, name="slide_head_conv1"
         )
         self.slide_head_act1 = tf.keras.layers.Activation(tf.nn.gelu, name="slide_head_gelu1")
         self.slide_head_conv2 = tf.keras.layers.Conv2D(
-            self.nb_out_filter, 3, padding="same", dtype=tf.float32, name="slide_head_conv2"
+            self.nb_out_filter, 3, padding="same", dtype=self.compute_dtype, name="slide_head_conv2"
         )
         self.slide_head_act2 = tf.keras.layers.Activation(tf.nn.gelu, name="slide_head_gelu2")
-        self.slide_head_out = tf.keras.layers.Conv2D(2, 1, padding="same", dtype=tf.float32, name="slide_head_out")
+        self.slide_head_out = tf.keras.layers.Conv2D(2, 1, padding="same", dtype=self.compute_dtype, name="slide_head_out")
 
         self.def_head_conv1 = tf.keras.layers.Conv2D(
-            self.nb_out_filter, 3, padding="same", dtype=tf.float32, name="def_head_conv1"
+            self.nb_out_filter, 3, padding="same", dtype=self.compute_dtype, name="def_head_conv1"
         )
         self.def_head_act1 = tf.keras.layers.Activation(tf.nn.gelu, name="def_head_gelu1")
         self.def_head_conv2 = tf.keras.layers.Conv2D(
-            self.nb_out_filter, 3, padding="same", dtype=tf.float32, name="def_head_conv2"
+            self.nb_out_filter, 3, padding="same", dtype=self.compute_dtype, name="def_head_conv2"
         )
         self.def_head_act2 = tf.keras.layers.Activation(tf.nn.gelu, name="def_head_gelu2")
         self.def_head_out = tf.keras.layers.Conv2D(
-            2 * self.Nz, 1, padding="same", dtype=tf.float32, name="def_head_out"
+            2 * self.Nz, 1, padding="same", dtype=self.compute_dtype, name="def_head_out"
         )
 
         self.res_head_filters = max(self.nb_out_filter // 2, 8)
         self.res_head_conv1 = tf.keras.layers.Conv2D(
-            self.res_head_filters, 3, padding="same", dtype=tf.float32, name="res_head_conv1"
+            self.res_head_filters, 3, padding="same", dtype=self.compute_dtype, name="res_head_conv1"
         )
         self.res_head_act1 = tf.keras.layers.Activation(tf.nn.gelu, name="res_head_gelu1")
         self.res_head_conv2 = tf.keras.layers.Conv2D(
-            self.res_head_filters, 3, padding="same", dtype=tf.float32, name="res_head_conv2"
+            self.res_head_filters, 3, padding="same", dtype=self.compute_dtype, name="res_head_conv2"
         )
         self.res_head_act2 = tf.keras.layers.Activation(tf.nn.gelu, name="res_head_gelu2")
         self.res_head_out = tf.keras.layers.Conv2D(
             2 * self.Nz,
             1,
             padding="same",
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
             kernel_initializer="zeros",
             bias_initializer="zeros",
             name="res_head_out",
@@ -627,7 +627,7 @@ class CNO_DecompNet(tf.keras.Model):
 
         self._init_context_encoder((height_dim, width_dim))
 
-        dummy = tf.zeros((batch_dim, height_dim, width_dim, channel_dim), dtype=tf.float32)
+        dummy = tf.zeros((batch_dim, height_dim, width_dim, channel_dim), dtype=self.compute_dtype)
         _ = self.call(dummy, training=False, return_components=False)
         super().build(input_shape)
 
@@ -656,7 +656,7 @@ class CNO_DecompNet(tf.keras.Model):
         return tf.tile(slide_xy, multiples)
 
     def _get_dx_field(self, x: tf.Tensor) -> tf.Tensor:
-        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], tf.float32)
+        return tf.cast(x[..., self.idx_dX : self.idx_dX + 1], self.compute_dtype)
 
     def _central_diff_x(self, field: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
         fpad = tf.pad(field, [[0, 0], [0, 0], [1, 1], [0, 0]], mode="SYMMETRIC")
@@ -675,7 +675,7 @@ class CNO_DecompNet(tf.keras.Model):
         return (fpad[:, 2:, :, :] - 2.0 * field + fpad[:, :-2, :, :]) / (dx * dx + self.eps)
 
     def _physics_features(self, raw_inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, Dict[str, tf.Tensor]]:
-        x = tf.cast(raw_inputs, tf.float32)
+        x = tf.cast(raw_inputs, self.compute_dtype)
 
         # ------------------------------------------------------------------
         # Raw fields
@@ -699,7 +699,7 @@ class CNO_DecompNet(tf.keras.Model):
         # Kept local here so you only need to edit this one method for testing.
         # For a cleaner long-term version, these could become class constants.
         # ------------------------------------------------------------------
-        H_proxy_floor = tf.constant(10.0, dtype=tf.float32)
+        H_proxy_floor = tf.constant(10.0, dtype=self.compute_dtype)
 
         # 3x3 binomial blur:
         #   [1 2 1]
@@ -711,7 +711,7 @@ class CNO_DecompNet(tf.keras.Model):
             [[1.0, 2.0, 1.0],
             [2.0, 4.0, 2.0],
             [1.0, 2.0, 1.0]],
-            dtype=tf.float32,
+            dtype=self.compute_dtype,
         ) / 16.0
         binomial_kernel = binomial_kernel[:, :, tf.newaxis, tf.newaxis]
 
@@ -778,7 +778,7 @@ class CNO_DecompNet(tf.keras.Model):
         log_tau_d_raw = tf.math.log(tau_d_for_log + self.eps)
         log_tau_d = (log_tau_d_raw - self.log_tau_ref_scale) / 5.0
 
-        ice_mask = tf.cast(H > 1.0, tf.float32)
+        ice_mask = tf.cast(H > 1.0, self.compute_dtype)
         dir_x = -dsdx / (grad_s + self.eps) * ice_mask
         dir_y = -dsdy / (grad_s + self.eps) * ice_mask
 
@@ -813,7 +813,7 @@ class CNO_DecompNet(tf.keras.Model):
 
             # IMPORTANT: sliding log proxy now uses floored log_tau_d_raw
             log_u_slide_proxy_raw = (
-                tf.math.log(tf.constant(self.u_ref, dtype=tf.float32) + self.eps)
+                tf.math.log(tf.constant(self.u_ref, dtype=self.compute_dtype) + self.eps)
                 + self.m_slide * (log_tau_d_raw - log_tau_ref_raw)
             )
             log_u_slide_proxy = (log_u_slide_proxy_raw - self.log_u_slide_ref) / 5.0
@@ -912,8 +912,8 @@ class CNO_DecompNet(tf.keras.Model):
         H = shape[1]
         W = shape[2]
 
-        xi = tf.linspace(tf.constant(-1.0, tf.float32), tf.constant(1.0, tf.float32), W)
-        yi = tf.linspace(tf.constant(-1.0, tf.float32), tf.constant(1.0, tf.float32), H)
+        xi = tf.linspace(tf.constant(-1.0, self.compute_dtype), tf.constant(1.0, self.compute_dtype), W)
+        yi = tf.linspace(tf.constant(-1.0, self.compute_dtype), tf.constant(1.0, self.compute_dtype), H)
         X, Y = tf.meshgrid(xi, yi)
         X = tf.broadcast_to(X[tf.newaxis, ..., tf.newaxis], [B, H, W, 1])
         Y = tf.broadcast_to(Y[tf.newaxis, ..., tf.newaxis], [B, H, W, 1])
@@ -923,7 +923,7 @@ class CNO_DecompNet(tf.keras.Model):
         if self.context_encoder is None:
             raise RuntimeError("Context encoder has not been initialized. Call build() first.")
 
-        raw_x = tf.cast(inputs, tf.float32)
+        raw_x = tf.cast(inputs, self.compute_dtype)
         x = raw_x
         if self.input_normalizer is not None:
             x = self.input_normalizer(x, training=training)
@@ -942,7 +942,7 @@ class CNO_DecompNet(tf.keras.Model):
         return self.context_encoder(x, training=training)
 
     def call(self, inputs: tf.Tensor, training: bool = False, return_components: bool = False) -> tf.Tensor | Dict[str, Any]:
-        raw_inputs = tf.cast(inputs, tf.float32)
+        raw_inputs = tf.cast(inputs, self.compute_dtype)
 
         slide_phys, def_phys, all_phys, aux = self._physics_features(raw_inputs)
         context = self._context_features(raw_inputs, training=training)
