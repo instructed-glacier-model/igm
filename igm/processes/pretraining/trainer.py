@@ -20,17 +20,6 @@ class Trainer:
     Single-emulator pretraining loop with adaptive physics weighting and
     gradient accumulation.
 
-    Hyperparameters (with defaults in parentheses) are read from
-    ``cfg.processes.pretraining``:
-
-        warmup_steps         (100000)  physics loss disabled for this many updates
-        lambda_update_every  (100)     update lambda every N optimizer steps post-warmup
-        lambda_ema           (0.99)    EMA factor when adopting the new lambda
-        lambda_min           (1e-3)    lower clip on lambda
-        lam_max              (100.0)   upper clip on lambda (existing key, kept)
-        lambda_max_change    (2.0)     symmetric per-update multiplicative clamp
-        steps_per_epoch      (1000)    optimizer updates per epoch
-        val_steps            (50)      val mini-batches evaluated per epoch
     """
 
     def __init__(
@@ -70,22 +59,16 @@ class Trainer:
         # ------------------------------------------------------------------
         # Hyperparameters
         # ------------------------------------------------------------------
-        self.warmup_steps        = int(getattr(cfg_p, "warmup_steps",        100000))
-        self.lambda_update_every = int(getattr(cfg_p, "lambda_update_every", 100))
-        self.lambda_ema          = float(getattr(cfg_p, "lambda_ema",        0.99))
-        self.lambda_min          = float(getattr(cfg_p, "lambda_min",        1e-3))
-        self.lambda_max          = float(getattr(cfg_p, "lam_max",           100.0))
-        self.lambda_max_change   = float(getattr(cfg_p, "lambda_max_change", 2.0))
-        self.steps_per_epoch     = int(getattr(cfg_p, "steps_per_epoch",     1000))
-        self.val_steps           = int(getattr(cfg_p, "val_steps",           50))
+        self.steps_per_epoch = int(cfg_p.steps_per_epoch)
+        self.val_steps       = int(cfg_p.val_steps)
 
-        self._EMA           = tf.constant(self.lambda_ema, tf.float32)
-        self._LAM_MIN       = tf.constant(self.lambda_min, tf.float32)
-        self._LAM_MAX       = tf.constant(self.lambda_max, tf.float32)
-        self._MAX_CHANGE    = tf.constant(self.lambda_max_change, tf.float32)
+        self._EMA           = tf.constant(float(cfg_p.lambda_ema),        tf.float32)
+        self._LAM_MIN       = tf.constant(float(cfg_p.lambda_min),        tf.float32)
+        self._LAM_MAX       = tf.constant(float(cfg_p.lambda_max),        tf.float32)
+        self._MAX_CHANGE    = tf.constant(float(cfg_p.lambda_max_change), tf.float32)
         self._EPS           = tf.constant(1e-6, tf.float32)
-        self._UPDATE_EVERY  = tf.constant(self.lambda_update_every, tf.int64)
-        self._WARMUP_STEPS  = tf.constant(self.warmup_steps, tf.int64)
+        self._UPDATE_EVERY  = tf.constant(int(cfg_p.lambda_update_every), tf.int64)
+        self._WARMUP_STEPS  = tf.constant(int(cfg_p.warmup_steps),        tf.int64)
         self._ACCUM_STEPS   = tf.constant(self.accum_steps, tf.int64)
         self._ACCUM_STEPS_F = tf.cast(self._ACCUM_STEPS, tf.float32)
 
@@ -128,7 +111,7 @@ class Trainer:
         # ------------------------------------------------------------------
         self._data_loss_fn = build_velocity_data_loss(
             loss_type=cfg_p.loss_type,
-            huber_delta=float(getattr(cfg_p, "huber_delta", 50.0)),
+            huber_delta=float(cfg_p.huber_delta),
         )
         self._physics_cost_fn = physics_cost_fn
 
@@ -150,7 +133,7 @@ class Trainer:
 
         # Visual sampling iterator for per-epoch speed-compare plots.
         if make_plots:
-            micro_bs = int(getattr(cfg_p, "micro_batch_size", cfg_p.batch_size))
+            micro_bs = int(cfg_p.micro_batch_size)
             val_vis_ds = (
                 val_ds.unbatch()
                 .shuffle(4096, reshuffle_each_iteration=True)
@@ -163,9 +146,6 @@ class Trainer:
         self._build_train_step()
         self._build_val_step()
 
-    # ----------------------------------------------------------------------
-    # Public API
-    # ----------------------------------------------------------------------
     def restore_from_checkpoint(self) -> int:
         """Restore weights, optimizer, step, lambda_phys, and history. Returns start_epoch."""
         if self.ckpt_mgr is None:
@@ -245,11 +225,7 @@ class Trainer:
         self.lambda_phys.assign(lam_new)
         return lam_new
 
-    # ----------------------------------------------------------------------
-    # tf.function builders
-    # ----------------------------------------------------------------------
     def _build_train_step(self):
-        # Locals captured by the closure so the @tf.function trace is stable.
         accum_g, accum_g_phys = self._accum_g, self._accum_g_phys
         accum_data_loss, accum_phys_loss = self._accum_data_loss, self._accum_phys_loss
         accum_count = self._accum_count
@@ -276,9 +252,6 @@ class Trainer:
 
         @tf.function(reduce_retracing=True, jit_compile=False)
         def train_step(x_batch, y_batch):
-            # step counts optimizer updates (effective batches). Within a
-            # single accumulation cycle these flags are constant — step only
-            # increments when the cycle is full and we apply.
             next_step = step + 1
             cycle_in_warmup = next_step <= WARMUP_STEPS
             cycle_do_update = tf.logical_and(
@@ -289,8 +262,7 @@ class Trainer:
             tf.debugging.assert_all_finite(x_batch, "train: x_batch has NaN/Inf")
             tf.debugging.assert_all_finite(y_batch, "train: y_batch has NaN/Inf")
 
-            # --- Accumulate gradients ---
-            # Persistent tape is reserved for lambda-update cycles where we
+            # Persistent tape is reserved for lambda-updates where we
             # need data and physics gradients separately. Warmup + normal
             # cycles use the cheaper single-pass tape on a precombined total.
             def _accum_persistent():
@@ -332,10 +304,6 @@ class Trainer:
                     ),
                 )
 
-                # Unified gradient formula. Works for all three cases because:
-                #   warmup -> accum_g holds data grads, accum_g_phys is zero, lam_used=0
-                #   normal -> accum_g already holds (data + lam_old*phys), accum_g_phys is zero
-                #   update -> accum_g holds data-only, accum_g_phys holds phys-only
                 grads_avg = [
                     (ag + lam_used * ap) / ACCUM_STEPS_F
                     for ag, ap in zip(accum_g, accum_g_phys)

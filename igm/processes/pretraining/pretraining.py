@@ -36,12 +36,7 @@ def finalize(cfg, state):
 def _prepare_run_dirs(
     out_dir: Path, *, resume: bool, save_model: bool, make_plots: bool
 ) -> Tuple[Path, Path]:
-    """Resolve {ckpt,fig} dirs and enforce the resume invariants.
 
-    When save_model is False, no checkpoints are written; resume is also
-    forced off by the caller. The figure directory is still prepared when
-    make_plots is True.
-    """
     ckpt_dir = out_dir / "checkpoints"
     fig_dir = out_dir / "figures"
 
@@ -72,7 +67,7 @@ def _prepare_run_dirs(
 def _resolve_accum_steps(cfg_pretraining) -> Tuple[int, int, int]:
     """Validate batch_size / micro_batch_size and return (effective_bs, micro_bs, accum_steps)."""
     effective_bs = int(cfg_pretraining.batch_size)
-    micro_bs = int(getattr(cfg_pretraining, "micro_batch_size", effective_bs))
+    micro_bs = int(cfg_pretraining.micro_batch_size)
 
     if micro_bs <= 0 or effective_bs <= 0:
         raise ValueError(
@@ -97,9 +92,9 @@ def initialize(cfg, state):
     cfg_pretraining = cfg.processes.pretraining
     cfg_iceflow = cfg.processes.iceflow
 
-    make_plots = bool(getattr(cfg_pretraining, "make_plots", True))
-    save_model = bool(getattr(cfg_pretraining, "save_model", True))
-    resume = bool(getattr(cfg_pretraining, "resume", False)) if save_model else False
+    make_plots = bool(cfg_pretraining.make_plots)
+    save_model = bool(cfg_pretraining.save_model)
+    resume = bool(cfg_pretraining.resume) if save_model else False
 
     out_dir = Path(cfg_pretraining.out_dir) / cfg_pretraining.experiment_name
     if make_plots or save_model:
@@ -122,18 +117,13 @@ def initialize(cfg, state):
         inputs=inputs,
         batch_size=micro_bs,
         compression="GZIP",
-        split_seed=int(getattr(cfg_pretraining, "split_seed", 0)),
+        split_seed=int(cfg_pretraining.split_seed),
     )
     train_ds, val_ds = datasets.train_ds, datasets.val_ds
     H, W, Cx = datasets.H, datasets.W, datasets.Cx
     desired_dtype = normalize_precision(cfg_iceflow.numerics.precision)
     dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
 
-    # --------------------------------------------------------------
-    # Model: either resume from disk or build fresh + adapt normalizer.
-    # In both branches state.iceflow_model ends up holding an
-    # EmulatorArtifact ready for training.
-    # --------------------------------------------------------------
     if resume:
         state.iceflow_model = load_emulator_artifact(artifact_dir=out_dir)
         mapping_args = mapping_args_for_model(cfg, state, state.iceflow_model)

@@ -1,13 +1,32 @@
 pretraining:
   data_dir: "/path/to/tfrecords/"
-  batch_size: 8 # the batch size is the number of training images you want to process before updating the model weights. 
-  micro_batch_size: 8 # here a micro batch is the amount of training images you want to process simultaneously on the GPU. If your GPU memory is not large enough to process the full batch size, you can set this to a smaller number and the training loop will automatically accumulate gradients until it has processed the full batch size before updating the model weights. Note that the batch size must be divisible by the micro batch size.
-  epochs: 1000
-  lam_max: 100.0
-  experiment_name: "name_of_model"
-  loss_type: "huber"
-  learning_rate: 0.0001
   out_dir: "/path/to/save/models/"
+  experiment_name: "name_of_model"
+
+  # --- Batching / accumulation ---
+  batch_size: 8 # the batch size is the number of training images you want to process before updating the model weights.
+  micro_batch_size: 8 # here a micro batch is the amount of training images you want to process simultaneously on the GPU. If your GPU memory is not large enough to process the full batch size, you can set this to a smaller number and the training loop will automatically accumulate gradients until it has processed the full batch size before updating the model weights. Note that the batch size must be divisible by the micro batch size.
+
+  # --- Training schedule ---
+  epochs: 1000
+  steps_per_epoch: 1000  # optimizer updates per epoch
+  val_steps: 50          # val mini-batches evaluated per epoch
+  learning_rate: 0.0001
+  split_seed: 0          # seed used to shuffle the list of train shards
+
+  # --- Loss ---
+  loss_type: "huber"
+  huber_delta: 50.0      # only used when loss_type == "huber"
+
+  # --- Adaptive physics weighting (lambda) ---
+  warmup_steps: 100000        # physics loss disabled for this many optimizer updates
+  lambda_update_every: 100    # recompute lambda every N optimizer steps post-warmup
+  lambda_ema: 0.99            # EMA factor when adopting the new lambda
+  lambda_min: 0.001           # lower clip on lambda
+  lambda_max: 100.0           # upper clip on lambda
+  lambda_max_change: 2.0      # symmetric per-update multiplicative clamp
+
+  # --- I/O ---
   resume: false
-  make_plots: false 
+  make_plots: false
   save_model: true # if false do not save the model -OR- any checkpoints (useful for hyperparameter tuning)
