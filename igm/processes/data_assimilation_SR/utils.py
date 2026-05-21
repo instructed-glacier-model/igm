@@ -11,17 +11,6 @@ def _as_list(x):
     return [x]
 
 
-def optional_state_name(value):
-    """
-    Convert an optional config value into a literal state-field name.
-
-    None means "not supplied" and lets the caller apply its own default. Any
-    non-None value is treated as a state attribute name after str().
-    """
-    return None if value is None else str(value)
-
-
-
 def cell_area_like(dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
     """
     Cell area ΔA inferred from dx. Assumes square cells: ΔA = dx^2.
@@ -50,18 +39,15 @@ def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e
     return tf.maximum(tf.abs(value), tf.cast(floor, dtype))
 
     
-def _get_inverted_field_names(cfg) -> set[str]:
-    return {
-        str(item["name"])
-        for item in getattr(cfg.processes.data_assimilation_SR, "variables", [])
-    }
-
 def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
     """
     Only initialize fields that are actually inverted for.
     Non-inverted fields are left unchanged.
     """
-    inverted = _get_inverted_field_names(cfg)
+    inverted = {
+        str(item["name"])
+        for item in cfg.processes.data_assimilation_SR.variables
+    }
 
     # These are not inversion variables, just cast once for consistency.
     state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)

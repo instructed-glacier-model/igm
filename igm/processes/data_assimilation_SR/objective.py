@@ -17,7 +17,7 @@ from .terms import (
     MisfitSpec,
     Regularization,
 )
-from .utils import _as_list, optional_state_name
+from .utils import _as_list
 
 
 class DAObjective:
@@ -70,8 +70,8 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
     """Build DAObjective from misfit and regularization terms defined in cfg."""
 
     obj_cfg = cfg.processes.data_assimilation_SR.objective
-    misfit_list = list(getattr(obj_cfg, "misfit", []) or [])
-    reg_list = list(getattr(obj_cfg, "regularization", []) or [])
+    misfit_list = list(obj_cfg.misfit or [])
+    reg_list = list(obj_cfg.regularization or [])
 
     terms: List[CostTerm] = []
 
@@ -96,7 +96,7 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
                     components=components,
                     obs=obs,
                     std=float(d["std"]),
-                    mask=optional_state_name(d.get("mask", None)),
+                    mask=None if d.get("mask") is None else str(d["mask"]),
                     eps=float(d.get("eps", 1e-12)),
                 )
             )
@@ -113,9 +113,9 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
                     name=str(d["name"]),
                     penalty=str(d["penalty"]),
                     lam=float(d["lam"]),
-                    mask=optional_state_name(d.get("mask", None)),
+                    mask=None if d.get("mask") is None else str(d["mask"]),
                     eps=float(d.get("eps", 1e-12)),
-                    ref=optional_state_name(ref),
+                    ref=None if ref is None else str(ref),
                 )
             )
         )

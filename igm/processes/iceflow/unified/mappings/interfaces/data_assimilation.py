@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from omegaconf import DictConfig
 
@@ -15,16 +15,6 @@ from .interface import InterfaceMapping
 from ..data_assimilation import VariableSpec
 from ..network import MappingNetwork
 from ..transforms import TRANSFORMS
-
-
-def _optional_state_name(value: Any) -> Optional[str]:
-    """
-    Convert an optional config value into a literal state-field name.
-
-    None means "not supplied" and lets the mapping apply its own default. Any
-    non-None value is treated as a state attribute name after str().
-    """
-    return None if value is None else str(value)
 
 
 class InterfaceDataAssimilation(InterfaceMapping):
@@ -53,7 +43,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
                     transform=transform,
                     lower_bound=item.get("lower_bound", None),
                     upper_bound=item.get("upper_bound", None),
-                    mask=_optional_state_name(item.get("mask", None)),
+                    mask=None if item.get("mask") is None else str(item["mask"]),
                 )
             )
         return specs
