@@ -22,7 +22,7 @@ def mapping_args_for_model(
 ) -> Dict[str, Any]:
     """Pack the network-mapping kwargs around an already-constructed model.
 
-    Used by the pretraining-resume path, which loads the model from disk and
+    Used by the pretraining-resume path, which loads the model from and
     just needs the surrounding BCs / Nz / output_scale / precision.
     """
     cfg_numerics = cfg.processes.iceflow.numerics
@@ -49,6 +49,7 @@ class InterfaceNetwork(InterfaceMapping):
         if cfg_unified.network.pretrained:
             if cfg_unified.network.pretrained_path:
                 dtype = normalize_precision(cfg_numerics.precision)
+                # might be worth breaking this out into a util with clear message to indicate a swap in precision
                 tf.keras.mixed_precision.set_global_policy(
                     "float64" if tf.as_dtype(dtype) == tf.float64 else "float32"
                 )
@@ -63,6 +64,8 @@ class InterfaceNetwork(InterfaceMapping):
                 dir_path = get_pretrained_emulator_path(cfg, state)
                 iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
         else:
+            # should this still be a warning? Maybe we just need to make the themed
+            # message very clear... it's perfectly valid after all.
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
             nb_inputs = len(cfg_unified.inputs)
