@@ -467,8 +467,12 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
             cur_call_n = 0
         else:
             list_windows = cache["list_windows"]
-            cum = np.asarray(getattr(state, "_ct_cumulative_delta_w", []),
-                             dtype=np.float64)
+            cum_tf = getattr(state, "_ct_cumulative_delta_w", None)
+            # cumulative_delta_w is now a TF tensor on GPU; convert to numpy once.
+            if isinstance(cum_tf, tf.Tensor):
+                cum = cum_tf.numpy().astype(np.float64)
+            else:
+                cum = np.asarray(cum_tf if cum_tf is not None else [], dtype=np.float64)
             if cum.size == len(list_windows) and cum.sum() > 0:
                 scores = cum
             else:
@@ -629,94 +633,119 @@ def _ct_get(cfg_unified, key, default):
         return default
 
 
-def _ct_full_field(cfg, state) -> np.ndarray:
-    """Build the full [H, W, C] input field as a numpy float32 array."""
+def _ct_full_field(cfg, state) -> tf.Tensor:
+    """Build the full [H, W, C] input field as a TF float32 tensor on GPU.
+
+    No GPU→CPU transfer here — everything downstream stays on GPU until the
+    final small-scalar log step.
+    """
     from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
     X = fieldin_state_to_X(cfg, state)
-    return (X.numpy() if hasattr(X, "numpy") else np.asarray(X)).astype(np.float32)
+    if not isinstance(X, tf.Tensor):
+        X = tf.convert_to_tensor(X)
+    return tf.cast(X, tf.float32)
 
 
-def _ct_refresh_sigma_c(state, X_full: np.ndarray) -> None:
-    """Lazy refresh of per-channel σ_c, cached on state._ct_sigma_c.
+def _ct_refresh_sigma_c(state, X_full: tf.Tensor) -> None:
+    """Lazy refresh of per-channel σ_c, cached on state._ct_sigma_c (TF tensor).
 
     Computed every SIGMA_REFRESH_FREQ steps from the variance of the current
     full field across the spatial dims. Also caches the raw per-channel
     variance (state._ct_var_c) — `_ct_compute_delta` masks channels with
-    `var_c < VAR_FLOOR` so genuinely constant channels are cleanly excluded
-    rather than being divided by sqrt(epsilon)=1e-3.
+    `var_c < VAR_FLOOR` so genuinely constant channels are cleanly excluded.
+    All ops stay on GPU; the resulting σ_c is a [C] tf.float32 tensor.
     Independent of the network's input_normalizer — see §5 of
     adaptive_unique_strategy.md.
     """
     n = int(getattr(state, "_ct_n_steps_observed", 0))
     var = getattr(state, "_ct_var_c", None)
     if var is None or (n % SIGMA_REFRESH_FREQ == 0):
-        var = X_full.var(axis=(0, 1), dtype=np.float64).astype(np.float32)
+        # Variance over spatial dims [H, W] → shape [C]. Stay on GPU.
+        var = tf.math.reduce_variance(X_full, axis=[0, 1])
         state._ct_var_c = var
-        # σ is set from the raw variance; channels with var < VAR_FLOOR will
-        # be excluded by the mask in _ct_compute_delta anyway. A tiny 1e-12
-        # epsilon avoids exactly-zero σ for cleaner downstream arithmetic.
-        state._ct_sigma_c = np.sqrt(np.maximum(var, 1e-12)).astype(np.float32)
+        # σ from raw variance; channels with var < VAR_FLOOR are excluded by
+        # the mask in _ct_compute_delta. A tiny 1e-12 epsilon avoids
+        # exactly-zero σ for cleaner downstream arithmetic.
+        state._ct_sigma_c = tf.sqrt(tf.maximum(var, 1e-12))
 
 
-def _ct_compute_delta(state, X_full: np.ndarray):
-    """Return (Δ_scalar, δ_c_array, per_cell_delta_max [H, W]).
+def _ct_compute_delta(state, X_full: tf.Tensor):
+    """Return (Δ_scalar_tf, δ_c_tf [C], per_cell_tf [H, W]) — all TF tensors on GPU.
 
     δ_c = mean_xy(|X_c - X_prev_c|), per-channel.
-    Δ̂_c = δ_c / σ_c, channels with σ_c < SIGMA_FLOOR are excluded.
-    Δ   = mean_c Δ̂_c  (hardcoded mean reduction, see §5).
-    per_cell_delta_max [H, W] = max_c |ΔX_c| / σ_c — used for per-window aggregation.
+    Δ̂_c = δ_c / σ_c, channels with var_c < VAR_FLOOR are excluded (set to 0).
+    Δ   = mean_c Δ̂_c restricted to eligible channels (hardcoded mean reduction).
+    per_cell [H, W] = max_c |ΔX_c| / σ_c (over eligible channels) — used for
+        per-window aggregation.
     Bootstrap (no previous snapshot yet): returns zeros.
     """
     prev = getattr(state, "_ct_prev_X", None)
-    sigma = state._ct_sigma_c  # already refreshed by caller
-    var = getattr(state, "_ct_var_c", None)
-    C = X_full.shape[-1]
+    sigma = state._ct_sigma_c                 # tf [C]
+    var = getattr(state, "_ct_var_c", None)   # tf [C]
+    C = int(X_full.shape[-1])
 
-    if prev is None or prev.shape != X_full.shape:
-        return 0.0, np.zeros(C, dtype=np.float32), np.zeros(X_full.shape[:2], dtype=np.float32)
+    if prev is None or tuple(prev.shape) != tuple(X_full.shape):
+        zeros_c = tf.zeros([C], dtype=tf.float32)
+        zeros_hw = tf.zeros(X_full.shape[:2], dtype=tf.float32)
+        return tf.constant(0.0, dtype=tf.float32), zeros_c, zeros_hw
 
-    diff = np.abs(X_full - prev)                       # [H, W, C]
-    delta_c = diff.mean(axis=(0, 1))                   # [C]
-    # Mask on the RAW variance, not on σ — a channel that is genuinely
-    # constant (var≈0) is cleanly excluded instead of being divided by the
-    # σ-epsilon floor.
-    mask = (var >= VAR_FLOOR) if var is not None else np.zeros(C, dtype=bool)
-    if not mask.any():
-        return 0.0, delta_c, np.zeros(X_full.shape[:2], dtype=np.float32)
-    z_c = np.zeros_like(delta_c)
-    z_c[mask] = delta_c[mask] / sigma[mask]
-    Delta = float(z_c[mask].mean())
+    # All ops below stay on GPU.
+    diff = tf.abs(X_full - prev)                       # [H, W, C]
+    delta_c = tf.reduce_mean(diff, axis=[0, 1])         # [C]
 
-    # Per-cell, z-normalised, max-over-channels — for per-window aggregation.
-    per_cell_z = diff[..., mask] / sigma[mask].reshape((1, 1, -1))
-    per_cell = per_cell_z.max(axis=-1).astype(np.float32)
+    # Channel eligibility: var_c >= VAR_FLOOR (else channel is "constant",
+    # divide by σ-floor would give huge numbers). Float mask: 1 if eligible,
+    # 0 otherwise.
+    mask = tf.cast(var >= VAR_FLOOR, tf.float32)        # [C]
+    n_elig = tf.reduce_sum(mask)
+
+    # z_c = δ_c / σ_c, but zero where the channel is ineligible.
+    z_c = mask * (delta_c / sigma)                       # [C]
+    # Δ = mean over ELIGIBLE channels only.
+    Delta = tf.cond(
+        n_elig > 0,
+        lambda: tf.reduce_sum(z_c) / n_elig,
+        lambda: tf.constant(0.0, dtype=tf.float32),
+    )
+
+    # per_cell = max over eligible channels of |diff_c| / σ_c.
+    # Trick: set ineligible channels' contribution to 0 by multiplying by mask.
+    per_cell_z = mask * (diff / sigma)                   # [H, W, C] via broadcast
+    per_cell = tf.reduce_max(per_cell_z, axis=-1)        # [H, W]
+
     return Delta, delta_c, per_cell
 
 
-def _ct_aggregate_delta_w(per_cell: np.ndarray, list_windows) -> np.ndarray:
-    """Aggregate per-cell |ΔX|/σ field to per-window means."""
+def _ct_aggregate_delta_w(per_cell: tf.Tensor, list_windows) -> tf.Tensor:
+    """Aggregate per-cell |ΔX|/σ field to per-window means.
+
+    Stays on GPU: slice + tf.reduce_mean per window, then tf.stack the result
+    into a [n_windows] TF tensor. For ~300 windows on a 3010×4510 grid this
+    is much cheaper than transferring the full per_cell field (~50 MB) to CPU.
+    """
     if list_windows is None or len(list_windows) == 0:
-        return np.zeros(0, dtype=np.float64)
-    out = np.zeros(len(list_windows), dtype=np.float64)
-    for i, (y0, x0, ly, lx) in enumerate(list_windows):
-        sub = per_cell[y0:y0+ly, x0:x0+lx]
-        out[i] = float(sub.mean()) if sub.size > 0 else 0.0
-    return out
+        return tf.zeros([0], dtype=tf.float32)
+    means = [tf.reduce_mean(per_cell[y0:y0+ly, x0:x0+lx])
+             for (y0, x0, ly, lx) in list_windows]
+    return tf.stack(means)
 
 
 def update_credit_observer(cfg, state) -> None:
-    """Per-step credit accumulator (STAGE 1 — observation only).
+    """Per-step credit accumulator — fully on GPU (TF tensors throughout).
 
     Updates these attributes on `state`:
-      _ct_credit                : float — Σ Δ since last retrain
-      _ct_steps_since_retrain   : int   — steps since last retrain
-      _ct_cumulative_delta_w    : np.ndarray [n_windows] — Σ δ_w since last retrain
-      _ct_sigma_c               : np.ndarray [C] — per-channel σ, refreshed every 50 steps
-      _ct_prev_X                : np.ndarray [H, W, C] — previous snapshot of the full field
+      _ct_credit                : Python float — Σ Δ since last retrain
+      _ct_steps_since_retrain   : int — steps since last retrain
+      _ct_cumulative_delta_w    : tf.Tensor [n_windows] — Σ δ_w since last retrain
+      _ct_sigma_c, _ct_var_c    : tf.Tensor [C] — per-channel σ, raw variance
+      _ct_prev_X                : tf.Tensor [H, W, C] — previous full field snapshot
       _ct_n_steps_observed      : int — total steps observed (for refresh cadence)
-      _ct_last_delta            : float — last Δ value (for the JSONL log)
-      _ct_last_delta_c          : np.ndarray [C] — last per-channel δ_c
-      _ct_last_delta_w_stats    : dict (min/mean/max/n) — last per-window stats
+      _ct_last_delta            : Python float — last Δ value (for the JSONL log)
+      _ct_last_delta_c          : tf.Tensor [C] — last per-channel δ_c (for log)
+      _ct_last_delta_w_stats    : dict (min/mean/max/n floats) — last per-window stats
+
+    Only scalars/small vectors are transferred GPU→CPU; the [H, W, C] field
+    (1.3 GB on exp3) stays on GPU between steps.
 
     No-op unless adaptive_training.enabled_observation OR
     adaptive_training.enabled is true.
@@ -728,37 +757,44 @@ def update_credit_observer(cfg, state) -> None:
 
     X_full = _ct_full_field(cfg, state)
     _ct_refresh_sigma_c(state, X_full)
-    Delta, delta_c, per_cell = _ct_compute_delta(state, X_full)
+    Delta_tf, delta_c_tf, per_cell_tf = _ct_compute_delta(state, X_full)
 
-    # Map per-cell ΔX/σ onto the current windows (taken from the patch-selection
-    # cache when available; before the first retrain the cache may not exist yet).
+    # Map per-cell ΔX/σ onto the current windows (from the patch-selection
+    # cache when available; before the first retrain the cache may not exist).
     list_windows = None
     cache = getattr(state, "_ap_cache", None)
     if cache is not None:
         list_windows = cache.get("list_windows", None)
 
-    delta_w = _ct_aggregate_delta_w(per_cell, list_windows) if list_windows is not None \
-              else np.zeros(0, dtype=np.float64)
+    delta_w_tf = (_ct_aggregate_delta_w(per_cell_tf, list_windows)
+                  if list_windows is not None
+                  else tf.zeros([0], dtype=tf.float32))
 
     # Re-size cumulative_delta_w when the window list grew/shrank between retrains.
     cum = getattr(state, "_ct_cumulative_delta_w", None)
-    if cum is None or cum.shape != delta_w.shape:
-        cum = np.zeros_like(delta_w)
-    cum = cum + delta_w
-    state._ct_cumulative_delta_w = cum
+    if (cum is None) or (tuple(cum.shape) != tuple(delta_w_tf.shape)):
+        cum = tf.zeros_like(delta_w_tf)
+    state._ct_cumulative_delta_w = cum + delta_w_tf
 
+    # Per-step scalars/small vectors transferred GPU→CPU here (negligible).
+    Delta = float(Delta_tf.numpy())
     state._ct_credit = float(getattr(state, "_ct_credit", 0.0)) + Delta
     state._ct_steps_since_retrain = int(getattr(state, "_ct_steps_since_retrain", 0)) + 1
     state._ct_n_steps_observed = int(getattr(state, "_ct_n_steps_observed", 0)) + 1
-    state._ct_prev_X = X_full
-    state._ct_last_delta = float(Delta)
-    state._ct_last_delta_c = delta_c
-    state._ct_last_delta_w_stats = {
-        "min":  float(delta_w.min())  if delta_w.size else 0.0,
-        "mean": float(delta_w.mean()) if delta_w.size else 0.0,
-        "max":  float(delta_w.max())  if delta_w.size else 0.0,
-        "n":    int(delta_w.size),
-    }
+    state._ct_prev_X = X_full                # KEPT ON GPU — no .numpy()
+    state._ct_last_delta = Delta
+    state._ct_last_delta_c = delta_c_tf      # tf [C], converted in the log step
+
+    # δ_w stats: compute on GPU, transfer 3 floats to CPU.
+    if int(tf.size(delta_w_tf)) > 0:
+        state._ct_last_delta_w_stats = {
+            "min":  float(tf.reduce_min(delta_w_tf).numpy()),
+            "mean": float(tf.reduce_mean(delta_w_tf).numpy()),
+            "max":  float(tf.reduce_max(delta_w_tf).numpy()),
+            "n":    int(delta_w_tf.shape[0]),
+        }
+    else:
+        state._ct_last_delta_w_stats = {"min": 0.0, "mean": 0.0, "max": 0.0, "n": 0}
 
 
 def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> None:
@@ -781,6 +817,14 @@ def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> N
     status_name = getattr(status, "name", str(status))
     is_retrain = bool(do_solve) and status_name in ("INIT", "WARM_UP", "DEFAULT")
 
+    # σ_c and δ_c are TF tensors on GPU now; bring them to CPU once for the log.
+    sigma_tf = getattr(state, "_ct_sigma_c", None)
+    delta_c_tf = getattr(state, "_ct_last_delta_c", None)
+    sigma_list = ([float(s) for s in sigma_tf.numpy()]
+                  if isinstance(sigma_tf, tf.Tensor) else [])
+    delta_c_list = ([float(d) for d in delta_c_tf.numpy()]
+                    if isinstance(delta_c_tf, tf.Tensor) else [])
+
     rec = {
         "step": _current_step(state),
         "t": (float(state.t.numpy()) if hasattr(state, "t") and hasattr(state.t, "numpy")
@@ -788,8 +832,8 @@ def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> N
         "delta":  float(getattr(state, "_ct_last_delta", 0.0)),
         "credit": float(getattr(state, "_ct_credit", 0.0)),
         "steps_since_retrain": int(getattr(state, "_ct_steps_since_retrain", 0)),
-        "sigma_c": [float(s) for s in getattr(state, "_ct_sigma_c", np.zeros(0))],
-        "delta_c": [float(d) for d in getattr(state, "_ct_last_delta_c", np.zeros(0))],
+        "sigma_c": sigma_list,
+        "delta_c": delta_c_list,
         "delta_w_stats": getattr(state, "_ct_last_delta_w_stats", {}),
         "status": status_name,
         "is_retrain": is_retrain,
@@ -807,4 +851,4 @@ def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> N
         state._ct_credit = 0.0
         state._ct_steps_since_retrain = 0
         if hasattr(state, "_ct_cumulative_delta_w"):
-            state._ct_cumulative_delta_w = np.zeros_like(state._ct_cumulative_delta_w)
+            state._ct_cumulative_delta_w = tf.zeros_like(state._ct_cumulative_delta_w)
