@@ -546,8 +546,19 @@ def _append_training_record(state, ap, list_windows, scores,
 # until stage 2 lands. See `adaptive_unique_strategy.md` (clever-patch).
 # ===========================================================================
 
-SIGMA_REFRESH_FREQ = 50    # refresh _ct_sigma_c every N steps
-SIGMA_FLOOR        = 1e-3  # exclude near-zero σ channels from the mean
+SIGMA_REFRESH_FREQ = 10    # refresh _ct_sigma_c every N steps. Cheap (one
+                           # full-grid reduce_variance per refresh). The
+                           # short cadence matters early in a run when a
+                           # channel transitions from variance≈0 (ice-free
+                           # bootstrap, thk=0) to a non-trivial scale: the
+                           # accumulator must follow that change closely or
+                           # it produces hugely-inflated z-units in the
+                           # interim.
+VAR_FLOOR = 1e-8           # var_c < VAR_FLOOR → channel is "constant" → it
+                           # is fully excluded from both σ_c estimation AND
+                           # the Δ reduction. Replaces an earlier σ_c floor
+                           # that mistakenly included sqrt(epsilon)=1e-3
+                           # channels in the mean.
 
 
 def _ct_get(cfg_unified, key, default):
@@ -573,15 +584,22 @@ def _ct_refresh_sigma_c(state, X_full: np.ndarray) -> None:
     """Lazy refresh of per-channel σ_c, cached on state._ct_sigma_c.
 
     Computed every SIGMA_REFRESH_FREQ steps from the variance of the current
-    full field across the spatial dims. Always called on the first step.
-    Independent of the network's input_normalizer — by design, see §5 of
+    full field across the spatial dims. Also caches the raw per-channel
+    variance (state._ct_var_c) — `_ct_compute_delta` masks channels with
+    `var_c < VAR_FLOOR` so genuinely constant channels are cleanly excluded
+    rather than being divided by sqrt(epsilon)=1e-3.
+    Independent of the network's input_normalizer — see §5 of
     adaptive_unique_strategy.md.
     """
     n = int(getattr(state, "_ct_n_steps_observed", 0))
-    sigma = getattr(state, "_ct_sigma_c", None)
-    if sigma is None or (n % SIGMA_REFRESH_FREQ == 0):
-        var = X_full.var(axis=(0, 1), dtype=np.float64)
-        state._ct_sigma_c = np.sqrt(var + 1e-6).astype(np.float32)
+    var = getattr(state, "_ct_var_c", None)
+    if var is None or (n % SIGMA_REFRESH_FREQ == 0):
+        var = X_full.var(axis=(0, 1), dtype=np.float64).astype(np.float32)
+        state._ct_var_c = var
+        # σ is set from the raw variance; channels with var < VAR_FLOOR will
+        # be excluded by the mask in _ct_compute_delta anyway. A tiny 1e-12
+        # epsilon avoids exactly-zero σ for cleaner downstream arithmetic.
+        state._ct_sigma_c = np.sqrt(np.maximum(var, 1e-12)).astype(np.float32)
 
 
 def _ct_compute_delta(state, X_full: np.ndarray):
@@ -595,6 +613,7 @@ def _ct_compute_delta(state, X_full: np.ndarray):
     """
     prev = getattr(state, "_ct_prev_X", None)
     sigma = state._ct_sigma_c  # already refreshed by caller
+    var = getattr(state, "_ct_var_c", None)
     C = X_full.shape[-1]
 
     if prev is None or prev.shape != X_full.shape:
@@ -602,8 +621,10 @@ def _ct_compute_delta(state, X_full: np.ndarray):
 
     diff = np.abs(X_full - prev)                       # [H, W, C]
     delta_c = diff.mean(axis=(0, 1))                   # [C]
-    # Per-channel z-units, with channel mask for degenerate σ.
-    mask = sigma >= SIGMA_FLOOR
+    # Mask on the RAW variance, not on σ — a channel that is genuinely
+    # constant (var≈0) is cleanly excluded instead of being divided by the
+    # σ-epsilon floor.
+    mask = (var >= VAR_FLOOR) if var is not None else np.zeros(C, dtype=bool)
     if not mask.any():
         return 0.0, delta_c, np.zeros(X_full.shape[:2], dtype=np.float32)
     z_c = np.zeros_like(delta_c)
@@ -611,10 +632,8 @@ def _ct_compute_delta(state, X_full: np.ndarray):
     Delta = float(z_c[mask].mean())
 
     # Per-cell, z-normalised, max-over-channels — for per-window aggregation.
-    per_cell = np.zeros(X_full.shape[:2], dtype=np.float32)
-    if mask.any():
-        per_cell_z = diff[..., mask] / sigma[mask].reshape((1, 1, -1))
-        per_cell = per_cell_z.max(axis=-1).astype(np.float32)
+    per_cell_z = diff[..., mask] / sigma[mask].reshape((1, 1, -1))
+    per_cell = per_cell_z.max(axis=-1).astype(np.float32)
     return Delta, delta_c, per_cell
 
 
