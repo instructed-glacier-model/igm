@@ -36,15 +36,28 @@ def get_status(
         return Status.INIT
     elif state.it <= nbit_warmup:
         return Status.WARM_UP
-    elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
+
+    # STAGE 2 of adaptive_unique_strategy: when adaptive_training.enabled is true,
+    # the credit accumulator replaces retrain_freq + retrain_threshold as the
+    # DEFAULT trigger. See clever-patch/adaptive_unique_strategy.md §7.
+    cfg_at = getattr(cfg_unified, "adaptive_training", None)
+    if cfg_at is not None and bool(getattr(cfg_at, "enabled", False)):
+        credit = float(getattr(state, "_ct_credit", 0.0))
+        steps = int(getattr(state, "_ct_steps_since_retrain", 0))
+        kappa = float(getattr(cfg_at, "kappa", 1.0e-3))
+        rfreq_max = int(getattr(cfg_at, "retrain_freq_max", 100))
+        if state.it > 0 and (credit >= kappa or steps >= rfreq_max):
+            return Status.DEFAULT
+        return Status.IDLE
+
+    # Legacy: retrain_freq-based + distribution-shifted trigger.
+    if retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
         return Status.DEFAULT
     elif state.it > 0 and distribution_shifted:
         print(
             "Retraining due to distribution shift!"
         )  # temporary measure to make debugging more clear for users
         return Status.DEFAULT
-    # elif state.it > 0 and cfg_unified.mapping == "identity": # in theory, we might want to require solving at each time step for identity
-    # return Status.DEFAULT
 
     return Status.IDLE
 

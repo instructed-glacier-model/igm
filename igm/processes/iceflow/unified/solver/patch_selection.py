@@ -450,6 +450,62 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     rng = (np.random.default_rng(int(ap.rng_seed))
            if ap.rng_seed is not None else np.random.default_rng())
 
+    # STAGE 2 of adaptive_unique_strategy — credit-based scoring branch.
+    # When adaptive_training.enabled is true, sample patches from the OLD
+    # windows (those the observer accumulated δ_w against) weighted by
+    # `state._ct_cumulative_delta_w`, then REBUILD windows for the next
+    # inter-retrain interval (§13c Option 1). The legacy temporal-variance
+    # scoring path below is bypassed entirely.
+    cfg_at = getattr(cfg.processes.iceflow.unified, "adaptive_training", None)
+    use_credit_scores = (cfg_at is not None) and bool(getattr(cfg_at, "enabled", False))
+    if use_credit_scores:
+        cache = getattr(state, "_ap_cache", None)
+        if cache is None or "list_windows" not in cache or not cache["list_windows"]:
+            # Bootstrap: no prior windows → build them now, sample uniformly.
+            list_windows = _WINDOW_GENS[ap.windows](state, ap)
+            scores = np.zeros(len(list_windows), dtype=np.float64)
+            cur_call_n = 0
+        else:
+            list_windows = cache["list_windows"]
+            cum = np.asarray(getattr(state, "_ct_cumulative_delta_w", []),
+                             dtype=np.float64)
+            if cum.size == len(list_windows) and cum.sum() > 0:
+                scores = cum
+            else:
+                # Defensive fallback (mis-aligned size, or no Δ accumulated yet).
+                scores = np.zeros(len(list_windows), dtype=np.float64)
+            cur_call_n = int(cache.get("call_n", 0)) + 1
+
+        eligible = _eligibility_mask(state, list_windows, ap.min_thk_in_window)
+        _cache_full_field(state, cfg)   # needed by _gather_patches below
+
+        training_idx = _build_training_windows(
+            scores, eligible, "scored", 1.0, n_train, rng,
+        )
+        if ap.shuffle_training_windows:
+            rng.shuffle(training_idx)
+        if ap.record_training_windows:
+            _append_training_record(state, ap, list_windows, scores,
+                                    training_idx, bs, n_train)
+        training_inputs = _gather_patches(state, list_windows, training_idx)
+
+        # Rebuild windows for the NEXT inter-retrain period (§13c Option 1).
+        list_windows_new = _WINDOW_GENS[ap.windows](state, ap)
+        state._ap_cache = {
+            "key": (ap.windows, ap.selection, ap.min_thk_in_window,
+                    ap.framesizemax, ap.n_extra_peaks, ap.score_alpha,
+                    ap.temporal_downsample),
+            "list_windows": list_windows_new,
+            "scores": None,
+            "eligible": None,
+            "call_n": cur_call_n,
+        }
+        # The observer's cumulative_delta_w will be re-shaped at the next
+        # update_credit_observer call (it allocates a fresh zeros_like array
+        # when its shape mismatches the new len(list_windows)).
+        state._thk_prev = tf.identity(state.thk)
+        return training_inputs, bs
+
     # --- Steps 1+2: cached across calls, rebuilt every `rescore_freq` calls ---
     # Cache lives on state._ap_cache. It carries list_windows, scores, the
     # eligible mask, and the call-counter at last rebuild. The cache is
@@ -662,10 +718,12 @@ def update_credit_observer(cfg, state) -> None:
       _ct_last_delta_c          : np.ndarray [C] — last per-channel δ_c
       _ct_last_delta_w_stats    : dict (min/mean/max/n) — last per-window stats
 
-    No-op when adaptive_training.enabled_observation is false.
+    No-op unless adaptive_training.enabled_observation OR
+    adaptive_training.enabled is true.
     """
     cfg_unified = cfg.processes.iceflow.unified
-    if not bool(_ct_get(cfg_unified, "enabled_observation", False)):
+    if not (bool(_ct_get(cfg_unified, "enabled_observation", False))
+            or bool(_ct_get(cfg_unified, "enabled", False))):
         return
 
     X_full = _ct_full_field(cfg, state)
@@ -710,10 +768,12 @@ def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> N
     log reflects the state at retrain time (with credit/cumulative_δ_w
     BEFORE the reset).
 
-    No-op when adaptive_training.enabled_observation is false.
+    No-op unless adaptive_training.enabled_observation OR
+    adaptive_training.enabled is true.
     """
     cfg_unified = cfg.processes.iceflow.unified
-    if not bool(_ct_get(cfg_unified, "enabled_observation", False)):
+    if not (bool(_ct_get(cfg_unified, "enabled_observation", False))
+            or bool(_ct_get(cfg_unified, "enabled", False))):
         return
 
     record_path = str(_ct_get(cfg_unified, "record_path", "credit_log.jsonl"))

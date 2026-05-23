@@ -171,13 +171,31 @@ iceflow:
       output_scale: 1.0
       architecture: CNN
     adaptive_training:
-      # STAGE 1 of the adaptive_unique_strategy migration. Pure observation:
-      # when enabled_observation=true, the solver maintains a per-step credit
-      # accumulator on state._ct_* and writes one JSONL line per simulation
-      # step to `record_path`. No effect on retrain decisions — those still
-      # come from `retrain_freq`. STAGE 2 will add a real `enabled` flag that
-      # switches the retrain trigger over to `credit ≥ kappa`.
+      # adaptive_unique_strategy migration (see clever-patch design doc).
+      # Per-step credit accumulator on state._ct_*:
+      #   credit(t) = Σ Δ(t)  with  Δ(t) = mean_c (mean_xy |X_c(t)-X_c(t-1)| / σ_c)
+      # which is dimensionless (z-units, see Formulation A in the design).
+      #
+      # `enabled_observation`  STAGE 1 — observer runs (writes credit_log.jsonl
+      #                        every step), but get_status keeps using
+      #                        retrain_freq. Useful for diagnosing the credit
+      #                        time series before switching the trigger.
+      # `enabled`              STAGE 2 — observer runs AND get_status switches
+      #                        to `credit ≥ kappa OR steps_since ≥ retrain_freq_max`.
+      #                        Either condition fires a DEFAULT retrain. The
+      #                        legacy retrain_freq / retrain_threshold branches
+      #                        in get_status are bypassed.
+      # `kappa`                Credit threshold in z-units. Run-07 baseline
+      #                        observation gave median credit ~1e-3 between
+      #                        retrain_freq=6 retrains; sensible sweep range
+      #                        is ~1e-4 to 1e-1.
+      # `retrain_freq_max`     Safety ceiling: force a retrain if no credit
+      #                        trigger fires within this many steps. Should
+      #                        rarely activate in practice.
       enabled_observation: false
+      enabled: false
+      kappa: 1.0e-3
+      retrain_freq_max: 100
       record_path: credit_log.jsonl
     adaptive_patching:
       enabled: false
