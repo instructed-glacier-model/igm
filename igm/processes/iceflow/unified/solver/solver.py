@@ -15,7 +15,11 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 from igm.utils.math.precision import normalize_precision
 
 from ..mappings.normalizer import is_distribution_shifted
-from .patch_selection import select_patches
+from .patch_selection import (
+    select_patches,
+    update_credit_observer,
+    log_and_maybe_reset_credit_observer,
+)
 
 
 def get_status(
@@ -96,6 +100,13 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
         else False
     )
 
+    # Per-step credit observer (STAGE 1 of adaptive_unique_strategy migration).
+    # Updates state._ct_* attributes and accumulates Δ. Observation-only at
+    # this stage — get_status below is untouched, retrain decisions still
+    # come from retrain_freq. Controlled by
+    # cfg.processes.iceflow.unified.adaptive_training.enabled_observation.
+    update_credit_observer(cfg, state)
+
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
@@ -124,3 +135,7 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
             state.cost = optimizer.minimize(batch)
     elif do_solve:
         state.cost = optimizer.minimize(inputs)
+
+    # Per-step credit observer — log line + reset accumulators if retrain fired.
+    # No-op when adaptive_training.enabled_observation is false.
+    log_and_maybe_reset_credit_observer(cfg, state, status, do_solve)

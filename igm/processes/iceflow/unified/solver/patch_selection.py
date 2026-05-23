@@ -534,3 +534,198 @@ def _append_training_record(state, ap, list_windows, scores,
     }
     with open(ap.record_path, "a") as fh:
         fh.write(json.dumps(rec) + "\n")
+
+
+# ===========================================================================
+# Credit-tracker observer (STAGE 1 of the adaptive_unique_strategy migration)
+#
+# This block is OBSERVATION-ONLY. It maintains the per-step credit accumulator
+# and the per-window cumulative Δ_w on `state`, and optionally writes one JSONL
+# line per simulation step describing those quantities. It does NOT modify
+# `get_status` or any retrain decisions — those still come from `retrain_freq`
+# until stage 2 lands. See `adaptive_unique_strategy.md` (clever-patch).
+# ===========================================================================
+
+SIGMA_REFRESH_FREQ = 50    # refresh _ct_sigma_c every N steps
+SIGMA_FLOOR        = 1e-3  # exclude near-zero σ channels from the mean
+
+
+def _ct_get(cfg_unified, key, default):
+    """Safe accessor for processes.iceflow.unified.adaptive_training.<key>."""
+    try:
+        block = getattr(cfg_unified, "adaptive_training", None)
+        if block is None:
+            return default
+        v = getattr(block, key, default)
+        return default if v is None else v
+    except Exception:
+        return default
+
+
+def _ct_full_field(cfg, state) -> np.ndarray:
+    """Build the full [H, W, C] input field as a numpy float32 array."""
+    from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
+    X = fieldin_state_to_X(cfg, state)
+    return (X.numpy() if hasattr(X, "numpy") else np.asarray(X)).astype(np.float32)
+
+
+def _ct_refresh_sigma_c(state, X_full: np.ndarray) -> None:
+    """Lazy refresh of per-channel σ_c, cached on state._ct_sigma_c.
+
+    Computed every SIGMA_REFRESH_FREQ steps from the variance of the current
+    full field across the spatial dims. Always called on the first step.
+    Independent of the network's input_normalizer — by design, see §5 of
+    adaptive_unique_strategy.md.
+    """
+    n = int(getattr(state, "_ct_n_steps_observed", 0))
+    sigma = getattr(state, "_ct_sigma_c", None)
+    if sigma is None or (n % SIGMA_REFRESH_FREQ == 0):
+        var = X_full.var(axis=(0, 1), dtype=np.float64)
+        state._ct_sigma_c = np.sqrt(var + 1e-6).astype(np.float32)
+
+
+def _ct_compute_delta(state, X_full: np.ndarray):
+    """Return (Δ_scalar, δ_c_array, per_cell_delta_max [H, W]).
+
+    δ_c = mean_xy(|X_c - X_prev_c|), per-channel.
+    Δ̂_c = δ_c / σ_c, channels with σ_c < SIGMA_FLOOR are excluded.
+    Δ   = mean_c Δ̂_c  (hardcoded mean reduction, see §5).
+    per_cell_delta_max [H, W] = max_c |ΔX_c| / σ_c — used for per-window aggregation.
+    Bootstrap (no previous snapshot yet): returns zeros.
+    """
+    prev = getattr(state, "_ct_prev_X", None)
+    sigma = state._ct_sigma_c  # already refreshed by caller
+    C = X_full.shape[-1]
+
+    if prev is None or prev.shape != X_full.shape:
+        return 0.0, np.zeros(C, dtype=np.float32), np.zeros(X_full.shape[:2], dtype=np.float32)
+
+    diff = np.abs(X_full - prev)                       # [H, W, C]
+    delta_c = diff.mean(axis=(0, 1))                   # [C]
+    # Per-channel z-units, with channel mask for degenerate σ.
+    mask = sigma >= SIGMA_FLOOR
+    if not mask.any():
+        return 0.0, delta_c, np.zeros(X_full.shape[:2], dtype=np.float32)
+    z_c = np.zeros_like(delta_c)
+    z_c[mask] = delta_c[mask] / sigma[mask]
+    Delta = float(z_c[mask].mean())
+
+    # Per-cell, z-normalised, max-over-channels — for per-window aggregation.
+    per_cell = np.zeros(X_full.shape[:2], dtype=np.float32)
+    if mask.any():
+        per_cell_z = diff[..., mask] / sigma[mask].reshape((1, 1, -1))
+        per_cell = per_cell_z.max(axis=-1).astype(np.float32)
+    return Delta, delta_c, per_cell
+
+
+def _ct_aggregate_delta_w(per_cell: np.ndarray, list_windows) -> np.ndarray:
+    """Aggregate per-cell |ΔX|/σ field to per-window means."""
+    if list_windows is None or len(list_windows) == 0:
+        return np.zeros(0, dtype=np.float64)
+    out = np.zeros(len(list_windows), dtype=np.float64)
+    for i, (y0, x0, ly, lx) in enumerate(list_windows):
+        sub = per_cell[y0:y0+ly, x0:x0+lx]
+        out[i] = float(sub.mean()) if sub.size > 0 else 0.0
+    return out
+
+
+def update_credit_observer(cfg, state) -> None:
+    """Per-step credit accumulator (STAGE 1 — observation only).
+
+    Updates these attributes on `state`:
+      _ct_credit                : float — Σ Δ since last retrain
+      _ct_steps_since_retrain   : int   — steps since last retrain
+      _ct_cumulative_delta_w    : np.ndarray [n_windows] — Σ δ_w since last retrain
+      _ct_sigma_c               : np.ndarray [C] — per-channel σ, refreshed every 50 steps
+      _ct_prev_X                : np.ndarray [H, W, C] — previous snapshot of the full field
+      _ct_n_steps_observed      : int — total steps observed (for refresh cadence)
+      _ct_last_delta            : float — last Δ value (for the JSONL log)
+      _ct_last_delta_c          : np.ndarray [C] — last per-channel δ_c
+      _ct_last_delta_w_stats    : dict (min/mean/max/n) — last per-window stats
+
+    No-op when adaptive_training.enabled_observation is false.
+    """
+    cfg_unified = cfg.processes.iceflow.unified
+    if not bool(_ct_get(cfg_unified, "enabled_observation", False)):
+        return
+
+    X_full = _ct_full_field(cfg, state)
+    _ct_refresh_sigma_c(state, X_full)
+    Delta, delta_c, per_cell = _ct_compute_delta(state, X_full)
+
+    # Map per-cell ΔX/σ onto the current windows (taken from the patch-selection
+    # cache when available; before the first retrain the cache may not exist yet).
+    list_windows = None
+    cache = getattr(state, "_ap_cache", None)
+    if cache is not None:
+        list_windows = cache.get("list_windows", None)
+
+    delta_w = _ct_aggregate_delta_w(per_cell, list_windows) if list_windows is not None \
+              else np.zeros(0, dtype=np.float64)
+
+    # Re-size cumulative_delta_w when the window list grew/shrank between retrains.
+    cum = getattr(state, "_ct_cumulative_delta_w", None)
+    if cum is None or cum.shape != delta_w.shape:
+        cum = np.zeros_like(delta_w)
+    cum = cum + delta_w
+    state._ct_cumulative_delta_w = cum
+
+    state._ct_credit = float(getattr(state, "_ct_credit", 0.0)) + Delta
+    state._ct_steps_since_retrain = int(getattr(state, "_ct_steps_since_retrain", 0)) + 1
+    state._ct_n_steps_observed = int(getattr(state, "_ct_n_steps_observed", 0)) + 1
+    state._ct_prev_X = X_full
+    state._ct_last_delta = float(Delta)
+    state._ct_last_delta_c = delta_c
+    state._ct_last_delta_w_stats = {
+        "min":  float(delta_w.min())  if delta_w.size else 0.0,
+        "mean": float(delta_w.mean()) if delta_w.size else 0.0,
+        "max":  float(delta_w.max())  if delta_w.size else 0.0,
+        "n":    int(delta_w.size),
+    }
+
+
+def log_and_maybe_reset_credit_observer(cfg, state, status, do_solve: bool) -> None:
+    """Append one JSONL line and reset accumulators if a retrain just fired.
+
+    Called from `solve_iceflow` AFTER the optimizer step has run, so the
+    log reflects the state at retrain time (with credit/cumulative_δ_w
+    BEFORE the reset).
+
+    No-op when adaptive_training.enabled_observation is false.
+    """
+    cfg_unified = cfg.processes.iceflow.unified
+    if not bool(_ct_get(cfg_unified, "enabled_observation", False)):
+        return
+
+    record_path = str(_ct_get(cfg_unified, "record_path", "credit_log.jsonl"))
+
+    status_name = getattr(status, "name", str(status))
+    is_retrain = bool(do_solve) and status_name in ("INIT", "WARM_UP", "DEFAULT")
+
+    rec = {
+        "step": _current_step(state),
+        "t": (float(state.t.numpy()) if hasattr(state, "t") and hasattr(state.t, "numpy")
+              else None),
+        "delta":  float(getattr(state, "_ct_last_delta", 0.0)),
+        "credit": float(getattr(state, "_ct_credit", 0.0)),
+        "steps_since_retrain": int(getattr(state, "_ct_steps_since_retrain", 0)),
+        "sigma_c": [float(s) for s in getattr(state, "_ct_sigma_c", np.zeros(0))],
+        "delta_c": [float(d) for d in getattr(state, "_ct_last_delta_c", np.zeros(0))],
+        "delta_w_stats": getattr(state, "_ct_last_delta_w_stats", {}),
+        "status": status_name,
+        "is_retrain": is_retrain,
+    }
+    try:
+        with open(record_path, "a") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass  # never let logging crash a run
+
+    if is_retrain:
+        # Reset accumulators so the NEXT inter-retrain interval starts fresh.
+        # Note: _ct_cumulative_delta_w is resized lazily next step if the
+        # window list has been rebuilt by select_patches.
+        state._ct_credit = 0.0
+        state._ct_steps_since_retrain = 0
+        if hasattr(state, "_ct_cumulative_delta_w"):
+            state._ct_cumulative_delta_w = np.zeros_like(state._ct_cumulative_delta_w)

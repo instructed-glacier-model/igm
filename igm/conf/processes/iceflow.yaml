@@ -170,6 +170,15 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: CNN
+    adaptive_training:
+      # STAGE 1 of the adaptive_unique_strategy migration. Pure observation:
+      # when enabled_observation=true, the solver maintains a per-step credit
+      # accumulator on state._ct_* and writes one JSONL line per simulation
+      # step to `record_path`. No effect on retrain decisions — those still
+      # come from `retrain_freq`. STAGE 2 will add a real `enabled` flag that
+      # switches the retrain trigger over to `credit ≥ kappa`.
+      enabled_observation: false
+      record_path: credit_log.jsonl
     adaptive_patching:
       enabled: false
       # Step 1 — window generation
