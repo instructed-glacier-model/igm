@@ -15,8 +15,8 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 from igm.utils.math.precision import normalize_precision
 
 from ..mappings.normalizer import is_distribution_shifted
-from .patch_selection import (
-    select_patches,
+from .patch_selection import select_patches
+from .credit_tracker import (
     update_credit_observer,
     log_and_maybe_reset_credit_observer,
 )
@@ -37,28 +37,38 @@ def get_status(
     elif state.it <= nbit_warmup:
         return Status.WARM_UP
 
-    # STAGE 2 of adaptive_unique_strategy: when adaptive_training.enabled is true,
-    # the credit accumulator replaces retrain_freq + retrain_threshold as the
-    # DEFAULT trigger. See clever-patch/adaptive_unique_strategy.md §7.
-    cfg_at = getattr(cfg_unified, "adaptive_training", None)
-    if cfg_at is not None and bool(getattr(cfg_at, "enabled", False)):
+    # Temporal lever (B) — dispatch on `adaptive_time.method`. Default
+    # "none" → legacy `retrain_freq` modulo behaviour (no new params used,
+    # old yamls work unchanged). Other methods use ONLY their own new
+    # params (credit.kappa / credit.retrain_freq_max); they continue to
+    # read top-level `retrain_freq` / `retrain_threshold` for their semantics.
+    cfg_at = getattr(cfg_unified, "adaptive_time", None)
+    method = (str(getattr(cfg_at, "method", "none")).lower()
+              if cfg_at is not None else "none")
+
+    if method == "credit":
+        # Credit accumulator (`credit_tracker.py`). state._ct_credit is
+        # updated each step in `update_credit_observer` BEFORE get_status.
+        credit_cfg = getattr(cfg_at, "credit", None)
         credit = float(getattr(state, "_ct_credit", 0.0))
         steps = int(getattr(state, "_ct_steps_since_retrain", 0))
-        kappa = float(getattr(cfg_at, "kappa", 1.0e-3))
-        rfreq_max = int(getattr(cfg_at, "retrain_freq_max", 100))
+        kappa = float(getattr(credit_cfg, "kappa", 1.0e-3)) if credit_cfg is not None else 1.0e-3
+        rfreq_max = int(getattr(credit_cfg, "retrain_freq_max", 100)) if credit_cfg is not None else 100
         if state.it > 0 and (credit >= kappa or steps >= rfreq_max):
             return Status.DEFAULT
         return Status.IDLE
 
-    # Legacy: retrain_freq-based + distribution-shifted trigger.
+    if method == "shift_distribution":
+        # Hotelling-T² check on the input normaliser. The threshold is the
+        # top-level `retrain_threshold`, consumed by `is_distribution_shifted`
+        # in `solve_iceflow` (caller) and passed in as `distribution_shifted`.
+        if state.it > 0 and distribution_shifted:
+            return Status.DEFAULT
+        return Status.IDLE
+
+    # method == "none" (default) → legacy: retrain every `retrain_freq` steps.
     if retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
         return Status.DEFAULT
-    elif state.it > 0 and distribution_shifted:
-        print(
-            "Retraining due to distribution shift!"
-        )  # temporary measure to make debugging more clear for users
-        return Status.DEFAULT
-
     return Status.IDLE
 
 
@@ -96,59 +106,36 @@ def should_normalize(cfg: DictConfig) -> bool:
 
 def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
-    # Get optimizer
     cfg_unified = cfg.processes.iceflow.unified
     optimizer = state.iceflow.optimizer
-
-    # Set optimizer parameters
     set_optimizer_params = InterfaceOptimizers[optimizer.name].set_optimizer_params
     inputs = get_solver_inputs_from_state(cfg, state)
     mapping = getattr(optimizer.map, "network", optimizer.map)
 
-    is_should_normalize = should_normalize(cfg)
-
+    # Distribution-shift check (legacy Hotelling-T² on normaliser stats).
     distribution_shifted = (
         is_distribution_shifted(mapping, inputs, init, cfg_unified.retrain_threshold)
-        if is_should_normalize
-        else False
+        if should_normalize(cfg) else False
     )
 
-    # Per-step credit observer (STAGE 1 of adaptive_unique_strategy migration).
-    # Updates state._ct_* attributes and accumulates Δ. Observation-only at
-    # this stage — get_status below is untouched, retrain decisions still
-    # come from retrain_freq. Controlled by
-    # cfg.processes.iceflow.unified.adaptive_training.enabled_observation.
+    # B (temporal): per-step credit observer. No-op unless adaptive_time activates it.
     update_credit_observer(cfg, state)
 
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Adaptive patch selection — applies to INIT, WARM_UP, and DEFAULT alike so
-    # that the optimizer graph is JIT-compiled on a single (bs, ly, lx, C) shape
-    # for the whole run. Prior to 2026-05-20 INIT used the splitter's framesizemax-
-    # tiled tensor while DEFAULT used patch_size-tiled patches, which triggered an
-    # expensive XLA recompile at the first DEFAULT step on small grids and could
-    # hang for >10 minutes when the shape change was drastic (e.g. 1×244×179 →
-    # 75×30×29). Routing INIT through select_patches uses the same patch
-    # geometry and (bs, ly, lx, C) shape as the subsequent DEFAULT calls.
+    # C (spatial): adaptive_patching applies to INIT/WARM_UP/DEFAULT alike so the
+    # optimizer graph is XLA-compiled once on a fixed (bs, ly, lx, C) shape.
     cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
     use_adaptive = do_solve and bool(getattr(cfg_ap, "enabled", False))
 
-    # Optimize and save cost
     if do_solve and use_adaptive:
-        # `select_patches` returns the full training tensor of shape
-        # [N_train, ly, lx, C] (already shuffled / scored / sampled per
-        # the new 4-step pipeline) plus the fixed batch size `bs`. We
-        # loop over N_train/bs slices, each of fixed shape [bs, ly, lx, C],
-        # so the optimizer graph compiles once.
         training_inputs, bs = select_patches(cfg, state, inputs)
         n_train = int(training_inputs.shape[0])
         for start in range(0, n_train, bs):
-            batch = training_inputs[start:start + bs]
-            state.cost = optimizer.minimize(batch)
+            state.cost = optimizer.minimize(training_inputs[start:start + bs])
     elif do_solve:
         state.cost = optimizer.minimize(inputs)
 
-    # Per-step credit observer — log line + reset accumulators if retrain fired.
-    # No-op when adaptive_training.enabled_observation is false.
+    # B: log + reset credit accumulator if a retrain fired. No-op unless active.
     log_and_maybe_reset_credit_observer(cfg, state, status, do_solve)
