@@ -1,58 +1,43 @@
-#!/usr/bin/env python3
+"""
+DEPRECATED — `igm.processes.smb_simple` has been moved into the new
+`smb` umbrella module at `igm.processes.smb.simple`.
 
-# Copyright (C) 2021-2025 IGM authors 
-# Published under the GNU GPL (Version 3), check at the LICENSE file
+How to migrate your experiment YAML:
 
-import numpy as np
-import tensorflow as tf 
-from igm.utils.math.interp1d_tf import interp1d_tf 
+    defaults:
+      - override /processes:
+        - smb              # was: smb_simple
+
+    processes:
+      smb:
+        method: simple     # selects igm.processes.smb.simple
+        simple:
+          update_freq: 1.0          # was: processes.smb_simple.update_freq
+          file: param.txt
+          array: []
+
+Parameter path moved:
+    cfg.processes.smb_simple.X   ->   cfg.processes.smb.simple.X
+
+The implementation now lives at `igm/processes/smb/simple/simple.py`.
+"""
+
+
+def _migrated():
+    raise RuntimeError(
+        "igm.processes.smb_simple has been replaced by the `smb` umbrella "
+        "(method: simple). Update your experiment YAML — see "
+        "igm/processes/smb_simple/smb_simple.py for the migration recipe."
+    )
+
 
 def initialize(cfg, state):
-
-    if cfg.processes.smb_simple.array == []:
-        state.smbpar = np.loadtxt(
-            state.original_cwd.joinpath("experiment", cfg.processes.smb_simple.file),
-            skiprows=1,
-            dtype=np.float32,
-        )
-    else:
-        state.smbpar = np.array(cfg.processes.smb_simple.array[1:]).astype(np.float32)
-
-    if len(state.smbpar.shape)==1:  # update() expects 2D array even if state.smbpar has only one row
-        state.smbpar = np.expand_dims(state.smbpar, axis=0)
-
-    state.tlast_mb = tf.Variable(-1.0e5000)
+    _migrated()
 
 
 def update(cfg, state):
-
-    # update smb each X years
-    if (state.t - state.tlast_mb) >= cfg.processes.smb_simple.update_freq:
-        if hasattr(state, "logger"):
-            state.logger.info(
-                "Construct mass balance at time : " + str(state.t.numpy())
-            )
-
-        # get the smb parameters at given time t
-        gradabl = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 1], state.t)
-        gradacc = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 2], state.t)
-        ela = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 3], state.t)
-        maxacc = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 4], state.t)
-
-        # compute smb from glacier surface elevation and parameters
-        state.smb = state.usurf - ela
-        state.smb *= tf.where(tf.less(state.smb, 0), gradabl, gradacc)
-        state.smb = tf.clip_by_value(state.smb, -100, maxacc)
-
-        # if an icemask exists, then force negative smb aside to prevent leaks
-        if hasattr(state, "icemask"):
-            state.smb = tf.where(
-                (state.smb < 0) | (state.icemask > 0.5), state.smb, -10
-            )
-
-        state.tlast_mb.assign(state.t)
-
+    _migrated()
 
 
 def finalize(cfg, state):
-    pass
+    _migrated()
