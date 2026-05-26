@@ -42,7 +42,8 @@ def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e
 def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
     """
     Only initialize fields that are actually inverted for.
-    Non-inverted fields are left unchanged.
+    Non-inverted iceflow inputs are cast to ``dtype`` in place so the
+    network's input stack is dtype-homogeneous.
     """
     inverted = {
         str(item["name"])
@@ -77,6 +78,12 @@ def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
             tf.ones_like(state.usurf, dtype=dtype)
             * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
         )
+
+    # convert dtype on any other input fields to avoid dtype mismatch
+    for field_name in cfg.processes.iceflow.unified.inputs:
+        value = getattr(state, field_name)
+        if hasattr(value, "dtype") and value.dtype != dtype:
+            setattr(state, field_name, tf.cast(value, dtype=dtype))
 
     return inverted
 
