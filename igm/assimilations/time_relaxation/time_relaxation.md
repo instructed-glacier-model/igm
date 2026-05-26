@@ -142,6 +142,7 @@ defaults:
   - override /processes:
     - iceflow
     - smb_simple              # produces state.smb
+  - override /assimilations:
     - time_relaxation
 
 processes:
@@ -151,6 +152,7 @@ processes:
       - ["time", "gradabl", "gradacc", "ela", "accmax"]
       - [0, 0.007, 0.004, 3050, 2.0]
 
+assimilations:
   time_relaxation:
     forward_model: iceflow
     pre_processes: [smb_simple]
@@ -207,14 +209,14 @@ Standard IGM output modules (`write_ncdf`, `write_ts`, `write_vtp`) are also cal
 
 ## Parameters
 
-Default configuration file ([time_relaxation.yaml](https://github.com/instructed-glacier-model/igm/blob/main/igm/conf/processes/time_relaxation.yaml)):
+Default configuration file ([time_relaxation.yaml](https://github.com/instructed-glacier-model/igm/blob/main/igm/conf/assimilations/time_relaxation.yaml)):
 
 ~~~yaml
-{% include  "../../../../igm/conf/processes/time_relaxation.yaml" %}
+{% include  "../../../../igm/conf/assimilations/time_relaxation.yaml" %}
 ~~~
 
-{% set config = load_yaml('../igm/conf/processes/time_relaxation.yaml') %}
-{% set help = load_yaml('../igm/conf_help/processes/time_relaxation.yaml') %}
+{% set config = load_yaml('../igm/conf/assimilations/time_relaxation.yaml') %}
+{% set help = load_yaml('../igm/conf_help/assimilations/time_relaxation.yaml') %}
 {% set module_key = config.keys() | list | first %}
 {% set module = config[module_key] %}
 {% set module_help = help %}
