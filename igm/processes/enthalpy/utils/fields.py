@@ -62,6 +62,9 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
         tauc = cfg_friction.tauc_ice_free
         state.tauc = tauc * tf.ones(shape_2d)
 
+    # Defensive fallback: in a normal run, iceflow.initialize and/or the
+    # standalone arrhenius module set state.arrhenius. We keep this guard
+    # so enthalpy can be exercised in isolation (e.g. unit tests).
     if not hasattr(state, "arrhenius"):
         cfg_physics = cfg.processes.iceflow.physics
         arrhenius = cfg_physics.init_arrhenius

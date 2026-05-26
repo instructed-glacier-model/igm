@@ -18,15 +18,6 @@ enthalpy:
     beta: 7.9e-8
   surface:
     T_offset: 0.0
-  arrhenius:
-    A_cold: 3.985e-13
-    A_warm: 1.916e+3
-    Q_cold: 60000.0
-    Q_warm: 139000.0
-    T_threshold: 263.15
-    omega_coef: 181.25
-    omega_max: 0.01
-    R: 8.314
   till:
     friction:
       phi: 30.0

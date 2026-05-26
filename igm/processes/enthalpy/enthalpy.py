@@ -7,7 +7,6 @@ from omegaconf import DictConfig
 
 from igm.common import State
 
-from .arrhenius import compute_arrhenius
 from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
@@ -29,11 +28,11 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Compute E_pmp
     E_pmp, _ = compute_pmp(cfg, state)
 
-    # Compute (T, omega) from E
+    # Compute (T, omega) from E and publish on state for downstream
+    # consumers (e.g. the standalone `arrhenius` process module).
     T, omega = compute_temperature(cfg, state, E_pmp)
-
-    # Compute A = A(T, omega) (state.arrhenius)
-    compute_arrhenius(cfg, state, T, omega)
+    state.T = T
+    state.omega = omega
 
     # Compute N (state.N)
     compute_hydro(cfg, state)
@@ -63,11 +62,11 @@ def update(cfg: DictConfig, state: State) -> None:
 
     # (iii) DERIVE QUANTITIES
 
-    # Temperature and water content
+    # Temperature and water content; publish on state so the standalone
+    # `arrhenius` module (and any other consumer) can pick them up.
     T, omega = compute_temperature(cfg, state, E_pmp)
-
-    # Vertically-averaged Arrhenius factor (state.arrhenius)
-    compute_arrhenius(cfg, state, T, omega)
+    state.T = T
+    state.omega = omega
 
     # Effective pressure from till hydrology (state.h_water_till, state.N)
     update_hydro(cfg, state)
