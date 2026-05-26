@@ -23,7 +23,7 @@ iceflow:
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
-    init_slidingco: 0.2154
+    init_slidingco:  0.0464
     init_arrhenius: 78.0
     enhancement_factor: 1.0
     exp_glen: 3.0
