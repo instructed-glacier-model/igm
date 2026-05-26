@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-
+import warnings
 
 def parse_cfg_input_names_Nz(cfg, nb_inputs=None, nb_outputs=None):
     """Extract input_names and Nz from cfg with optional sanity checks.
@@ -37,6 +37,35 @@ def parse_cfg_network_params_strict(cfg, arch_name):
             f"{arch_name} requires cfg.processes.iceflow.emulator.network.params "
             "to be a non-empty mapping. This architecture has no legacy field fallback."
         )
+    return params
+
+
+def build_network_params(cfg, arch_cls) -> dict:
+    """Pick the architecture's network_params dict from cfg.
+
+    If ``cfg.processes.iceflow.emulator.network.params`` is non-empty, use it.
+    Otherwise build the dict from individual legacy fields under
+    ``cfg.processes.iceflow.emulator.network.*``, restricted to keys the
+    architecture declares in ``arch_cls._DEFAULTS``. Numerics-wide precision
+    is injected if absent.
+    """
+    node = cfg.processes.iceflow.emulator.network
+    params_node = getattr(node, "params", None)
+    params = dict(params_node) if params_node is not None else {}
+    if not params:
+        warnings.warn(
+                "Note that network hyperparameters are defined from legacy fields. "
+                "This is deprecated and will be removed in a future version of IGM. "
+                "Please use cfg.processes.iceflow.emulator.network.params instead."
+            )
+        params = {
+            k: getattr(node, k)
+            for k in arch_cls._DEFAULTS
+            if getattr(node, k, None) is not None
+        }
+    precision = getattr(cfg.processes.iceflow.numerics, "precision", None)
+    if precision is not None:
+        params.setdefault("precision", str(precision))
     return params
 
 

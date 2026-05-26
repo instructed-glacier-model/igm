@@ -14,238 +14,97 @@ from .utils import (
 )
 from typing import Any, Dict
 
+
 class CNN(tf.keras.Model):
     """
     Convolutional neural network with optional skip connection.
 
-    New-format constructor, compatible with the v3 emulator artifact path:
+    Constructor:
+        CNN(input_names=[...], Nz=..., network_params={...})
 
-        CNN(
-            input_names=[...],
-            Nz=...,
-            network_params={...},
-        )
+    network_params is a flat dict of architecture hyperparameters. All keys
+    are optional; missing keys fall back to ``_DEFAULTS`` below. Unknown
+    keys raise.
 
-    Expected output convention:
+    Output convention:
         output[..., :Nz] = U_x(z)
         output[..., Nz:] = U_y(z)
 
     Therefore nb_outputs is fixed to 2 * Nz.
     """
 
+    # Each entry is (default, coercer). Keys match conf/processes/iceflow.yaml
+    # and become instance attribute names.
+    _DEFAULTS: Dict[str, tuple] = {
+        "nb_layers":             (16, int),
+        "nb_out_filter":         (32, int),
+        "conv_ker_size":         (3,  int),
+        "activation":            ("LeakyReLU",      str),
+        "weight_initialization": ("glorot_uniform", str),
+        "batch_norm":            (False, bool),
+        "residual":              (True,  bool),
+        "separable":             (False, bool),
+        "dropout_rate":          (0.0,   float),
+        "l2_reg":                (0.0,   float),
+        "cnn3d_for_vertical":    (False, bool),
+        # Not exposed as top-level fields in iceflow.yaml; kept at code defaults.
+        "precision":             ("float32", str),
+        "use_skip":              (True,  bool),
+        "leakyrelu_alpha":       (0.01,  float),
+    }
+
     def __init__(
         self,
-        cfg=None,
-        nb_inputs=None,
-        nb_outputs=None,
         *,
-        input_names: list[str] | None = None,
-        Nz: int | None = None,
+        input_names: list[str],
+        Nz: int,
         network_params: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        # ------------------------------------------------------------------
-        # Dual calling convention:
-        #   - cfg-positional: CNN(cfg, nb_inputs, nb_outputs)
-        #   - kwargs (used by .keras reconstruction):
-        #     CNN(input_names=..., Nz=..., network_params=...)
-        # ------------------------------------------------------------------
-        if cfg is not None:
-            from .utils import parse_cfg_input_names_Nz
-            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
-            network_params = self._parse_cfg_network_params(cfg)
-
-        if input_names is None or Nz is None or network_params is None:
-            raise ValueError(
-                "CNN: must provide either (cfg, nb_inputs, nb_outputs) or "
-                "(input_names, Nz, network_params)."
-            )
-
-        # ------------------------------------------------------------------
-        # Minimal reconstruction inputs
-        # ------------------------------------------------------------------
         self.input_names = [str(x) for x in input_names]
         self.Nz = int(Nz)
-
         if self.Nz <= 0:
             raise ValueError(f"Nz must be > 0, got {self.Nz}")
 
         self.nb_inputs = len(self.input_names)
         self.nb_outputs = 2 * self.Nz
 
-        # External normalizer. This is attached by the emulator/artifact path,
+        # External normalizer. Attached by the emulator/artifact path,
         # not serialized as part of the architecture params.
         self.input_normalizer = None
 
-        # ------------------------------------------------------------------
-        # Architecture parameters from network_params
-        # ------------------------------------------------------------------
-        params = dict(network_params)
-
-        allowed_keys = {
-            # Required core architecture
-            "nb_layers",
-            "nb_out_filter",
-            "conv_ker_size",
-            "activation",
-            "weight_initialization",
-
-            # Optional behavior
-            "precision",
-            "use_skip",
-            "batch_norm",
-            "residual",
-            "separable",
-            "dropout_rate",
-            "l2_reg",
-            "cnn3d_for_vertical",
-
-            # Optional activation details
-            "leakyrelu_alpha",
-        }
-
-        unexpected = sorted(set(params.keys()) - allowed_keys)
+        params = dict(network_params) if network_params else {}
+        unexpected = sorted(set(params) - set(self._DEFAULTS))
         if unexpected:
             raise ValueError(
                 f"Unexpected keys in network_params: {unexpected}. "
-                f"Allowed keys are: {sorted(allowed_keys)}"
+                f"Allowed keys: {sorted(self._DEFAULTS)}"
             )
+        for k, (default, cast) in self._DEFAULTS.items():
+            setattr(self, k, cast(params.get(k, default)))
 
-        required = {
-            "nb_layers",
-            "nb_out_filter",
-            "conv_ker_size",
-            "activation",
-            "weight_initialization",
-        }
-        missing = sorted(required - set(params.keys()))
-        if missing:
-            raise ValueError(f"network_params is missing required keys: {missing}")
-
-        self.precision_name = str(params.get("precision", "float32"))
-        self.dtype_model = normalize_precision(self.precision_name)
-
-        self.n_layers = int(params["nb_layers"])
-        self.n_filters = int(params["nb_out_filter"])
-        self.kernel_size = int(params["conv_ker_size"])
-        self.activation_name = str(params["activation"])
-        self.weight_init = str(params["weight_initialization"])
-
-        self.use_skip = bool(params.get("use_skip", True))
-        self.use_batch_norm = bool(params.get("batch_norm", False))
-        self.use_residual = bool(params.get("residual", False))
-        self.use_separable = bool(params.get("separable", False))
-        self.dropout_rate = float(params.get("dropout_rate", 0.0))
-        self.use_3d = bool(params.get("cnn3d_for_vertical", False))
-        self.leakyrelu_alpha = float(params.get("leakyrelu_alpha", 0.01))
-
-        if self.n_layers <= 0:
-            raise ValueError(f"nb_layers must be > 0, got {self.n_layers}")
-        if self.n_filters <= 0:
-            raise ValueError(f"nb_out_filter must be > 0, got {self.n_filters}")
-        if self.kernel_size <= 0:
-            raise ValueError(f"conv_ker_size must be > 0, got {self.kernel_size}")
-        if self.dropout_rate < 0.0 or self.dropout_rate >= 1.0:
+        if self.nb_layers <= 0:
+            raise ValueError(f"nb_layers must be > 0, got {self.nb_layers}")
+        if self.nb_out_filter <= 0:
+            raise ValueError(f"nb_out_filter must be > 0, got {self.nb_out_filter}")
+        if self.conv_ker_size <= 0:
+            raise ValueError(f"conv_ker_size must be > 0, got {self.conv_ker_size}")
+        if not 0.0 <= self.dropout_rate < 1.0:
             raise ValueError(
                 f"dropout_rate must satisfy 0 <= dropout_rate < 1, "
                 f"got {self.dropout_rate}"
             )
-
-        l2_reg = params.get("l2_reg", None)
-        if isinstance(l2_reg, str) and l2_reg.lower() in ("none", "null", ""):
-            l2_reg = None
-
-        self.l2_reg = None if l2_reg is None else float(l2_reg)
-        self.kernel_regularizer = (
-            tf.keras.regularizers.l2(self.l2_reg)
-            if self.l2_reg is not None
-            else None
-        )
-
-        if self.use_3d and self.Nz < 2:
+        if self.cnn3d_for_vertical and self.Nz < 2:
             raise ValueError("cnn3d_for_vertical=True requires Nz >= 2")
 
-        # Store normalized architecture dict exactly as used.
-        # This should be YAML-safe and reconstruction-stable.
-        self.network_params = {
-            "nb_layers": int(self.n_layers),
-            "nb_out_filter": int(self.n_filters),
-            "conv_ker_size": int(self.kernel_size),
-            "activation": str(self.activation_name),
-            "weight_initialization": str(self.weight_init),
-            "precision": str(self.precision_name),
-            "use_skip": bool(self.use_skip),
-            "batch_norm": bool(self.use_batch_norm),
-            "residual": bool(self.use_residual),
-            "separable": bool(self.use_separable),
-            "dropout_rate": float(self.dropout_rate),
-            "l2_reg": None if self.l2_reg is None else float(self.l2_reg),
-            "cnn3d_for_vertical": bool(self.use_3d),
-            "leakyrelu_alpha": float(self.leakyrelu_alpha),
-        }
+        self.dtype_model = normalize_precision(self.precision)
+        self.kernel_regularizer = (
+            tf.keras.regularizers.l2(self.l2_reg) if self.l2_reg > 0.0 else None
+        )
 
-        # Build layer objects, but do not create weights yet.
-        # Weight creation is done deterministically in build().
         self._build_layers()
-
-    # ----------------------------------------------------------------------
-    # cfg-positional fallback: build network_params from cfg
-    # ----------------------------------------------------------------------
-    @staticmethod
-    def _parse_cfg_network_params(cfg) -> Dict[str, Any]:
-        """Return a network_params dict from cfg.
-
-        If ``cfg.processes.iceflow.emulator.network.params`` is a non-empty
-        mapping, use it directly. Otherwise fall back to reading the
-        individual legacy fields scattered under
-        ``cfg.processes.iceflow.emulator.network.*`` (the pre-params-dict
-        yaml convention used on the main IGM branch).
-        """
-        network_node = cfg.processes.iceflow.emulator.network
-
-        params_node = getattr(network_node, "params", None)
-        params = dict(params_node) if params_node is not None else {}
-        if params:
-            return params
-
-        required = (
-            "nb_layers",
-            "nb_out_filter",
-            "conv_ker_size",
-            "activation",
-            "weight_initialization",
-        )
-        for k in required:
-            if getattr(network_node, k, None) is None:
-                raise ValueError(
-                    "CNN legacy cfg fallback: missing required field "
-                    f"cfg.processes.iceflow.emulator.network.{k}"
-                )
-        params = {k: getattr(network_node, k) for k in required}
-
-        optional = (
-            "batch_norm",
-            "residual",
-            "separable",
-            "dropout_rate",
-            "l2_reg",
-            "cnn3d_for_vertical",
-            "leakyrelu_alpha",
-            "use_skip",
-        )
-        for k in optional:
-            v = getattr(network_node, k, None)
-            if v is not None:
-                params[k] = v
-
-        if "precision" not in params:
-            precision = getattr(cfg.processes.iceflow.numerics, "precision", None)
-            if precision is not None:
-                params["precision"] = str(precision)
-
-        return params
 
     # ----------------------------------------------------------------------
     # Layer construction
@@ -256,10 +115,10 @@ class CNN(tf.keras.Model):
         # Skip connection projection, input -> hidden feature width.
         if self.use_skip:
             self.skip_proj = tf.keras.layers.Conv2D(
-                filters=self.n_filters,
+                filters=self.nb_out_filter,
                 kernel_size=(1, 1),
                 padding="same",
-                kernel_initializer=self.weight_init,
+                kernel_initializer=self.weight_initialization,
                 kernel_regularizer=self.kernel_regularizer,
                 dtype=self.dtype_model,
                 name="skip_projection",
@@ -272,14 +131,14 @@ class CNN(tf.keras.Model):
         self.activation_layers = []
         self.dropout_layers = []
 
-        for i in range(self.n_layers):
-            if self.use_separable:
+        for i in range(self.nb_layers):
+            if self.separable:
                 conv = tf.keras.layers.SeparableConv2D(
-                    filters=self.n_filters,
-                    kernel_size=(self.kernel_size, self.kernel_size),
+                    filters=self.nb_out_filter,
+                    kernel_size=(self.conv_ker_size, self.conv_ker_size),
                     padding="same",
-                    depthwise_initializer=self.weight_init,
-                    pointwise_initializer=self.weight_init,
+                    depthwise_initializer=self.weight_initialization,
+                    pointwise_initializer=self.weight_initialization,
                     depthwise_regularizer=self.kernel_regularizer,
                     pointwise_regularizer=self.kernel_regularizer,
                     dtype=self.dtype_model,
@@ -287,17 +146,17 @@ class CNN(tf.keras.Model):
                 )
             else:
                 conv = tf.keras.layers.Conv2D(
-                    filters=self.n_filters,
-                    kernel_size=(self.kernel_size, self.kernel_size),
+                    filters=self.nb_out_filter,
+                    kernel_size=(self.conv_ker_size, self.conv_ker_size),
                     padding="same",
-                    kernel_initializer=self.weight_init,
+                    kernel_initializer=self.weight_initialization,
                     kernel_regularizer=self.kernel_regularizer,
                     dtype=self.dtype_model,
                     name=f"conv_{i}",
                 )
             self.conv_layers.append(conv)
 
-            if self.use_batch_norm:
+            if self.batch_norm:
                 bn = tf.keras.layers.BatchNormalization(
                     dtype=self.dtype_model,
                     name=f"batch_norm_{i}",
@@ -327,20 +186,20 @@ class CNN(tf.keras.Model):
         self.conv3d_layers = []
         self.upsample3d_layers = []
 
-        if self.use_3d:
+        if self.cnn3d_for_vertical:
             n_3d_layers = int(math.ceil(math.log2(self.Nz)))
             for i in range(n_3d_layers):
-                filters_i = max(self.n_filters // (2 ** (i + 1)), 1)
+                filters_i = max(self.nb_out_filter // (2 ** (i + 1)), 1)
 
                 conv3d = tf.keras.layers.Conv3D(
                     filters=filters_i,
                     kernel_size=(
-                        self.kernel_size,
-                        self.kernel_size,
-                        self.kernel_size,
+                        self.conv_ker_size,
+                        self.conv_ker_size,
+                        self.conv_ker_size,
                     ),
                     padding="same",
-                    kernel_initializer=self.weight_init,
+                    kernel_initializer=self.weight_initialization,
                     kernel_regularizer=self.kernel_regularizer,
                     dtype=self.dtype_model,
                     name=f"conv3d_{i}",
@@ -358,7 +217,7 @@ class CNN(tf.keras.Model):
             filters=self.nb_outputs,
             kernel_size=(1, 1),
             padding="same",
-            kernel_initializer=self.weight_init,
+            kernel_initializer=self.weight_initialization,
             kernel_regularizer=self.kernel_regularizer,
             activation=None,
             dtype=self.dtype_model,
@@ -366,7 +225,7 @@ class CNN(tf.keras.Model):
         )
 
     def _make_activation(self, i: int) -> tf.keras.layers.Layer:
-        activation_name = self.activation_name.lower()
+        activation_name = self.activation.lower()
 
         if activation_name == "leakyrelu":
             return tf.keras.layers.LeakyReLU(
@@ -389,9 +248,9 @@ class CNN(tf.keras.Model):
             )
 
         return tf.keras.layers.Activation(
-            self.activation_name,
+            self.activation,
             dtype=self.dtype_model,
-            name=f"{self.activation_name}_{i}",
+            name=f"{self.activation}_{i}",
         )
 
     # ----------------------------------------------------------------------
@@ -405,7 +264,7 @@ class CNN(tf.keras.Model):
         return {
             "input_names": list(self.input_names),
             "Nz": int(self.Nz),
-            "network_params": dict(self.network_params),
+            "network_params": {k: getattr(self, k) for k in self._DEFAULTS},
         }
 
     # ----------------------------------------------------------------------
@@ -452,17 +311,6 @@ class CNN(tf.keras.Model):
         super().build(input_shape)
 
     # ----------------------------------------------------------------------
-    # Public helper methods
-    # ----------------------------------------------------------------------
-    def set_input_normalizer(self, layer: tf.keras.layers.Layer) -> None:
-        """
-        Attach an external input normalizer.
-
-        This is not part of the architecture reconstruction contract.
-        """
-        self.input_normalizer = layer
-
-    # ----------------------------------------------------------------------
     # Forward pass
     # ----------------------------------------------------------------------
     def call(self, inputs, training=None):
@@ -477,7 +325,7 @@ class CNN(tf.keras.Model):
         else:
             skip = None
 
-        for i in range(self.n_layers):
+        for i in range(self.nb_layers):
             residual_in = x
 
             x = self.conv_layers[i](x)
@@ -493,7 +341,7 @@ class CNN(tf.keras.Model):
                 x = dropout(x, training=training)
 
             if (
-                self.use_residual
+                self.residual
                 and i % 2 == 1
                 and residual_in.shape[-1] is not None
                 and x.shape[-1] == residual_in.shape[-1]
@@ -503,7 +351,7 @@ class CNN(tf.keras.Model):
         if skip is not None:
             x = x + skip
 
-        if self.use_3d:
+        if self.cnn3d_for_vertical:
             x = self._vertical_extension_3d(x)
 
         return self.output_layer(x)

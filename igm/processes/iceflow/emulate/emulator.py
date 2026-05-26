@@ -29,6 +29,11 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
 
+from igm.processes.iceflow.emulate.utils.architectures import Architectures
+from igm.processes.iceflow.emulate.utils.architectures.utils import (
+    build_network_params,
+)
+
 
 class EmulatorParams(tf.experimental.ExtensionType):
     lr_decay: float
@@ -223,12 +228,14 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     else:
         warnings.warn("No pretrained emulator found. Starting from scratch.")
 
-        nb_inputs = len(cfg_emulator.fieldin)
-        nb_outputs = 2 * cfg_numerics.Nz
 
-        from igm.processes.iceflow.emulate.utils.architectures import Architectures
         arch_name = cfg_emulator.network.architecture.upper()
-        state.iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
+        arch_cls = Architectures[arch_name]
+        state.iceflow_model = arch_cls(
+            input_names=list(cfg_emulator.fieldin),
+            Nz=int(cfg_numerics.Nz),
+            network_params=build_network_params(cfg, arch_cls),
+        )
 
     # Pre-build the retrain optimizer's momentum/velocity state outside any
     # @tf.function context. Keras 3 builds optimizer state lazily on the first

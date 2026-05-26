@@ -9,6 +9,9 @@ from igm.common import State
 from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.emulate.utils.artifacts import load_emulator_artifact
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
+from igm.processes.iceflow.emulate.utils.architectures.utils import (
+    build_network_params,
+)
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.emulate.utils.misc import (
@@ -69,7 +72,6 @@ class InterfaceNetwork(InterfaceMapping):
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
             nb_inputs = len(cfg_unified.inputs)
-            nb_outputs = 2 * int(cfg_numerics.Nz)
 
             arch_name = str(cfg_unified.network.architecture)
             if arch_name not in Architectures:
@@ -78,7 +80,12 @@ class InterfaceNetwork(InterfaceMapping):
                     f"Available: {list(Architectures.keys())}"
                 )
 
-            iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
+            arch_cls = Architectures[arch_name]
+            iceflow_model = arch_cls(
+                input_names=list(cfg_unified.inputs),
+                Nz=int(cfg_numerics.Nz),
+                network_params=build_network_params(cfg, arch_cls),
+            )
 
             # Attach the input normalizer. During pretraining the trainer
             # supplies its own; otherwise read the cfg.
