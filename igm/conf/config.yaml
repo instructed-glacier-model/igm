@@ -4,6 +4,7 @@ defaults:
   - _self_
   - core
   - optional processes: null
+  - optional assimilations: null
   - optional inputs: null # made it not mandatory so that one can use 'igm_run -h' without +experiement
   - optional outputs: null # output can be empty as opposed to input (???), which requires something (could change if we have synthetic case...)
   - override hydra/job_logging: none # testing this for now as we redirected the logging to python logger... might have drawbacks though

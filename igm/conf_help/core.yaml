@@ -80,6 +80,10 @@ structure:
     Type: string
     Description: "Sub-folder name for custom process modules."
     Units: dimless
+  assimilation_modules_foldername:
+    Type: string
+    Description: "Sub-folder name for custom assimilation modules."
+    Units: dimless
   output_modules_foldername:
     Type: string
     Description: "Sub-folder name for custom output modules."

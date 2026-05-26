@@ -12,6 +12,7 @@ IMPORTS_TO_TEST = [
     "outputs",
     "common",
     "processes",
+    "assimilations",
     "utils",
     "conf",
     "conf_help",
