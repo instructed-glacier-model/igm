@@ -1,4 +1,4 @@
-from .cnns import CNN, CNNPeriodic, CNNPatch, CNNSkip
+from .cnns import CNN
 from .mlps import MLP, FourierMLP
 from .nos import FNO, FNO2, CNO2d
 from .nicenet import NiceNet
@@ -10,9 +10,6 @@ from .dahunet import DahuNet
 
 Architectures = {
     'CNN': CNN,
-    'CNNPeriodic': CNNPeriodic,
-    'CNNPatch': CNNPatch,
-    'CNNSkip': CNNSkip,
     'MLP': MLP,
     'FourierMLP': FourierMLP,
     'FNO': FNO,
