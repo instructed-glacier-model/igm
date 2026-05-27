@@ -5,13 +5,6 @@ import tensorflow as tf
 import math
 
 from igm.utils.math.precision import normalize_precision
-from .utils import (
-    PeriodicBCAnsatz,
-    PeriodicBCEnforcement,
-    PeriodicBCFourier,
-    PeriodicBCLayer,
-    DTypeActivation,
-)
 from typing import Any, Dict
 
 
@@ -45,6 +38,7 @@ class CNN(tf.keras.Model):
         "use_skip":              (True,  bool),
         "leakyrelu_alpha":       (0.01,  float),
     }
+    _LEGACY_FIELDS = set(_DEFAULTS)
 
     def __init__(
         self,

@@ -2,97 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 import tensorflow as tf
-from igm.utils.math.precision import normalize_precision
 
-
-def _matching_complex(float_dtype) -> tf.dtypes.DType:
-    """Return the complex dtype that preserves precision for a given float dtype."""
-    if tf.as_dtype(float_dtype) == tf.float64:
-        return tf.complex128
-    return tf.complex64
-
-
-class FNO(tf.keras.Model):
-    """
-    Simplified Fourier Neural Operator - operates in frequency domain for global information
-    """
-
-    def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None):
-        super(FNO, self).__init__()
-
-        precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = normalize_precision(precision)
-
-        self.input_normalizer = input_normalizer
-
-        nb_filters = cfg.processes.iceflow.emulator.network.nb_out_filter
-        nb_layers = int(cfg.processes.iceflow.emulator.network.nb_layers)
-
-        # Lifting layer: project input to hidden dimension
-        self.lift = tf.keras.layers.Conv2D(nb_filters, 1, dtype=self.dtype_model)
-
-        # Fourier layers
-        self.fourier_layers = []
-        self.conv_layers = []
-        for i in range(nb_layers):
-            # We'll use Conv2D as a simplified spectral convolution
-            self.fourier_layers.append(
-                tf.keras.layers.Conv2D(nb_filters, 1, dtype=self.dtype_model)
-            )
-            self.conv_layers.append(
-                tf.keras.layers.Conv2D(nb_filters, 1, dtype=self.dtype_model)
-            )
-
-        self.activation = tf.keras.layers.Activation(
-            cfg.processes.iceflow.emulator.network.activation
-        )
-
-        # Projection layer: project back to output dimension
-        self.project = tf.keras.layers.Conv2D(
-            nb_outputs, 1, activation=None, dtype=self.dtype_model
-        )
-
-        self.build(input_shape=[None, None, None, nb_inputs])
-
-    def call(self, inputs):
-        x = inputs
-
-        if self.input_normalizer is not None:
-            x = self.input_normalizer(x)
-
-        # Lift to higher dimension
-        x = self.lift(x)
-
-        # Fourier layers
-        for fourier_layer, conv_layer in zip(self.fourier_layers, self.conv_layers):
-            residual = x
-
-            complex_dtype = _matching_complex(self.dtype_model)
-
-            # FFT to frequency domain
-            x_freq = tf.signal.fft2d(tf.cast(x, complex_dtype))
-
-            # Apply spectral convolution (simplified: using real part)
-            x_freq_real = tf.cast(tf.math.real(x_freq), self.dtype_model)
-            x_freq_imag = tf.cast(tf.math.imag(x_freq), self.dtype_model)
-
-            # Process in frequency domain
-            x_freq_processed = fourier_layer(x_freq_real)
-
-            # IFFT back to spatial domain
-            x_freq_complex = tf.cast(x_freq_processed, complex_dtype)
-            x = tf.cast(
-                tf.math.real(tf.signal.ifft2d(x_freq_complex)), self.dtype_model
-            )
-
-            # Add skip connection in spatial domain
-            x = x + conv_layer(residual)
-            x = self.activation(x)
-
-        # Project to output
-        outputs = self.project(x)
-
-        return outputs
 
 # --------------------------------------------------------------------
 # SpectralConv2D: 2D Fourier layer
@@ -183,7 +93,6 @@ class SpectralConv2D(tf.keras.layers.Layer):
             self.modes2,
         )
 
-        # Top-frequency block
         self.w1_real = self.add_weight(
             name="w1_real",
             shape=weight_shape,
@@ -198,8 +107,6 @@ class SpectralConv2D(tf.keras.layers.Layer):
             trainable=True,
             dtype=self.compute_dtype,
         )
-
-        # Bottom-frequency block
         self.w2_real = self.add_weight(
             name="w2_real",
             shape=weight_shape,
@@ -246,23 +153,12 @@ class SpectralConv2D(tf.keras.layers.Layer):
         h_ft = tf.shape(x_ft)[2]
         w_r = tf.shape(x_ft)[3]
 
-        # Top modes
         x_ft_top = x_ft[:, :, : self.modes1, : self.modes2]
-        out_ft_top = self._compl_mul2d(
-            x_ft_top,
-            self.w1_real,
-            self.w1_imag,
-        )
+        out_ft_top = self._compl_mul2d(x_ft_top, self.w1_real, self.w1_imag)
 
-        # Bottom modes
         x_ft_bottom = x_ft[:, :, -self.modes1 :, : self.modes2]
-        out_ft_bottom = self._compl_mul2d(
-            x_ft_bottom,
-            self.w2_real,
-            self.w2_imag,
-        )
+        out_ft_bottom = self._compl_mul2d(x_ft_bottom, self.w2_real, self.w2_imag)
 
-        # Pad top block into full Fourier tensor
         out_ft_top_full = tf.pad(
             out_ft_top,
             paddings=[
@@ -272,8 +168,6 @@ class SpectralConv2D(tf.keras.layers.Layer):
                 [0, w_r - self.modes2],
             ],
         )
-
-        # Pad bottom block into full Fourier tensor
         out_ft_bottom_full = tf.pad(
             out_ft_bottom,
             paddings=[
@@ -286,10 +180,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
 
         out_ft = out_ft_top_full + out_ft_bottom_full
 
-        return tf.signal.irfft2d(
-            out_ft,
-            fft_length=[height, width],
-        )
+        return tf.signal.irfft2d(out_ft, fft_length=[height, width])
 
     def get_config(self) -> Dict[str, Any]:
         config = super().get_config()
@@ -305,94 +196,60 @@ class SpectralConv2D(tf.keras.layers.Layer):
 
 
 # --------------------------------------------------------------------
-# FNO2: new-format architecture
+# FNO: 2D Fourier Neural Operator (renamed from FNO2)
 # --------------------------------------------------------------------
-class FNO2(tf.keras.Model):
+class FNO(tf.keras.Model):
     """
     2D Fourier Neural Operator emulator.
 
-    New-format constructor:
+    Constructor:
+        FNO(input_names=[...], Nz=..., network_params={...})
 
-        FNO2(
-            input_names=[...],
-            Nz=...,
-            network_params={...},
-        )
+    network_params is a flat dict of architecture hyperparameters. All keys
+    are optional; missing keys fall back to ``_DEFAULTS`` below.
 
     Output convention:
         output[..., :Nz] = U_x(z)
         output[..., Nz:] = U_y(z)
-
-    Therefore nb_outputs is fixed to 2 * Nz.
     """
+
+    _DEFAULTS: Dict[str, tuple] = {
+        "width":            (32,   int),
+        "modes1":           (8,    int),
+        "modes2":           (8,    int),
+        "padding":          (9,    int),
+        "use_grid":         (True, bool),
+        "projection_width": (128,  int),
+    }
 
     def __init__(
         self,
-        cfg=None,
-        nb_inputs=None,
-        nb_outputs=None,
         *,
-        input_names: list[str] | None = None,
-        Nz: int | None = None,
+        input_names: list[str],
+        Nz: int,
         network_params: Dict[str, Any] | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
 
-        # Dual calling convention. See SIADecompNet for rationale.
-        if cfg is not None:
-            from .utils import parse_cfg_input_names_Nz, parse_cfg_network_params_strict
-            input_names, Nz = parse_cfg_input_names_Nz(cfg, nb_inputs, nb_outputs)
-            network_params = parse_cfg_network_params_strict(cfg, "FNO2")
-
-        if input_names is None or Nz is None or network_params is None:
-            raise ValueError(
-                "FNO2: must provide either (cfg, nb_inputs, nb_outputs) or "
-                "(input_names, Nz, network_params)."
-            )
-
-        # ------------------------------------------------------------------
-        # Minimal reconstruction inputs
-        # ------------------------------------------------------------------
         self.input_names = [str(x) for x in input_names]
         self.Nz = int(Nz)
-
         if self.Nz <= 0:
             raise ValueError(f"Nz must be > 0, got {self.Nz}")
 
         self.nb_inputs = len(self.input_names)
         self.nb_outputs = 2 * self.Nz
-
-        # External normalizer, attached elsewhere.
         self.input_normalizer = None
 
-        # ------------------------------------------------------------------
-        # Architecture parameters from network_params
-        # ------------------------------------------------------------------
-        params = dict(network_params)
-
-        allowed_keys = {
-            "width",
-            "modes1",
-            "modes2",
-            "padding",
-            "use_grid",
-            "projection_width",
-        }
-
-        unexpected = sorted(set(params.keys()) - allowed_keys)
+        params = dict(network_params) if network_params else {}
+        unexpected = sorted(set(params) - set(self._DEFAULTS))
         if unexpected:
             raise ValueError(
                 f"Unexpected keys in network_params: {unexpected}. "
-                f"Allowed keys are: {sorted(allowed_keys)}"
+                f"Allowed keys: {sorted(self._DEFAULTS)}"
             )
-
-        self.width = int(params.get("width", 32))
-        self.modes1 = int(params.get("modes1", 8))
-        self.modes2 = int(params.get("modes2", self.modes1))
-        self.padding = int(params.get("padding", 9))
-        self.use_grid = bool(params.get("use_grid", True))
-        self.projection_width = int(params.get("projection_width", 128))
+        for k, (default, cast) in self._DEFAULTS.items():
+            setattr(self, k, cast(params.get(k, default)))
 
         if self.width <= 0:
             raise ValueError(f"width must be > 0, got {self.width}")
@@ -403,49 +260,17 @@ class FNO2(tf.keras.Model):
         if self.padding < 0:
             raise ValueError(f"padding must be >= 0, got {self.padding}")
         if self.projection_width <= 0:
-            raise ValueError(
-                f"projection_width must be > 0, got {self.projection_width}"
-            )
+            raise ValueError(f"projection_width must be > 0, got {self.projection_width}")
 
         self.lift_input_channels = self.nb_inputs + (2 if self.use_grid else 0)
-
-        # Store normalized architecture dict exactly as used.
-        self.network_params = {
-            "width": int(self.width),
-            "modes1": int(self.modes1),
-            "modes2": int(self.modes2),
-            "padding": int(self.padding),
-            "use_grid": bool(self.use_grid),
-            "projection_width": int(self.projection_width),
-        }
-
-        # Dummy sizes for deterministic build.
-        #
-        # SpectralConv2D sees the padded size, so ensure the unpadded dummy plus
-        # padding is large enough for the requested modes.
         self._dummy_H = max(16, self.modes1 + 1)
         self._dummy_W = max(16, 2 * self.modes2 + 2)
 
-        # ------------------------------------------------------------------
-        # Layers
-        # ------------------------------------------------------------------
-        self.fc0 = tf.keras.layers.Dense(
-            self.width,
-            dtype=self.compute_dtype,
-            name="fc0",
-        )
-
+        self.fc0 = tf.keras.layers.Dense(self.width, dtype=self.compute_dtype, name="fc0")
         self.convs = [
-            SpectralConv2D(
-                self.width,
-                self.width,
-                self.modes1,
-                self.modes2,
-                name=f"spectral_conv_{i}",
-            )
+            SpectralConv2D(self.width, self.width, self.modes1, self.modes2, name=f"spectral_conv_{i}")
             for i in range(4)
         ]
-
         self.ws = [
             tf.keras.layers.Conv2D(
                 self.width,
@@ -457,48 +282,30 @@ class FNO2(tf.keras.Model):
             )
             for i in range(4)
         ]
-
-        self.fc1 = tf.keras.layers.Dense(
-            self.projection_width,
-            dtype=self.compute_dtype,
-            name="fc1",
-        )
-        self.fc2 = tf.keras.layers.Dense(
-            self.nb_outputs,
-            dtype=self.compute_dtype,
-            name="fc2",
-        )
+        self.fc1 = tf.keras.layers.Dense(self.projection_width, dtype=self.compute_dtype, name="fc1")
+        self.fc2 = tf.keras.layers.Dense(self.nb_outputs, dtype=self.compute_dtype, name="fc2")
 
     # ----------------------------------------------------------------------
     # Minimal reconstruction manifest payload
     # ----------------------------------------------------------------------
     def resolved_params(self) -> Dict[str, Any]:
-        """
-        Return exactly the minimal constructor payload needed to rebuild the
-        model structure before attaching weights / external normalizer.
-        """
         return {
             "input_names": [str(n) for n in self.input_names],
             "Nz": int(self.Nz),
-            "network_params": dict(self.network_params),
+            "network_params": {k: getattr(self, k) for k in self._DEFAULTS},
         }
 
     # ----------------------------------------------------------------------
     # Keras build
     # ----------------------------------------------------------------------
     def build(self, input_shape) -> None:
-        """
-        Explicit deterministic build for subclassed-model compatibility.
-
-        Creates weights in forward-pass order via a dummy call.
-        """
         if self.built:
             return
 
         input_shape = tf.TensorShape(input_shape)
         if input_shape.rank != 4:
             raise ValueError(
-                f"FNO2 expects input_shape rank 4 [B, H, W, C], got {input_shape}"
+                f"FNO expects input_shape rank 4 [B, H, W, C], got {input_shape}"
             )
 
         channel_dim = input_shape[-1]
@@ -514,43 +321,20 @@ class FNO2(tf.keras.Model):
             )
 
         batch_dim = 1 if input_shape[0] is None else int(input_shape[0])
-
-        if input_shape[1] is None:
-            height_dim = self._dummy_H
-        else:
-            height_dim = max(self._dummy_H, int(input_shape[1]))
-
-        if input_shape[2] is None:
-            width_dim = self._dummy_W
-        else:
-            width_dim = max(self._dummy_W, int(input_shape[2]))
+        height_dim = self._dummy_H if input_shape[1] is None else max(self._dummy_H, int(input_shape[1]))
+        width_dim = self._dummy_W if input_shape[2] is None else max(self._dummy_W, int(input_shape[2]))
 
         dummy = tf.zeros(
             shape=(batch_dim, height_dim, width_dim, channel_dim),
             dtype=self.compute_dtype,
         )
-
         _ = self.call(dummy, training=False)
         super().build(input_shape)
-
-    # ----------------------------------------------------------------------
-    # Public helper methods
-    # ----------------------------------------------------------------------
-    def set_input_normalizer(self, layer: tf.keras.layers.Layer) -> None:
-        """
-        Attach an external input normalizer.
-
-        This is not part of the architecture reconstruction contract.
-        """
-        self.input_normalizer = layer
 
     # ----------------------------------------------------------------------
     # Utilities
     # ----------------------------------------------------------------------
     def _get_grid(self, x: tf.Tensor) -> tf.Tensor:
-        """
-        Generate [B, H, W, 2] grid with coordinates in [0, 1].
-        """
         shape = tf.shape(x)
         batch_size = shape[0]
         size_x = shape[1]
@@ -570,10 +354,6 @@ class FNO2(tf.keras.Model):
     # Forward pass
     # ----------------------------------------------------------------------
     def call(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
-        """
-        inputs:  [B, H, W, C_in]
-        returns: [B, H, W, 2*Nz]
-        """
         x = tf.cast(inputs, self.compute_dtype)
 
         if self.input_normalizer is not None:
@@ -584,47 +364,30 @@ class FNO2(tf.keras.Model):
             grid = self._get_grid(x)
             x = tf.concat([x, grid], axis=-1)
 
-        # Lift to hidden width
-        x = self.fc0(x)  # [B, H, W, width]
-
-        # Channels-last -> channels-first
-        x = tf.transpose(x, [0, 3, 1, 2])  # [B, width, H, W]
+        x = self.fc0(x)
+        x = tf.transpose(x, [0, 3, 1, 2])
 
         if self.padding > 0:
             x = tf.pad(
                 x,
-                paddings=[
-                    [0, 0],
-                    [0, 0],
-                    [0, self.padding],
-                    [0, self.padding],
-                ],
+                paddings=[[0, 0], [0, 0], [0, self.padding], [0, self.padding]],
             )
 
         height_pad = tf.shape(x)[2]
         width_pad = tf.shape(x)[3]
 
-        # Four Fourier blocks.
         for i, (spectral_conv, pointwise_conv) in enumerate(zip(self.convs, self.ws)):
             x1 = spectral_conv(x)
             x2 = pointwise_conv(x)
-
             if i < len(self.convs) - 1:
                 x = tf.nn.gelu(x1 + x2)
             else:
                 x = x1 + x2
 
         if self.padding > 0:
-            x = x[
-                :,
-                :,
-                : height_pad - self.padding,
-                : width_pad - self.padding,
-            ]
+            x = x[:, :, : height_pad - self.padding, : width_pad - self.padding]
 
-        # Channels-first -> channels-last
-        x = tf.transpose(x, [0, 2, 3, 1])  # [B, H, W, width]
-
+        x = tf.transpose(x, [0, 2, 3, 1])
         x = self.fc1(x)
         x = tf.nn.gelu(x)
         x = self.fc2(x)
@@ -638,338 +401,3 @@ class FNO2(tf.keras.Model):
         config = super().get_config()
         config.update(self.resolved_params())
         return config
-
-# TensorFlow CNO2d — converted from the PyTorch CNO2d tutorial code
-# (ETH Zurich, AI in the Sciences and Engineering).
-#
-# Interface mirrors FNO2 / CNN: accepts [B, H, W, C_in] (channels-last),
-# uses cfg-based configuration, optional input_normalizer.
-#
-# Performance notes:
-#   - Channels-last (NHWC) throughout — no transpose overhead
-#   - All spatial sizes are Python ints (static shapes for XLA)
-#   - Layer collections stored as named Keras-tracked attributes
-#   - Bilinear resize for XLA compatibility
-#   - No BatchNorm / no training flag — matches FNO2 usage
-
-import tensorflow as tf
-import numpy as np
-
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-def _ceil_to_multiple(n, divisor):
-    """Round *n* up to the nearest multiple of *divisor*."""
-    return int(np.ceil(n / divisor) * divisor)
-
-
-# =============================================================================
-# Bandlimited activation: upsample 2x -> LeakyReLU -> resample
-# =============================================================================
-
-class CNOActivation(tf.keras.layers.Layer):
-
-    def __init__(self, in_h, in_w, out_h, out_w, **kwargs):
-        super().__init__(**kwargs)
-        self._up_size = [2 * int(in_h), 2 * int(in_w)]
-        self._out_size = [int(out_h), int(out_w)]
-
-    def call(self, x):
-        x = tf.image.resize(x, self._up_size, method="bilinear")
-        x = tf.nn.leaky_relu(x)
-        x = tf.image.resize(x, self._out_size, method="bilinear")
-        return x
-
-
-# =============================================================================
-# CNOBlock:  Conv2D -> CNOActivation
-# =============================================================================
-
-class CNOBlock(tf.keras.layers.Layer):
-
-    def __init__(self, out_channels, in_h, in_w, out_h, out_w, **kwargs):
-        super().__init__(**kwargs)
-        self.convolution = tf.keras.layers.Conv2D(
-            int(out_channels), kernel_size=3, padding="same",
-            dtype=self.compute_dtype,
-        )
-        self.act = CNOActivation(in_h, in_w, out_h, out_w)
-
-    def call(self, x):
-        return self.act(self.convolution(x))
-
-
-# =============================================================================
-# LiftProjectBlock:  CNOBlock -> Conv2D
-# =============================================================================
-
-class LiftProjectBlock(tf.keras.layers.Layer):
-
-    def __init__(self, out_channels, size_h, size_w,
-                 latent_dim=64, **kwargs):
-        super().__init__(**kwargs)
-        self.inter_block = CNOBlock(
-            out_channels=latent_dim,
-            in_h=size_h, in_w=size_w, out_h=size_h, out_w=size_w,
-        )
-        self.convolution = tf.keras.layers.Conv2D(
-            int(out_channels), kernel_size=3, padding="same",
-            dtype=self.compute_dtype,
-        )
-
-    def call(self, x):
-        return self.convolution(self.inter_block(x))
-
-
-# =============================================================================
-# ResidualBlock:  Conv -> Activation -> Conv + skip
-# =============================================================================
-
-class ResidualBlock(tf.keras.layers.Layer):
-
-    def __init__(self, channels, size_h, size_w, **kwargs):
-        super().__init__(**kwargs)
-        ch = int(channels)
-        self.convolution1 = tf.keras.layers.Conv2D(
-            ch, kernel_size=3, padding="same", dtype=self.compute_dtype,
-        )
-        self.convolution2 = tf.keras.layers.Conv2D(
-            ch, kernel_size=3, padding="same", dtype=self.compute_dtype,
-        )
-        self.act = CNOActivation(size_h, size_w, size_h, size_w)
-
-    def call(self, x):
-        out = self.act(self.convolution1(x))
-        out = self.convolution2(out)
-        return x + out
-
-
-# =============================================================================
-# ResNet:  stack of ResidualBlocks
-# =============================================================================
-
-class ResNet(tf.keras.layers.Layer):
-
-    def __init__(self, channels, size_h, size_w, num_blocks, **kwargs):
-        super().__init__(**kwargs)
-        self.blocks = [
-            ResidualBlock(channels, size_h, size_w)
-            for _ in range(int(num_blocks))
-        ]
-
-    def call(self, x):
-        for blk in self.blocks:
-            x = blk(x)
-        return x
-
-
-# =============================================================================
-# CNO2d
-# =============================================================================
-
-class CNO2d(tf.keras.Model):
-    """Continuous Neural Operator (2-D), TensorFlow / XLA-compatible.
-
-    Parameters from ``cfg`` (Hydra / OmegaConf):
-        cfg.processes.iceflow.unified.network.N_layers           (default 3)
-        cfg.processes.iceflow.unified.network.N_res              (default 4)
-        cfg.processes.iceflow.unified.network.N_res_neck         (default 4)
-        cfg.processes.iceflow.unified.network.channel_multiplier (default 16)
-
-    I/O convention (channels-last, same as FNO2 / CNN):
-        input  -> [B, H, W, C_in]
-        output -> [B, H, W, C_out]   (same H, W as input)
-    """
-
-    def __init__(
-        self, cfg, nb_inputs, nb_outputs, input_normalizer=None,
-        name="CNO2D", **kwargs,
-    ):
-        super().__init__(name=name, **kwargs)
-
-        cfg_unified = cfg.processes.iceflow.unified
-        cfg_numerics = cfg.processes.iceflow.numerics
-
-        N_layers = int(getattr(cfg_unified.network, "N_layers", 3))
-        N_res = int(getattr(cfg_unified.network, "N_res", 4))
-        N_res_neck = int(getattr(cfg_unified.network, "N_res_neck", 4))
-        channel_multiplier = int(getattr(cfg_unified.network, "channel_multiplier", 16))
-        use_grid = bool(getattr(cfg_unified.network, "use_grid", True))
-
-        Nz = cfg_numerics.Nz
-
-        self.N_layers = N_layers
-        self.lift_dim = channel_multiplier // 2
-        self.in_dim = int(nb_inputs)
-        self.out_dim = int(nb_outputs)
-        self.channel_multiplier = channel_multiplier
-        self.use_grid = use_grid
-        self.input_normalizer = input_normalizer
-
-        self._N_res = N_res
-        self._N_res_neck = N_res_neck
-        self._built_cno = False
-
-        # Channel evolution
-        encoder_features = [self.lift_dim]
-        for i in range(N_layers):
-            encoder_features.append(2 ** i * channel_multiplier)
-
-        decoder_features_in = list(encoder_features[1:])
-        decoder_features_in.reverse()
-        decoder_features_out = list(encoder_features[:-1])
-        decoder_features_out.reverse()
-        for i in range(1, N_layers):
-            decoder_features_in[i] = 2 * decoder_features_in[i]
-
-        self._encoder_features = encoder_features
-        self._decoder_features_in = decoder_features_in
-        self._decoder_features_out = decoder_features_out
-
-    # ------------------------------------------------------------------
-    def _build_cno_layers(self, H, W):
-        """Build all sublayers with static Python-int spatial sizes."""
-        N = self.N_layers
-        ef = self._encoder_features
-        dfo = self._decoder_features_out
-
-        eff_in = self.in_dim + (2 if self.use_grid else 0)
-
-        divisor = 2 ** N
-        pH = _ceil_to_multiple(H, divisor)
-        pW = _ceil_to_multiple(W, divisor)
-        self._padded_H = pH
-        self._padded_W = pW
-
-        enc_h = [pH // (2 ** i) for i in range(N + 1)]
-        enc_w = [pW // (2 ** i) for i in range(N + 1)]
-        dec_h = [pH // (2 ** (N - i)) for i in range(N + 1)]
-        dec_w = [pW // (2 ** (N - i)) for i in range(N + 1)]
-        self._enc_h = enc_h
-        self._enc_w = enc_w
-        self._dec_h = dec_h
-        self._dec_w = dec_w
-
-        # Lift & Project
-        self.lift = LiftProjectBlock(out_channels=ef[0], size_h=pH, size_w=pW)
-        self.project = LiftProjectBlock(
-            out_channels=self.out_dim, size_h=pH, size_w=pW,
-        )
-
-        # Encoder
-        for i in range(N):
-            setattr(self, f"enc_{i}", CNOBlock(
-                out_channels=ef[i + 1],
-                in_h=enc_h[i], in_w=enc_w[i],
-                out_h=enc_h[i + 1], out_w=enc_w[i + 1],
-            ))
-
-        # ED expansion
-        for i in range(N + 1):
-            setattr(self, f"ed_{i}", CNOBlock(
-                out_channels=ef[i],
-                in_h=enc_h[i], in_w=enc_w[i],
-                out_h=dec_h[N - i], out_w=dec_w[N - i],
-            ))
-
-        # Decoder
-        for i in range(N):
-            setattr(self, f"dec_{i}", CNOBlock(
-                out_channels=dfo[i],
-                in_h=dec_h[i], in_w=dec_w[i],
-                out_h=dec_h[i + 1], out_w=dec_w[i + 1],
-            ))
-
-        # ResNets
-        for l in range(N):
-            setattr(self, f"resnet_{l}", ResNet(
-                channels=ef[l], size_h=enc_h[l], size_w=enc_w[l],
-                num_blocks=self._N_res,
-            ))
-
-        self.resnet_neck = ResNet(
-            channels=ef[N], size_h=enc_h[N], size_w=enc_w[N],
-            num_blocks=self._N_res_neck,
-        )
-
-        self._built_cno = True
-
-        # Dummy pass to initialize weights
-        dummy = tf.zeros((1, pH, pW, eff_in), dtype=self.compute_dtype)
-        self._forward_body(dummy)
-
-    # ------------------------------------------------------------------
-    def _get_grid(self, x):
-        shape = tf.shape(x)
-        bsz, sx, sy = shape[0], shape[1], shape[2]
-        gx = tf.reshape(tf.cast(tf.linspace(0.0, 1.0, sx), x.dtype), [1, sx, 1, 1])
-        gx = tf.tile(gx, [bsz, 1, sy, 1])
-        gy = tf.reshape(tf.cast(tf.linspace(0.0, 1.0, sy), x.dtype), [1, 1, sy, 1])
-        gy = tf.tile(gy, [bsz, sx, 1, 1])
-        return tf.concat([gx, gy], axis=-1)
-
-    # ------------------------------------------------------------------
-    def _forward_body(self, x):
-        N = self.N_layers
-
-        x = self.lift(x)
-        skip = []
-
-        for i in range(N):
-            skip.append(getattr(self, f"resnet_{i}")(x))
-            x = getattr(self, f"enc_{i}")(x)
-
-        x = self.resnet_neck(x)
-
-        for i in range(N):
-            if i == 0:
-                x = getattr(self, f"ed_{N - i}")(x)
-            else:
-                x = tf.concat([x, getattr(self, f"ed_{N - i}")(skip[-i])],
-                              axis=-1)
-            x = getattr(self, f"dec_{i}")(x)
-
-        x = tf.concat([x, getattr(self, f"ed_0")(skip[0])], axis=-1)
-        x = self.project(x)
-
-        return x
-
-    # ------------------------------------------------------------------
-    def build(self, input_shape):
-        if self._built_cno:
-            super().build(input_shape)
-            return
-        shape = tf.TensorShape(input_shape)
-        H = int(shape[1]) if shape[1] is not None else 16
-        W = int(shape[2]) if shape[2] is not None else 16
-        self._build_cno_layers(H, W)
-        super().build(input_shape)
-
-    # ------------------------------------------------------------------
-    def call(self, inputs):
-        x = tf.cast(inputs, self.compute_dtype)
-
-        if self.input_normalizer is not None:
-            x = self.input_normalizer(x)
-
-        if self.use_grid:
-            x = tf.concat([x, self._get_grid(x)], axis=-1)
-
-        if not self._built_cno:
-            H = int(x.shape[1]) if x.shape[1] is not None else int(tf.shape(x)[1])
-            W = int(x.shape[2]) if x.shape[2] is not None else int(tf.shape(x)[2])
-            self._build_cno_layers(H, W)
-
-        orig_H = tf.shape(x)[1]
-        orig_W = tf.shape(x)[2]
-        pad_h = self._padded_H - orig_H
-        pad_w = self._padded_W - orig_W
-        x = tf.pad(x, [[0, 0], [0, pad_h], [0, pad_w], [0, 0]],
-                    mode="REFLECT")
-
-        x = self._forward_body(x)
-
-        x = x[:, :orig_H, :orig_W, :]
-        return x
