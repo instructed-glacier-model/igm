@@ -21,6 +21,21 @@ iceflow:
         u_ref: 1.0  # (m/yr)
         N_ref: 1.0
         q_exponent: 1.0  # effective-pressure exponent (1.0=linear Budd, 0.5=Tsai sublinear)
+      mohr_coulomb:
+        # tau_b = N * tan(phi) * (u_b / u_ref)^(1/m)
+        # Reads N from fieldin["effective_pressure"] (MPa).
+        # phi is from this block (no state field).
+        regu: 1.0e-10
+        exponent: 3.0
+        u_ref: 100.0   # (m/yr) — matches legacy enthalpy/till/friction.u_ref
+        phi: 30.0      # uniform friction angle (deg); used unless both bed_min and bed_max are finite
+        phi_min: 15.0  # friction angle at bed = bed_min
+        phi_max: 45.0  # friction angle at bed = bed_max
+        bed_min: .nan  # NaN disables bed-elevation interpolation -> uniform phi
+        bed_max: .nan
+        tauc_min: 1.0e-1     # MPa, floor on tau_c (legacy default 1e5 Pa = 0.1 MPa)
+        tauc_max: 1.0e+4     # MPa, ceiling on tau_c (legacy default 1e10 Pa = 1e4 MPa)
+        tauc_ice_free: 1.0   # MPa, HARD assignment in ice-free cells (legacy 1e6 Pa)
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
