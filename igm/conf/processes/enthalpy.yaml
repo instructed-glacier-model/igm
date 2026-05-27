@@ -18,24 +18,6 @@ enthalpy:
     beta: 7.9e-8
   surface:
     T_offset: 0.0
-  till:
-    friction:
-      phi: 30.0
-      phi_min: 15.0
-      phi_max: 45.0
-      bed_min: null
-      bed_max: null
-      tauc_min: 1.0e+5
-      tauc_max: 1.0e+10
-      tauc_ice_free: 1.0e+6
-      u_ref: 100.0
-    hydro:
-      h_water_till_max: 2.0
-      N_ref: 1000.0
-      e_ref: 0.69
-      C_c: 0.12
-      delta: 0.02
-      drainage_rate: 0.001
   drainage:
     water_density: 1000.0
     drain_ice_column: True

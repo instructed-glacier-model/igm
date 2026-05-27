@@ -11,8 +11,6 @@ from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
 from .temperature import compute_temperature, compute_pmp
-from .till.friction import compute_friction
-from .till.hydro import compute_hydro, update_hydro
 from .utils import checks, initialize_enthalpy_fields
 
 
@@ -29,20 +27,15 @@ def initialize(cfg: DictConfig, state: State) -> None:
     E_pmp, _ = compute_pmp(cfg, state)
 
     # Compute (T, omega) from E and publish on state for downstream
-    # consumers (e.g. the standalone `arrhenius` process module).
+    # consumers (e.g. the standalone `arrhenius` process module, the
+    # `effective_pressure` module with `vanpelt_bueler` mode, ...).
     T, omega = compute_temperature(cfg, state, E_pmp)
     state.T = T
     state.omega = omega
 
-    # Compute N (state.N)
-    compute_hydro(cfg, state)
-
-    # Compute phi, tauc, slidingco (state.tauc, state.phi)
-    compute_friction(cfg, state)
-
 
 def update(cfg: DictConfig, state: State) -> None:
-    """Update enthalpy and related fields."""
+    """Update enthalpy and derived (T, omega) fields."""
     if hasattr(state, "logger"):
         state.logger.info(f"Update ENTHALPY at time: {state.t.numpy()}")
 
@@ -67,12 +60,6 @@ def update(cfg: DictConfig, state: State) -> None:
     T, omega = compute_temperature(cfg, state, E_pmp)
     state.T = T
     state.omega = omega
-
-    # Effective pressure from till hydrology (state.h_water_till, state.N)
-    update_hydro(cfg, state)
-
-    # Till friction and yield stress (state.tauc, state.phi)
-    compute_friction(cfg, state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:
