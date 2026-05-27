@@ -28,6 +28,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 )
 from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
+from . import diagnostics as _diag
 
 
 class EmulatorParams(tf.experimental.ExtensionType):
@@ -99,7 +100,18 @@ def update_iceflow_emulator(
         batch_size = X.shape[1]
 
         bag = get_emulator_bag(state, nbit, lr, batch_size)
+
+        diag_ctx = _diag.before_retrain(
+            cfg, state, bag, X, state.iceflow.emulator_params,
+            initial=initial, warm_up=warm_up, nbit=nbit, lr=lr,
+        )
+
         state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+
+        _diag.after_retrain(
+            cfg, state, bag, X, state.iceflow.emulator_params,
+            diag_ctx, state.cost_emulator,
+        )
 
     update_iceflow_emulated(cfg, state)
 
@@ -252,6 +264,32 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
+
+    # Initialize diagnostics container (no-op unless enabled)
+    _diag.maybe_initialize(cfg, state)
+
+    # Pre-initialize ALL legacy Keras optimizer variables (iterations, per-
+    # variable slot variables such as Adam's m/v, and hyperparameters like
+    # learning_rate) in eager mode before update_emulator is ever traced as a
+    # tf.function.
+    #
+    # Background: the legacy optimizer creates these tf.Variables lazily on
+    # the first call to apply_gradients / learning_rate access.  When that
+    # first lazy creation happens *inside* a @tf.function trace, TF records
+    # the creation.  In a test suite the @tf.function trace cache is shared
+    # across tests; if a later test uses different grid shapes a retrace is
+    # needed, and TF disallows creating new tf.Variables during a retrace:
+    #   "tf.function only supports singleton tf.Variables created on the
+    #    first call."
+    # Driving a dummy zero-gradient step here, in eager mode, guarantees that
+    # every optimizer variable already exists before the first tf.function
+    # trace, so no variable is ever created inside the traced function.
+    # All architectures call self.build() in __init__, so trainable_variables
+    # is already populated at this point.
+    _zero_grads = [tf.zeros_like(v) for v in state.iceflow_model.trainable_variables]
+    state.opti_retrain.apply_gradients(
+        zip(_zero_grads, state.iceflow_model.trainable_variables)
+    )
 
     # Update the emulator and evaluate it once
     update_iceflow_emulator(cfg, state, initial=True)

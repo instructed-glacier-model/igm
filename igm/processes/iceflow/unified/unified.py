@@ -12,6 +12,7 @@ from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_icef
 from .solver import solve_iceflow
 from .utils import get_cost_fn
 from ..utils.data_preprocessing import fieldin_state_to_X, X_to_fieldin
+from igm.processes.iceflow.emulate import diagnostics as _diag
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
@@ -63,6 +64,9 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
             cfg_inputs=cfg_unified.inputs,
             normalization_method=cfg_unified.normalization.method,
         )
+
+    # Initialize diagnostics container (no-op unless enabled)
+    _diag.maybe_initialize(cfg, state)
 
     # Solve once
     solve_iceflow(cfg, state, init=True)

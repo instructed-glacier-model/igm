@@ -16,6 +16,7 @@ from igm.utils.math.precision import normalize_precision
 
 from ..mappings.normalizer import is_distribution_shifted
 from .patch_selection import select_patches
+from igm.processes.iceflow.emulate import diagnostics as _diag
 
 
 def get_status(
@@ -134,4 +135,11 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     # Optimize and save cost
     if do_solve:
 
+        if not hasattr(state, "diagnostics"):
+            _diag.maybe_initialize(cfg, state)
+
+        diag_ctx = _diag.before_retrain_unified(cfg, state, optimizer, inputs, status)
+
         state.cost = optimizer.minimize(inputs)
+
+        _diag.after_retrain_unified(cfg, state, optimizer, inputs, diag_ctx, state.cost)

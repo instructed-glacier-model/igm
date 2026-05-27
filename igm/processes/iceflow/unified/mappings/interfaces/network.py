@@ -52,6 +52,10 @@ class InterfaceNetwork(InterfaceMapping):
                     kwargs["backend"] = str(cfg_dahu.backend)
                 if hasattr(cfg_dahu, "features"):
                     kwargs["features"] = tuple(cfg_dahu.features)
+                if hasattr(cfg_dahu, "scramble_features"):
+                    kwargs["scramble_features"] = bool(cfg_dahu.scramble_features)
+                if hasattr(cfg_dahu, "scramble_seed"):
+                    kwargs["scramble_seed"] = int(cfg_dahu.scramble_seed)
 
             iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs, **kwargs)
 

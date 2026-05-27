@@ -71,6 +71,10 @@ iceflow:
     output_directory: ''
     plot_sol: False
     pertubate: false
+    diagnostics:
+      enabled: false
+      output_dir: ''
+      checkpoint_times: []
     network:
       architecture: cnn
       multiple_window_size: 0
@@ -104,6 +108,14 @@ iceflow:
     nbit_warmup: -1
     retrain_freq: 10
     retrain_threshold: 1.0e+10 # for now it corresponds to a z-score (1.0e+10 is default as its quite high and will default to the retrain_freq most likely)
+    diagnostics:
+      enabled: false
+      output_dir: ''
+      checkpoint_times: []
+      save_weights_path: ''
+      load_weights_path: ''
+      save_velocities_path: ''
+      load_velocities_path: ''
     newton:
       damping: 1e-6
     adam:
@@ -169,6 +181,8 @@ iceflow:
           dahunet:
             backend: "cnn"
             features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+            scramble_features: false
+            scramble_seed: 42
         physics_features:
           mode: grounded
       fl:
@@ -192,6 +206,8 @@ iceflow:
           dahunet:
             backend: "cnn"
             features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+            scramble_features: false
+            scramble_seed: 42
         physics_features:
           mode: floating
       stages:
@@ -237,6 +253,8 @@ iceflow:
       dahunet:
         backend: "cnn"                                      # "cnn" | "fno" | "mlp"
         features: [dsdx, dsdy, grad_s, u_sia, u_weertman]  # any subset of FEATURES keys
+        scramble_features: false
+        scramble_seed: 42
     adaptive_patching:
       strategy: none           # none | topk | nms | maxpool | tfnms
       max_retrain_patches: 10  # K: max patches per retraining step
