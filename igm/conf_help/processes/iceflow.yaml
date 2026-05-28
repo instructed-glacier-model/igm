@@ -57,7 +57,7 @@ physics:
         Units: m y^{-1}
       exponent:
         Type: float
-        Description: "Budd exponent."
+        Description: "Budd velocity exponent m (sliding stress ~ |u|^{1/m})."
         Units: dimless
       u_ref:
         Type: float
@@ -65,8 +65,12 @@ physics:
         Units: m y^{-1}
       N_ref:
         Type: float
-        Description: "Reference effective pressure for the Budd sliding law."
-        Units: dimless 
+        Description: "Reference effective pressure for the Budd sliding law (MPa, matching `state.effective_pressure`)."
+        Units: MPa
+      q_exponent:
+        Type: float
+        Description: "Effective-pressure exponent q in the generalised power law (sliding stress ~ N^q). 1.0 recovers the linear Budd law; 0.5 gives the Tsai-style sublinear N-dependence."
+        Units: dimless
   gravity_cst:
     Type: float
     Description: "Gravitational constant."

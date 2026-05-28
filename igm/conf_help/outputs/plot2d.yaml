@@ -9,7 +9,7 @@ live:
 particles:
   Type: boolean
   Units: dimless
-  Description: "Display particles is True, does not display if False."
+  Description: "Display particles if True."
 var:
   Type: string
   Units: dimless

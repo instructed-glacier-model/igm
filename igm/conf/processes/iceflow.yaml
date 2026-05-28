@@ -20,6 +20,7 @@ iceflow:
         exponent: 3.0
         u_ref: 1.0  # (m/yr)
         N_ref: 1.0
+        q_exponent: 1.0  # effective-pressure exponent (1.0=linear Budd, 0.5=Tsai sublinear)
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
@@ -170,12 +171,6 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: CNN
-    adaptive_patching:
-      strategy: none           # none | topk | nms | maxpool | tfnms
-      max_retrain_patches: 10  # K: max patches per retraining step
-      min_dhdt: 0.1            # threshold (m/yr): skip patches below this
-      forgetting_prevention: true  # add 1 random ice-covered patch
-      scoring: max             # max | mean — reduction within each patch
     data_preparation:
       framesizemax: 1000
       patches_per_batch: 1

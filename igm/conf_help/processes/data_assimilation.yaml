@@ -1,3 +1,7 @@
+store_freq:
+  Type: integer
+  Description: "Frequency (in iterations) at which the combined DA mapping stores in-memory snapshots of the optimization variable fields (0 = disabled)."
+  Units: dimless
 control_list:
   Type: list
   Description: "List of optimized variables for the optimization."
@@ -5,6 +9,14 @@ control_list:
 cost_list:
   Type: list
   Description: "List of cost components for the optimization."
+  Units: dimless
+variables:
+  Type: list
+  Description: "List of variable specifications (name, transform, and optional bounds) defining which fields are jointly optimized by the combined data assimilation mapping."
+  Units: dimless
+optimizer:
+  Type: string
+  Description: "Reserved field for optimizer selection at the top level; currently not read by the code — the active method is set by `optimization.method`."
   Units: dimless
 optimization:
   nbitmin:
@@ -29,7 +41,7 @@ optimization:
     Units: dimless
   sole_mask:
     Type: boolean
-    Description: "sole_mask."
+    Description: "Restrict gradient updates to the ice-covered area only, preventing changes to controls outside the glacier mask."
     Units: dimless
   retrain_iceflow_model:
     Type: boolean
@@ -59,10 +71,42 @@ optimization:
     Type: boolean
     Description: "Perturbate the emulator for training to get better gradients estimates along controls to be optimized"
     Units: dimless
+  nb_relaxation_steps:
+    Type: integer
+    Description: "Number of forward ice dynamics relaxation steps applied after the final optimization iteration to refine the ice geometry solution."
+    Units: dimless
+  patience:
+    Type: integer
+    Description: "Window size (in iterations) for rolling-average early stopping: halts if the recent velsurf cost average exceeds 1.1x the historical best over this window (0 = disabled)."
+    Units: dimless
 regularization:
   thk:
     Type: float
     Description: "Regularization weight for the ice thickness in the optimization."
+    Units: dimless
+  thk_version:
+    Type: integer
+    Description: "Ice thickness regularization scheme: 1 = gradient-only (v1), 2 = combined gradient + second-derivative (v2)."
+    Units: dimless
+  thk_2nd_der:
+    Type: float
+    Description: "Weight for the second-derivative (smoothness) term in the ice thickness regularization."
+    Units: dimless
+  thk_1st_der:
+    Type: float
+    Description: "Weight for the first-derivative (gradient) term in the ice thickness regularization."
+    Units: dimless
+  thk_1st_der_disc_version:
+    Type: string
+    Description: "Discretization scheme for the first-derivative regularization term (e.g., `new` or `old`)."
+    Units: dimless
+  abl_acc_balance:
+    Type: float
+    Description: "Asymmetry factor for second-derivative regularization: accumulation zone is weighted by this value and ablation zone by its inverse; 1 = uniform weighting."
+    Units: dimless
+  smooth_anisotropy_var:
+    Type: string
+    Description: "Variable used to define the anisotropy direction for smoothing regularization (e.g., `vel`)."
     Units: dimless
   slidingco:
     Type: float
@@ -113,13 +157,17 @@ fitting:
     Type: float
     Description: "Confidence/STD of the flux divergence as input data for the optimization (if 0, divfluxobs_std field must be given)"
     Units: TBD
+  volobsprop_std:
+    Type: float
+    Description: "Proportional standard deviation of the target volume observation; scales the volume misfit cost term relative to the target volume (lower = stronger constraint)."
+    Units: dimless
   uniformize_thkobs:
     Type: boolean
     Description: "uniformize the density of thkobs."
     Units: dimless
   include_low_speed_term:
     Type: boolean
-    Description: "opti_include_low_speed_term."
+    Description: "Add a cost term that penalizes unrealistically low surface velocities in glacierized areas."
     Units: dimless
   velsurfobs_thr:
     Type: float
@@ -162,23 +210,23 @@ output:
     Units: dimless
   plot2d_live:
     Type: boolean
-    Description: "plot2d_live_inversion."
+    Description: "Show 2D inversion plots live during optimization."
     Units: dimless
   plot2d:
     Type: boolean
-    Description: "plot 2d inversion."
+    Description: "Save 2D inversion plots at each output step."
     Units: dimless
   save_result_in_ncdf:
     Type: file path
-    Description: "Geology input fil."
+    Description: "Name of the NetCDF file in which the optimized fields are saved."
     Units: dimless
   save_iterat_in_ncdf:
     Type: boolean
-    Description: "Sve the iterations in a ncdf file."
+    Description: "Save each optimization iteration to a NetCDF file for post-processing."
     Units: dimless
   editor_plot2d:
     Type: string
-    Description: "optimized for VS code (vs) or spyder (sp) for live plot."
+    Description: "Optimized for VS Code (`vs`) or Spyder (`sp`) for live plotting."
     Units: dimless
   vars_to_save:
     Type: list

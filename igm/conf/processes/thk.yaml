@@ -1,5 +1,27 @@
 thk:
-  slope_type: superbee
-  ratio_density: 0.910
-  default_sealevel: 0.0
 
+  slope_type: superbee                 # limiter used in stock mode (calving_front: false)
+  ratio_density: 0.910                 # rho_ice / rho_water for flotation
+
+  calving_front: false                 # true -> enable method below; false -> plain thk
+  method: sub_grid                     # sub_grid (Albrecht/PISM) | level_set 
+
+  front_slope_type: godunov            # limiter at the front band; godunov avoids pile-up
+  interior_slope_type: superbee        # limiter in deep bulk; equal to front disables hybrid
+  only_marine: true                    # restrict calving to cells with topg < water_level
+  extend_halo: 2                       # iceflow-facing thk padding width; 0 = partial cells only
+  extend_thresh: 0.95                  # halo cells below interior_mean*thresh get padded
+
+  sub_grid:
+    href_cap_factor: 2.0               # Href cap = factor * H_threshold (kills cold-start bursts)
+    promote_iters: 5                   # passes of partial-cell -> full promotion per outer step
+    calve_cliff: true                  # drain thk at front full cells -> actual retreat mechanism
+
+  level_set:                           # Bondzio 2016 / ISSM
+    only_near_front: false             # Gaussian-damp calving forcing away from psi=0
+    band_cells: 3                      # width of that Gaussian, in cells
+    reinit_freq: 5                     # Sussman reinit every N outer steps (0 = never)
+    reinit_iter: 5                     # pseudo-time iterations per reinit
+    reinit_iter_initial: 50            # iterations for the initial psi build from +/-dx mask
+    phi_eps: 1.0e-3                    # floor on phi when recovering thk = M / phi
+    cap_partial: false                 # clip partial-cell thk to interior mean (lossy)

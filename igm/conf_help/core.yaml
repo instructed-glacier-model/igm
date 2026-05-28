@@ -1,78 +1,86 @@
 url_data:
   Type: string
-  Description: "Url supplied to download .nc data files."
+  Description: "URL from which to download `.nc` data files automatically."
   Units: dimless
 folder_data:
   Type: string
-  Description: "Folder that holds the data for default IGM downloading."
+  Description: "Local folder that holds input data downloaded or used by IGM."
   Units: dimless
 logging_file:
   Type: string
-  Description: ''
+  Description: "Path to a file for logging output. Leave empty to log to stdout only."
   Units: dimless
 logging:
   Type: boolean
-  Description: "false"
+  Description: "Enable file-based logging."
   Units: dimless
-logging_level:
+tf_logging_level:
   Type: string
-  Description: "30"
+  Description: "TensorFlow logging verbosity level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)."
+  Units: dimless
+igm_logging_level:
+  Type: string
+  Description: "IGM logging verbosity level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)."
   Units: dimless
 hardware:
   gpu_info:
     Type: boolean
-    Description: "true"
+    Description: "Print GPU information at startup."
     Units: dimless
   visible_gpus:
     Type: list
-    Description: "visible gpus."
+    Description: "List of GPU device indices made visible to IGM. Only one GPU is used at a time."
     Units: dimless
   strategy:
     Type: string
-    Description: "strategy."
+    Description: "TensorFlow distribution strategy (`none`, `mirrored`, etc.)."
+    Units: dimless
+  profile:
+    Type: boolean
+    Description: "Enable TensorFlow profiling for performance analysis."
     Units: dimless
 print_params:
   Type: boolean
-  Description: "true"
+  Description: "Print the full resolved parameter configuration at startup."
   Units: dimless
 print_comp:
   Type: boolean
-  Description: "Print information related to computational performances."
+  Description: "Print computational performance information (timing, throughput)."
   Units: dimless
 print_info:
   Type: boolean
-  Description: "Print live information when the model is running."
+  Description: "Print live simulation progress (time, time step, ice volume)."
   Units: dimless
 print_imported_modules:
   Type: boolean
-  Description: "Print imported modules."
+  Description: "Print the list of imported modules at startup."
   Units: dimless
 check_compat_params:
   Type: boolean
-  Description: "Check compatibility btween default pasm name and user-defined one to check for typos, ect."
+  Description: "Check that user-defined parameter names match known defaults, catching typos early."
   Units: dimless
 structure:
   root_foldername:
     Type: string
-    Description: "user."
+    Description: "Root folder for custom modules, relative to the working directory."
     Units: dimless
   conf_foldername:
     Type: string
-    Description: "conf."
+    Description: "Sub-folder inside the root folder containing Hydra configuration stubs."
     Units: dimless
   code_foldername:
     Type: string
-    Description: "code."
+    Description: "Sub-folder inside the root folder containing Python module source files."
     Units: dimless
   input_modules_foldername:
     Type: string
-    Description: "inputs."
+    Description: "Sub-folder name for custom input modules."
     Units: dimless
   process_modules_foldername:
     Type: string
-    Description: "processes."
+    Description: "Sub-folder name for custom process modules."
     Units: dimless
   output_modules_foldername:
     Type: string
-    Description: "outputs."
+    Description: "Sub-folder name for custom output modules."
     Units: dimless

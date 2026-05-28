@@ -1,0 +1,87 @@
+time_relaxation:
+
+  # ------------------------------------------------------------------ #
+  # Forward dynamics                                                   #
+  # ------------------------------------------------------------------ #
+  # Any igm.processes.<name> exposing initialize(cfg,state)+update(cfg,state).
+  forward_model: iceflow
+
+  # ------------------------------------------------------------------ #
+  # Auxiliary process modules called once per outer iteration          #
+  # ------------------------------------------------------------------ #
+  # Two slots, both optional, run in a fixed order:
+  #   pre_processes   — before forward_model.update; for modules that
+  #                     produce fields the forward model consumes
+  #                     (e.g. effective_pressure → state.effective_pressure
+  #                     used by Budd / Coulomb sliding).
+  #   post_processes  — after advance_time and after steps; for modules
+  #                     that consume the just-written controls and use
+  #                     the save-aligned state.dt (e.g. thk for
+  #                     mass-conservation when steps wrote smb).
+  pre_processes:  []
+  post_processes: []
+
+  # ------------------------------------------------------------------ #
+  # Time loop                                                          #
+  # ------------------------------------------------------------------ #
+  time:
+    start: 0.0
+    end:   100.0
+    step:  1.0     # max dt; CFL-limited iff any step writes a geometry control
+    save:  10.0
+    cfl:   0.3
+
+  # ------------------------------------------------------------------ #
+  # Inversion steps                                                    #
+  # ------------------------------------------------------------------ #
+  # Each step is an independent (residual, update, control) triple;
+  # an empty list disables inversion entirely (pure forward run).
+  #
+  # Schema for one entry — every key except `name`, `residual`, `update`,
+  # `control` is optional:
+  #
+  #   - name: <label>
+  #     residual:
+  #       kind:    linear | relative | log_ratio
+  #       target:  <state attribute>          # e.g. usurf_obs, amb, velsurf_magobs
+  #       current: <state attribute>          # e.g. usurf, divflux, velsurf_mag
+  #       eps:     1.0e-3                     # only used by relative / log_ratio
+  #     update:
+  #       kind:    additive | multiplicative | multiplicative_linear | replace
+  #       alpha:   <number>                   # rate (per_step) or per-application gain
+  #       r_max:   <number>                   # optional residual clip (|r| ≤ r_max)
+  #       apply:   per_step | per_application # default: per_application iff cadence > 0
+  #                                           #   per_step:        ΔC uses dt = state.dt
+  #                                           #   per_application: ΔC uses dt = 1.0
+  #     control:
+  #       field:        smb | slidingco | topg | thk | usurf | ...
+  #       bounds:       [lo, hi]              # optional scalar clip
+  #       floor_at:     <state attr>          # per-pixel max(new_C, state.<attr>)
+  #                                           #   e.g. floor_at: topg enforces usurf>=topg
+  #       ceil_at:      <state attr>          # per-pixel min(new_C, state.<attr>)
+  #       outside_mask: <number>              # optional fill C := value where mask is false
+  #     mask:      <state attr> | null        # null = no mask
+  #     cadence:   0.0                        # 0 = every iteration
+  #     start_time: -1.0e+30
+  #     end_time:    1.0e+30
+  #     smoother:
+  #       sigma:      0.0                     # 0 disables
+  #       mask_aware: true
+  #     geometry_policy:    none | recompute_usurf | recompute_topg
+  #     shares_residual_with: <other step name>
+  #
+  # Update-law math (with t = dt_eff):
+  #   additive               C ← C + α · r · t
+  #   multiplicative         C ← C · exp(α · r · t)              (exact ODE)
+  #   multiplicative_linear  C ← C · (1 + α · r · t)             (Pollard-style)
+  #   replace                C ← α · r                            (absolute write)
+  #
+  steps: []
+
+  # ------------------------------------------------------------------ #
+  # Diagnostics                                                        #
+  # ------------------------------------------------------------------ #
+  outputs:
+    misfits:
+      path: ""        # empty disables CSV logging
+      track: []       # entries: [{step: <name>, kind: rmse | mae}]

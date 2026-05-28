@@ -45,3 +45,12 @@ icemask:
     Type: boolean
     Units: dimless
     Description: "Invert the ice mask."
+water_level:
+  include:
+    Type: boolean
+    Units: dimless
+    Description: "Create a uniform 2D `state.water_level` field. Only applied if `water_level` is not already loaded from the input data. Required by the iceflow `floating` energy component for marine / tidewater setups."
+  value:
+    Type: float
+    Units: m
+    Description: "Value (in metres) used to fill the uniform `water_level` field when `include: True`."
