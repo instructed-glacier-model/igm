@@ -33,6 +33,11 @@ from datetime import datetime
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
+    # Reject pre-step-2 parameter names before doing any work, so the user
+    # sees a clear migration message rather than a downstream Hydra error.
+    from igm.common.legacy import check_legacy_keys
+    check_legacy_keys(cfg)
+
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
