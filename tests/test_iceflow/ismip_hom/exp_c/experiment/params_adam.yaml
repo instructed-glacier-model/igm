@@ -20,8 +20,7 @@ processes:
       energy_components: [viscosity, gravity, sliding]
       sliding:
         law: weertman
-        weertman:
-          exponent: 1.0
+        exponent: 1.0
     unified:
       bcs: [periodic_ns, periodic_we]
       optimizer: adam

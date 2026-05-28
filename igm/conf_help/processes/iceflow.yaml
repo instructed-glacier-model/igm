@@ -20,57 +20,70 @@ physics:
       Type: boolean
       Description: "If True, zero out basal shear stress in floating areas."
       Units: dimless
-    weertman:
-      regu:
-        Type: float
-        Description: "Regularization parameter for velocity magnitude."
-        Units: m y^{-1}
-      exponent:
-        Type: float
-        Description: "Weertman exponent."
-        Units: dimless
-      u_ref:
-        Type: float
-        Description: "Reference velocity for the Weertman sliding law."
-        Units: m y^{-1}
-    coulomb:
-      regu:
-        Type: float
-        Description: "Regularization parameter for velocity magnitude."
-        Units: m y^{-1}
-      exponent:
-        Type: float
-        Description: "Coulomb exponent."
-        Units: dimless
-      u_ref:
-        Type: float
-        Description: "Reference velocity for the Coulomb sliding law."
-        Units: m y^{-1}
-      mu:
-        Type: float
-        Description: "Till coefficient."
-        Units: dimless
-    budd:
-      regu:
-        Type: float
-        Description: "Regularization parameter for velocity magnitude."
-        Units: m y^{-1}
-      exponent:
-        Type: float
-        Description: "Budd velocity exponent m (sliding stress ~ |u|^{1/m})."
-        Units: dimless
-      u_ref:
-        Type: float
-        Description: "Reference velocity for the Budd sliding law."
-        Units: m y^{-1}
-      N_ref:
-        Type: float
-        Description: "Reference effective pressure for the Budd sliding law (MPa, matching `state.effective_pressure`)."
-        Units: MPa
-      q_exponent:
-        Type: float
-        Description: "Effective-pressure exponent q in the generalised power law (sliding stress ~ N^q). 1.0 recovers the linear Budd law; 0.5 gives the Tsai-style sublinear N-dependence."
-        Units: dimless
+    slidingco:
+      Type: float
+      Description: "Initial value for the reference basal shear stress (legacy stack: emulated/solved/diagnostic + data_assimilation; the field is named state.slidingco). Numerically equal to sliding.tau_ref."
+      Units: MPa
+    tau_ref:
+      Type: float
+      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
+      Units: MPa
+    regularization:
+      Type: float
+      Description: "Regularization parameter for velocity magnitude (all laws)."
+      Units: m y^{-1}
+    exponent:
+      Type: float
+      Description: "Sliding-law velocity exponent m (sliding stress ~ |u|^{1/m}). Applies to all laws."
+      Units: dimless
+    u_ref:
+      Type: float
+      Description: "Reference velocity (all laws). For mohr_coulomb, the legacy default is 100 m/yr; the other laws use 1 m/yr."
+      Units: m y^{-1}
+    N_ref:
+      Type: float
+      Description: "Reference effective pressure (budd only; MPa, matching state.effective_pressure)."
+      Units: MPa
+    mu:
+      Type: float
+      Description: "Till coefficient (coulomb only)."
+      Units: dimless
+    q_exponent:
+      Type: float
+      Description: "Effective-pressure exponent q (budd only). 1.0 recovers linear Budd, 0.5 gives Tsai sublinear."
+      Units: dimless
+    phi:
+      Type: float
+      Description: "Uniform friction angle (mohr_coulomb only). Used unless both bed_min and bed_max are finite."
+      Units: deg
+    phi_min:
+      Type: float
+      Description: "Friction angle at bed = bed_min (mohr_coulomb only)."
+      Units: deg
+    phi_max:
+      Type: float
+      Description: "Friction angle at bed = bed_max (mohr_coulomb only)."
+      Units: deg
+    bed_min:
+      Type: float
+      Description: "Lower bed elevation for friction-angle interpolation (mohr_coulomb only); NaN disables interpolation."
+      Units: m
+    bed_max:
+      Type: float
+      Description: "Upper bed elevation for friction-angle interpolation (mohr_coulomb only); NaN disables interpolation."
+      Units: m
+    tauc_min:
+      Type: float
+      Description: "Floor on tau_c after clipping (mohr_coulomb only)."
+      Units: MPa
+    tauc_max:
+      Type: float
+      Description: "Ceiling on tau_c after clipping (mohr_coulomb only)."
+      Units: MPa
+    tauc_ice_free:
+      Type: float
+      Description: "Hard tau_c assignment in ice-free cells (mohr_coulomb only)."
+      Units: MPa
   gravity_cst:
     Type: float
     Description: "Gravitational constant."
@@ -83,14 +96,6 @@ physics:
     Type: float
     Description: "Density of water."
     Units: kg m^{-3}
-  init_slidingco:
-    Type: float
-    Description: "Initial value for the reference basal shear stress (legacy stack: emulated/solved/diagnostic + data_assimilation; the field is named state.slidingco). Numerically equal to init_tau_ref."
-    Units: MPa
-  init_tau_ref:
-    Type: float
-    Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to init_slidingco."
-    Units: MPa
   viscosity:
     arrhenius:
       Type: float

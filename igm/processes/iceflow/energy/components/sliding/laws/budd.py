@@ -23,7 +23,7 @@ from ._power_law import power_law_cost
 class BuddParams(tf.experimental.ExtensionType):
     """Parameters for Budd sliding law."""
 
-    regu: float
+    regularization: float
     exponent: float
     u_ref: float  # (m/yr)
     N_ref: float
@@ -77,7 +77,7 @@ def cost_budd(
 
     dtype = U.dtype
     m = tf.cast(budd_params.exponent, dtype)
-    u_regu = tf.cast(budd_params.regu, dtype)
+    u_regu = tf.cast(budd_params.regularization, dtype)
     u_ref = tf.cast(budd_params.u_ref, dtype)
     N_ref = tf.cast(budd_params.N_ref, dtype)
     q = tf.cast(budd_params.q_exponent, dtype)

@@ -175,14 +175,14 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     cfg_physics = cfg.processes.iceflow.physics
     law = cfg_physics.sliding.law
 
+    cfg_sl = cfg_physics.sliding
     if law == "weertman":
-        m = cfg_physics.sliding.weertman.exponent
-        u_regu = cfg_physics.sliding.weertman.regu
+        m = cfg_sl.exponent
+        u_regu = cfg_sl.regularization
         C = get_tau_ref(state)
     elif law == "mohr_coulomb":
-        cfg_mc = cfg_physics.sliding.mohr_coulomb
-        m = cfg_mc.exponent
-        u_regu = cfg_mc.regu
+        m = cfg_sl.exponent
+        u_regu = cfg_sl.regularization
         # Build effective Weertman-style C from N * tan(phi) * u_ref^(-1/m)
         # so the existing compute_friction_heat_tf kernel (which assumes the
         # tau_b = C * u_b^(1/m) form) produces the right dissipation.
@@ -191,28 +191,28 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
             MohrCoulombParams,
         )
         params = MohrCoulombParams(
-            regu=cfg_mc.regu,
-            exponent=cfg_mc.exponent,
-            u_ref=cfg_mc.u_ref,
-            phi=cfg_mc.phi,
-            phi_min=cfg_mc.phi_min,
-            phi_max=cfg_mc.phi_max,
-            bed_min=cfg_mc.bed_min,
-            bed_max=cfg_mc.bed_max,
-            tauc_min=cfg_mc.tauc_min,
-            tauc_max=cfg_mc.tauc_max,
-            tauc_ice_free=cfg_mc.tauc_ice_free,
+            regularization=cfg_sl.regularization,
+            exponent=cfg_sl.exponent,
+            u_ref=cfg_sl.u_ref,
+            phi=cfg_sl.phi,
+            phi_min=cfg_sl.phi_min,
+            phi_max=cfg_sl.phi_max,
+            bed_min=cfg_sl.bed_min,
+            bed_max=cfg_sl.bed_max,
+            tauc_min=cfg_sl.tauc_min,
+            tauc_max=cfg_sl.tauc_max,
+            tauc_ice_free=cfg_sl.tauc_ice_free,
             rho_ratio=cfg_physics.water_density / cfg_physics.ice_density,
-            use_mask_gr=cfg_physics.sliding.use_mask_gr,
+            use_mask_gr=cfg_sl.use_mask_gr,
         )
         topg = state.usurf - state.thk
         phi = _mc_compute_phi(topg, params)
         tan_phi = tf.math.tan(phi * tf.constant(3.14159265358979 / 180.0, dtype=phi.dtype))
         tauc = state.effective_pressure * tan_phi
         # Match the sliding law's ordering: ice-free hard assign before clip.
-        tauc = tf.where(state.thk > 0.0, tauc, cfg_mc.tauc_ice_free)
-        tauc = tf.clip_by_value(tauc, cfg_mc.tauc_min, cfg_mc.tauc_max)
-        C = tauc * tf.pow(tf.cast(cfg_mc.u_ref, tauc.dtype), -1.0 / m)
+        tauc = tf.where(state.thk > 0.0, tauc, cfg_sl.tauc_ice_free)
+        tauc = tf.clip_by_value(tauc, cfg_sl.tauc_min, cfg_sl.tauc_max)
+        C = tauc * tf.pow(tf.cast(cfg_sl.u_ref, tauc.dtype), -1.0 / m)
     else:
         raise ValueError(
             f"compute_friction_heat: unsupported sliding law '{law}' "

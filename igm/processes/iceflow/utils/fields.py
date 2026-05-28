@@ -14,8 +14,9 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
 
     Basal-friction field: the legacy stack (emulated/solved/diagnostic
     + data_assimilation) uses `state.slidingco` initialised from
-    `init_slidingco`; the new stack (unified + data_assimilation_SR +
-    pretraining) uses `state.tau_ref` initialised from `init_tau_ref`.
+    `cfg.processes.iceflow.physics.sliding.slidingco`; the new stack
+    (unified + data_assimilation_SR + pretraining) uses `state.tau_ref`
+    initialised from `cfg.processes.iceflow.physics.sliding.tau_ref`.
     Cross-stack readers use `igm.common.fields.get_tau_ref(state)`.
     """
 
@@ -33,10 +34,10 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
     method = cfg.processes.iceflow.method.lower()
     if method == "unified":
         if not hasattr(state, "tau_ref"):
-            state.tau_ref = tf.ones(shape_2d) * cfg_physics.init_tau_ref
+            state.tau_ref = tf.ones(shape_2d) * cfg_physics.sliding.tau_ref
     else:
         if not hasattr(state, "slidingco"):
-            state.slidingco = tf.ones(shape_2d) * cfg_physics.init_slidingco
+            state.slidingco = tf.ones(shape_2d) * cfg_physics.sliding.slidingco
 
     if not hasattr(state, "U"):
         state.U = tf.zeros(shape_3d)

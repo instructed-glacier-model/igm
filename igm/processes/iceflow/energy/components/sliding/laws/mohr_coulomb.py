@@ -40,7 +40,7 @@ from igm.processes.iceflow.vertical import VerticalDiscr
 class MohrCoulombParams(tf.experimental.ExtensionType):
     """Parameters for the Mohr-Coulomb sliding law."""
 
-    regu: float
+    regularization: float
     exponent: float
     u_ref: float          # (m/yr)
     phi: float            # uniform friction angle (deg); used unless bed_min/bed_max are both set
@@ -105,7 +105,7 @@ def cost_mohr_coulomb(
     dtype = U.dtype
 
     m = tf.cast(params.exponent, dtype)
-    u_regu = tf.cast(params.regu, dtype)
+    u_regu = tf.cast(params.regularization, dtype)
     u_ref = tf.cast(params.u_ref, dtype)
     rho_ratio = tf.cast(params.rho_ratio, dtype)
     use_mask_gr = tf.cast(params.use_mask_gr, tf.bool)

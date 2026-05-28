@@ -21,8 +21,7 @@ processes:
       energy_components: [viscosity, gravity, sliding]
       sliding:
         law: weertman
-        weertman:
-          exponent: 1.0
+        exponent: 1.0
     unified:
       data_preparation:
         noise_type: none
