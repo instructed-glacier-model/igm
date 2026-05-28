@@ -42,8 +42,12 @@ def initialize(cfg, state):
     state.var_info_ncdf_ex["dtopgdt"] = ["Erosion rate", "m/y"]
     state.var_info_ncdf_ex["arrhenius"] = ["Arrhenius factor", "MPa$^{-3}$ a$^{-1}$"]
     state.var_info_ncdf_ex["slidingco"] = [
-        "Sliding Coefficient",
-        "km MPa$^{-3}$ a$^{-1}$",
+        "Reference basal shear stress (legacy stack)",
+        "MPa",
+    ]
+    state.var_info_ncdf_ex["tau_ref"] = [
+        "Reference basal shear stress",
+        "MPa",
     ]
     state.var_info_ncdf_ex["meantemp"] = ["Mean anual surface temperatures", "°C"]
     state.var_info_ncdf_ex["meanprec"] = [

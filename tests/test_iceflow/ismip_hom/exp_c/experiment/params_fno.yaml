@@ -69,4 +69,4 @@ processes:
 outputs:
   write_ncdf:
     output_file: results.nc
-    vars_to_save: [topg, usurf, thk, velbar_mag, velsurf_mag, velbase_mag, slidingco]
+    vars_to_save: [topg, usurf, thk, velbar_mag, velsurf_mag, velbase_mag, tau_ref]
