@@ -85,8 +85,12 @@ physics:
     Units: kg m^{-3}
   init_slidingco:
     Type: float
-    Description: "Initial value for the sliding coefficient."
-    Units: MPa y^{m} m^{-m}
+    Description: "Initial value for the reference basal shear stress (legacy stack: emulated/solved/diagnostic + data_assimilation; the field is named state.slidingco). Numerically equal to init_tau_ref."
+    Units: MPa
+  init_tau_ref:
+    Type: float
+    Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to init_slidingco."
+    Units: MPa
   init_arrhenius:
     Type: float
     Description: "Initial value for the Arrhenius factor in Glen's flow law."

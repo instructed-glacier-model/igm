@@ -10,7 +10,14 @@ from igm.common import State
 
 
 def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
-    """Initialize iceflow fields: arrhenius, slidingco, U, V."""
+    """Initialize iceflow fields: arrhenius, slidingco/tau_ref, U, V.
+
+    Basal-friction field: the legacy stack (emulated/solved/diagnostic
+    + data_assimilation) uses `state.slidingco` initialised from
+    `init_slidingco`; the new stack (unified + data_assimilation_SR +
+    pretraining) uses `state.tau_ref` initialised from `init_tau_ref`.
+    Cross-stack readers use `igm.common.fields.get_tau_ref(state)`.
+    """
 
     cfg_physics = cfg.processes.iceflow.physics
     Nz = cfg.processes.iceflow.numerics.Nz
@@ -23,8 +30,13 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
         init_value = cfg_physics.init_arrhenius * cfg_physics.enhancement_factor
         state.arrhenius = tf.ones(shape_2d) * init_value
 
-    if not hasattr(state, "slidingco"):
-        state.slidingco = tf.ones(shape_2d) * cfg_physics.init_slidingco
+    method = cfg.processes.iceflow.method.lower()
+    if method == "unified":
+        if not hasattr(state, "tau_ref"):
+            state.tau_ref = tf.ones(shape_2d) * cfg_physics.init_tau_ref
+    else:
+        if not hasattr(state, "slidingco"):
+            state.slidingco = tf.ones(shape_2d) * cfg_physics.init_slidingco
 
     if not hasattr(state, "U"):
         state.U = tf.zeros(shape_3d)
