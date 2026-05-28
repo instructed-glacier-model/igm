@@ -54,7 +54,7 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     # so enthalpy can be exercised in isolation (e.g. unit tests).
     if not hasattr(state, "arrhenius"):
         cfg_physics = cfg.processes.iceflow.physics
-        arrhenius = cfg_physics.init_arrhenius
+        arrhenius = cfg_physics.viscosity.arrhenius
         state.arrhenius = arrhenius * tf.ones(shape_2d)
 
     # Fallback: initialize vertical discretization for testing purposes.

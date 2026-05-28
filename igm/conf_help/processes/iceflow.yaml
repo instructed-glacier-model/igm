@@ -91,22 +91,23 @@ physics:
     Type: float
     Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to init_slidingco."
     Units: MPa
-  init_arrhenius:
-    Type: float
-    Description: "Initial value for the Arrhenius factor in Glen's flow law."
-    Units: MPa^{-n} y^{-1}
-  enhancement_factor:
-    Type: float
-    Description: "Enhancement factor in Glen's flow law: prefactor multiplying the arrhenius factor."
-    Units: dimless
-  exp_glen:
-    Type: float
-    Description: "Glen's flow law exponent."
-    Units: dimless
-  regu_glen:
-    Type: float
-    Description: "Regularization parameter for Glen's flow law."
-    Units: dimless
+  viscosity:
+    arrhenius:
+      Type: float
+      Description: "Initial value for the Arrhenius factor in Glen's flow law."
+      Units: MPa^{-n} y^{-1}
+    enhancement_factor:
+      Type: float
+      Description: "Enhancement factor in Glen's flow law: prefactor multiplying the arrhenius factor."
+      Units: dimless
+    exponent:
+      Type: float
+      Description: "Glen's flow law exponent."
+      Units: dimless
+    regularization:
+      Type: float
+      Description: "Regularization parameter for Glen's flow law."
+      Units: dimless
   thr_ice_thk:
     Type: float
     Description: "Minimal value for the ice thickness in the strain-rate computation."

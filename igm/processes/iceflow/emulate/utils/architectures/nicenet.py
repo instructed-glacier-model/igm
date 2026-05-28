@@ -41,7 +41,7 @@ class NiceNet(tf.keras.Model):
         self.nb_inputs = nb_inputs
         self.nb_outputs = nb_outputs
         self.Nz = int(cfg_numerics.Nz)
-        self.n_glen = float(cfg_physics.exp_glen)
+        self.n_glen = float(cfg_physics.viscosity.exponent)
         self.rho = float(cfg_physics.ice_density)
         self.g = float(cfg_physics.gravity_cst)
         self.rho_g = self.rho * self.g

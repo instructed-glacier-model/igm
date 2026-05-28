@@ -41,10 +41,11 @@ iceflow:
     water_density: 1000.0
     init_slidingco: 0.0464   # legacy stack (emulated/solved/diagnostic)
     init_tau_ref: 0.0464     # new stack (unified); same MPa value
-    init_arrhenius: 78.0
-    enhancement_factor: 1.0
-    exp_glen: 3.0
-    regu_glen: 1.0e-05
+    viscosity:
+      arrhenius: 78.0          # was init_arrhenius
+      enhancement_factor: 1.0
+      exponent: 3.0            # was exp_glen
+      regularization: 1.0e-05  # was regu_glen
     thr_ice_thk: 0.1
     min_sr: 1.0e-20
     max_sr: 1.0e+20

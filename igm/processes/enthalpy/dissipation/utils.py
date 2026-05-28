@@ -24,7 +24,7 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     """
     cfg_physics = cfg.processes.iceflow.physics
 
-    n = cfg_physics.exp_glen
+    n = cfg_physics.viscosity.exponent
     h_min = cfg_physics.thr_ice_thk
 
     vertical_discr_E = state.iceflow.discr_v.enthalpy

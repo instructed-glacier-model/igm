@@ -27,7 +27,7 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
     shape_3d = (Nz, Ny, Nx)
 
     if not hasattr(state, "arrhenius"):
-        init_value = cfg_physics.init_arrhenius * cfg_physics.enhancement_factor
+        init_value = cfg_physics.viscosity.arrhenius * cfg_physics.viscosity.enhancement_factor
         state.arrhenius = tf.ones(shape_2d) * init_value
 
     method = cfg.processes.iceflow.method.lower()

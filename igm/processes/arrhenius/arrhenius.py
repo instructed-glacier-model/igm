@@ -68,8 +68,8 @@ def compute_arrhenius(
     Updates state.arrhenius (MPa^-n yr^-1).
     """
     cfg_physics = cfg.processes.iceflow.physics
-    E = cfg_physics.enhancement_factor
-    n = cfg_physics.exp_glen
+    E = cfg_physics.viscosity.enhancement_factor
+    n = cfg_physics.viscosity.exponent
     weights = state.iceflow.discr_v.enthalpy.weights
 
     # Compute 3D Arrhenius factor with enhancement
