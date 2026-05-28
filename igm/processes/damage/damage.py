@@ -80,7 +80,7 @@ def update(cfg, state):
     state.damage = tf.clip_by_value(state.damage, 0.0, 1 - epsilon)
 
     # Update arrhenius field based on damage
-    state.arrhenius /= (1 - state.damage)**cfg.processes.iceflow.physics.exp_glen
+    state.arrhenius /= (1 - state.damage)**cfg.processes.iceflow.physics.viscosity.exponent
     
 def finalize(cfg, state):
     pass
