@@ -101,9 +101,19 @@ def split_field_into_patches(X: tf.Tensor, framesizemax: int) -> tf.Tensor:
 def fieldin_state_to_X(cfg, state) -> tf.Tensor:
     """This is a bit confusing variable naming. Essentially, it takes the inputs specified in the config files, checks they are in state, and then returns a stacked tensor.
     Previously, this was called 'get_fieldin' but typically field_in is a dictionary - not a stacked tensor - hence the confusion.
-    """
 
-    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.unified.inputs]
+    Used by both the unified and emulator paths. The friction slot in
+    `cfg.unified.inputs` is named `tau_ref`; the legacy stack
+    (emulated/solved/diagnostic) carries the data on `state.slidingco`
+    instead, so we accept either name for the friction position.
+    """
+    fieldin = []
+    for f in cfg.processes.iceflow.unified.inputs:
+        if f in ("tau_ref", "slidingco"):
+            # Dual-name friction lookup: stack-agnostic.
+            fieldin.append(state.tau_ref if hasattr(state, "tau_ref") else state.slidingco)
+        else:
+            fieldin.append(vars(state)[f])
     fieldin = tf.stack(fieldin, axis=-1)
 
     return fieldin
