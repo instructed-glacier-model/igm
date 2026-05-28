@@ -119,7 +119,14 @@ def fieldin_to_X_2d(fieldin):
 @tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
     """Converts the input tensor X to a dictionary of fieldin variables."""
-    return {name: X[..., i] for i, name in enumerate(fieldin_names)}
+    fieldin = {name: X[..., i] for i, name in enumerate(fieldin_names)}
+    # slidingco → tau_ref migration: sliding-law kernels read
+    # fieldin["tau_ref"]. Legacy fieldin_names lists still contain
+    # "slidingco" (pretrained emulators' channel order is frozen), so
+    # we expose the same tensor under both keys.
+    if "slidingco" in fieldin and "tau_ref" not in fieldin:
+        fieldin["tau_ref"] = fieldin["slidingco"]
+    return fieldin
 
 
 @tf.function(jit_compile=True)

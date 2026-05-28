@@ -69,7 +69,7 @@ def cost_budd(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    tau_ref = fieldin["tau_ref"]
     N = fieldin["effective_pressure"]
     dx = fieldin["dX"]
 

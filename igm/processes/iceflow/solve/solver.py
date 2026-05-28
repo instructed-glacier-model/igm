@@ -39,6 +39,9 @@ def get_solver_bag(cfg: DictConfig, state: State) -> Dict[str, Any]:
     cfg_solver = cfg.processes.iceflow.solver
 
     fieldin = {name: getattr(state, name)[None, ...] for name in cfg_solver.fieldin}
+    # slidingco → tau_ref migration: kernels read fieldin["tau_ref"].
+    if "slidingco" in fieldin and "tau_ref" not in fieldin:
+        fieldin["tau_ref"] = fieldin["slidingco"]
 
     return {
         "fieldin": fieldin,

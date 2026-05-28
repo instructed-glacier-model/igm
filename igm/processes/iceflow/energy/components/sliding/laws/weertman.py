@@ -62,7 +62,7 @@ def cost_weertman(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    tau_ref = fieldin["tau_ref"]
     dx = fieldin["dX"]
 
     V_b = discr_v.V_b

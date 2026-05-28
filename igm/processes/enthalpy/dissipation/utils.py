@@ -7,6 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+from igm.common.fields import get_tau_ref
 from igm.utils.grad.grad import grad_xy, pad_x, pad_y, pad_z
 from igm.utils.grad.strain_rate import compute_eps_dot2, correct_grad_zeta_to_z
 
@@ -177,7 +178,7 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     if law == "weertman":
         m = cfg_physics.sliding.weertman.exponent
         u_regu = cfg_physics.sliding.weertman.regu
-        C = state.slidingco
+        C = get_tau_ref(state)
     elif law == "mohr_coulomb":
         cfg_mc = cfg_physics.sliding.mohr_coulomb
         m = cfg_mc.exponent

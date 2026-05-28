@@ -54,7 +54,7 @@ def cost_coulomb(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    tau_ref = fieldin["tau_ref"]
     dx = fieldin["dX"]
     N = fieldin["effective_pressure"]
 

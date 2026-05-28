@@ -158,23 +158,23 @@ iceflow:
     sequential:
       stages: []
     line_search: hager-zhang
-    inputs: [thk, usurf, arrhenius, slidingco, dX]
+    inputs: [thk, usurf, arrhenius, tau_ref, dX]
     normalization:
       method: adaptive
       fixed:
-        inputs_offsets: 
+        inputs_offsets:
           thk: 0.0
           usurf: 0.0
           arrhenius: 0.0
-          slidingco: 0.0
+          tau_ref: 0.0
           dX: 0.0
           X: 0.0
           Y: 0.0
-        inputs_variances: 
+        inputs_variances:
           thk: 1.0
           usurf: 1.0
           arrhenius: 1.0
-          slidingco: 1.0
+          tau_ref: 1.0
           dX: 1.0
           X: 1.0
           Y: 1.0
