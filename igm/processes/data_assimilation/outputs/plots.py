@@ -120,20 +120,20 @@ def update_plot_inversion(cfg, state, i):
 
     else:
 
+        fric_field = getattr(state, state.da_friction)
         im1 = ax2.imshow(
-            np.ma.masked_where(state.thk == 0, state.slidingco),
+            np.ma.masked_where(state.thk == 0, fric_field),
             origin="lower",
     #        norm=colors.LogNorm(),
             vmin=0.01,
             vmax=0.10,
             cmap=cmap,
-    #        tf.sqrt(state.slidingco/1.0e-6),
     #        vmin=100,
     #        vmax=500,
         )
         if i == 0:
             plt.colorbar(im1, format="%.2f", ax=ax2)
-        ax2.set_title("Iteration " + str(i) + " \n Sliding coefficient", size=12)
+        ax2.set_title("Iteration " + str(i) + " \n " + state.da_friction, size=12)
         ax2.axis("off")
 
     ########################################################

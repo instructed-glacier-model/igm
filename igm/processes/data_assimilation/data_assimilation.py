@@ -3,7 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from .utils import compute_rms_std_optimization, apply_relaxation
+from .utils import compute_rms_std_optimization, apply_relaxation, resolve_friction_name
 from .optimize.initialize import optimize_initialize
 from .optimize.update import optimize_update
 from .optimize.update_lbfgs import optimize_update_lbfgs
@@ -18,6 +18,8 @@ from .iceflow_dispatch import iceflow_retrain
 def initialize(cfg, state):
 
     iceflow_initialize(cfg, state) # initialize the iceflow model
+
+    state.da_friction = resolve_friction_name(cfg)
 
     optimize_initialize(cfg, state)
 

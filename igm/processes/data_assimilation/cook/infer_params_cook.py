@@ -7,6 +7,11 @@ def infer_params_cook(state, cfg):
     #This is probably not a good idea, because the values of both parameters do not depend solely on the velocity at that point. But feel free to try! If you do
     #want to do that, you'll also need to un-comment the code block for smoothing and then converting the smoothed weights back to tensors (you may also want to
     #visualise the figures!), and set up a state.convexity_weights field to act as the 2D array
+    if getattr(state, "da_friction", "slidingco") != "slidingco":
+        raise NotImplementedError(
+            "cook/infer_params is currently slidingco-only; either use "
+            "control_list with 'slidingco' or disable cook.infer_params."
+        )
     import scipy
     
     #Get list of G entities in each C/get multi-valued ice mask

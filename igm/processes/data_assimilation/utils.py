@@ -3,15 +3,34 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np  
-import tensorflow as tf 
+import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from igm.utils.math.getmag import getmag
 from igm.utils.grad.compute_divflux import compute_divflux
-from scipy import stats 
+from scipy import stats
 from igm.processes.time.time import compute_dt_from_cfl
 from .iceflow_dispatch import iceflow_evaluate
 from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
+
+
+def resolve_friction_name(cfg) -> str:
+    """Return the friction control field name ('slidingco' or 'tau_ref').
+
+    The DA module can optimise either state.slidingco (legacy stack) or
+    state.tau_ref (new stack). The choice is taken from the user's
+    control_list. If neither appears, the friction control is not in
+    use and 'slidingco' is returned as a harmless default.
+    """
+    controls = list(cfg.processes.data_assimilation.control_list)
+    has_sc = "slidingco" in controls
+    has_tr = "tau_ref" in controls
+    if has_sc and has_tr:
+        raise ValueError(
+            "data_assimilation: both 'slidingco' and 'tau_ref' present in "
+            "control_list is ambiguous — pick one."
+        )
+    return "tau_ref" if has_tr else "slidingco"
 
 def compute_rms_std_optimization(state, i):
     I = state.icemaskobs > 0.5
