@@ -14,13 +14,16 @@ from .iceflow_dispatch import iceflow_evaluate
 from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
 
 
-def resolve_friction_name(cfg) -> str:
+def resolve_friction_name(cfg, state=None) -> str:
     """Return the friction control field name ('slidingco' or 'tau_ref').
 
     The DA module can optimise either state.slidingco (legacy stack) or
-    state.tau_ref (new stack). The choice is taken from the user's
-    control_list. If neither appears, the friction control is not in
-    use and 'slidingco' is returned as a harmless default.
+    state.tau_ref (new stack). Resolution order:
+      1. If control_list contains one of {slidingco, tau_ref}, use that.
+      2. Else, if a state is provided, fall back to whichever attribute
+         actually exists (this matters for mixed stacks, e.g. unified
+         iceflow + thk-only DA).
+      3. Else default to 'slidingco' (legacy).
     """
     controls = list(cfg.processes.data_assimilation.control_list)
     has_sc = "slidingco" in controls
@@ -30,7 +33,16 @@ def resolve_friction_name(cfg) -> str:
             "data_assimilation: both 'slidingco' and 'tau_ref' present in "
             "control_list is ambiguous — pick one."
         )
-    return "tau_ref" if has_tr else "slidingco"
+    if has_tr:
+        return "tau_ref"
+    if has_sc:
+        return "slidingco"
+    if state is not None:
+        if hasattr(state, "tau_ref"):
+            return "tau_ref"
+        if hasattr(state, "slidingco"):
+            return "slidingco"
+    return "slidingco"
 
 def compute_rms_std_optimization(state, i):
     I = state.icemaskobs > 0.5

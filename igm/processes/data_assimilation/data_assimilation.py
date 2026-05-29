@@ -19,7 +19,7 @@ def initialize(cfg, state):
 
     iceflow_initialize(cfg, state) # initialize the iceflow model
 
-    state.da_friction = resolve_friction_name(cfg)
+    state.da_friction = resolve_friction_name(cfg, state)
 
     optimize_initialize(cfg, state)
 
