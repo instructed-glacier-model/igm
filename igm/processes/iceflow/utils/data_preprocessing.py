@@ -98,25 +98,17 @@ def split_field_into_patches(X: tf.Tensor, framesizemax: int) -> tf.Tensor:
     return tf.stack(patches, axis=0)  # [sy*sx, ly, lx, C]
 
 
-def fieldin_state_to_X(cfg, state) -> tf.Tensor:
-    """This is a bit confusing variable naming. Essentially, it takes the inputs specified in the config files, checks they are in state, and then returns a stacked tensor.
-    Previously, this was called 'get_fieldin' but typically field_in is a dictionary - not a stacked tensor - hence the confusion.
+def fieldin_state_to_X(state, inputs) -> tf.Tensor:
+    """Stack the named input fields read from `state` into a [H, W, C]
+    tensor, in the order given by `inputs`.
 
-    Used by both the unified and emulator paths. The friction slot in
-    `cfg.unified.inputs` is named `tau_ref`; the legacy stack
-    (emulated/solved/diagnostic) carries the data on `state.slidingco`
-    instead, so we accept either name for the friction position.
+    The caller passes the channel-list appropriate to its iceflow
+    method (`cfg.unified.inputs`, `cfg.emulator.fieldin`, or
+    `cfg.solver.fieldin`). The function itself is name-agnostic; the
+    dual-name handling for the friction field is localized in
+    `sliding.get_friction_field`, on the consumer side.
     """
-    fieldin = []
-    for f in cfg.processes.iceflow.unified.inputs:
-        if f in ("tau_ref", "slidingco"):
-            # Dual-name friction lookup: stack-agnostic.
-            fieldin.append(state.tau_ref if hasattr(state, "tau_ref") else state.slidingco)
-        else:
-            fieldin.append(vars(state)[f])
-    fieldin = tf.stack(fieldin, axis=-1)
-
-    return fieldin
+    return tf.stack([vars(state)[f] for f in inputs], axis=-1)
 
 
 @tf.function(jit_compile=True)
@@ -128,15 +120,12 @@ def fieldin_to_X_2d(fieldin):
 
 @tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
-    """Converts the input tensor X to a dictionary of fieldin variables."""
-    fieldin = {name: X[..., i] for i, name in enumerate(fieldin_names)}
-    # slidingco → tau_ref migration: sliding-law kernels read
-    # fieldin["tau_ref"]. Legacy fieldin_names lists still contain
-    # "slidingco" (pretrained emulators' channel order is frozen), so
-    # we expose the same tensor under both keys.
-    if "slidingco" in fieldin and "tau_ref" not in fieldin:
-        fieldin["tau_ref"] = fieldin["slidingco"]
-    return fieldin
+    """Converts the input tensor X to a dictionary of fieldin variables.
+
+    Name-agnostic. The dual-name handling for the friction field is on
+    the consumer side, in `sliding.get_friction_field`.
+    """
+    return {name: X[..., i] for i, name in enumerate(fieldin_names)}
 
 
 @tf.function(jit_compile=True)

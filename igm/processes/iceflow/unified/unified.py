@@ -35,7 +35,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     )
     if "batch_size" in optimizer_args:
         framesizemax = cfg_unified.data_preparation.framesizemax
-        X = fieldin_state_to_X(cfg, state)
+        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
         ny, nx = int(X.shape[0]), int(X.shape[1])
         num_patches = (ny // framesizemax + 1) * (nx // framesizemax + 1)
         if num_patches > 1 and mapping_name != "network":
@@ -54,7 +54,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     state.iceflow.evaluator_params = evaluator_params
 
     if mapping_name == "network" and cfg_unified.network.print_summary:
-        X = fieldin_state_to_X(cfg, state)
+        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
         fieldin_dict = X_to_fieldin(X, fieldin_names=cfg_unified.inputs)
         print_model_with_inputs_detailed(
             model=state.iceflow_model,

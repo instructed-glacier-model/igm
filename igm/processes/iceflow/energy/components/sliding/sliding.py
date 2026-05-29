@@ -22,6 +22,29 @@ def mask_gr(h: tf.Tensor, topg: tf.Tensor, rho_ratio: tf.Tensor) -> tf.Tensor:
     return tf.cast(phi > 0.0, dtype=h.dtype)
 
 
+def get_friction_field(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
+    """Return the reference basal shear stress field from a fieldin dict.
+
+    Accepts either the canonical name `tau_ref` (used by the new
+    `unified` stack) or the legacy `slidingco` (kept by the
+    emulated/solved/diagnostic stack because the pretrained CNN
+    emulators' channel order metadata is frozen on that name).
+
+    Dual-name handling lives ONLY here. Callers (the four sliding-law
+    kernels) read this helper without caring about which channel name
+    is active in the user's yaml.
+    """
+    if "tau_ref" in fieldin:
+        return fieldin["tau_ref"]
+    if "slidingco" in fieldin:
+        return fieldin["slidingco"]
+    raise KeyError(
+        "get_friction_field: fieldin has neither 'tau_ref' nor "
+        "'slidingco'; the sliding law cannot be evaluated without a "
+        "reference basal shear stress channel."
+    )
+
+
 _LAW_KEYS: Dict[str, set] = {
     "weertman":     {"regularization", "exponent", "u_ref"},
     "coulomb":      {"regularization", "exponent", "u_ref", "mu"},

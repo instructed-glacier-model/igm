@@ -69,7 +69,8 @@ def cost_budd(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["tau_ref"]
+    from ..sliding import get_friction_field
+    tau_ref = get_friction_field(fieldin)
     N = fieldin["effective_pressure"]
     dx = fieldin["dX"]
 
