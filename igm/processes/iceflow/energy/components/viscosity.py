@@ -53,9 +53,9 @@ def get_viscosity_params_args(cfg) -> Dict[str, Any]:
     cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "n": cfg_physics.exp_glen,
+        "n": cfg_physics.viscosity.exponent,
         "h_min": cfg_physics.thr_ice_thk,
-        "eps_dot_regu": cfg_physics.regu_glen,
+        "eps_dot_regu": cfg_physics.viscosity.regularization,
         "eps_dot_min": cfg_physics.min_sr,
         "eps_dot_max": cfg_physics.max_sr,
     }

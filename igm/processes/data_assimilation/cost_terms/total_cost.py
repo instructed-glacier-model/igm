@@ -46,11 +46,13 @@ def total_cost(cfg, state, cost, i):
             cost["thk_positive"] = \
             10**10 * tf.math.reduce_mean( tf.where(state.thk >= 0, 0.0, state.thk**2) )
 
-        # Here one enforces non-negative slidinco
-        if ("slidingco" in cfg.processes.data_assimilation.control_list) & \
+        # Here one enforces non-negative friction control (slidingco or tau_ref)
+        fric = state.da_friction
+        if (fric in cfg.processes.data_assimilation.control_list) & \
             (not cfg.processes.data_assimilation.fitting.log_slidingco):
-            cost["slidingco_positive"] =  \
-            10**10 * tf.math.reduce_mean( tf.where(state.slidingco >= 0, 0.0, state.slidingco**2) ) 
+            fric_field = getattr(state, fric)
+            cost[f"{fric}_positive"] = \
+            10**10 * tf.math.reduce_mean( tf.where(fric_field >= 0, 0.0, fric_field**2) )
 
         # Here one enforces non-negative arrhenius
         if ("arrhenius" in cfg.processes.data_assimilation.control_list):
@@ -64,8 +66,9 @@ def total_cost(cfg, state, cost, i):
     if "thk" in cfg.processes.data_assimilation.control_list:
         cost["thk_regu"] = regu_thk(cfg, state)
 
-    # Here one adds a regularization terms for slidingco to the cost function
-    if "slidingco" in cfg.processes.data_assimilation.control_list:
+    # Here one adds a regularization terms for the friction control
+    # (slidingco or tau_ref) to the cost function
+    if state.da_friction in cfg.processes.data_assimilation.control_list:
         cost["slid_regu"] = regu_slidingco(cfg, state)
 
     # Here one adds a regularization terms for arrhenius to the cost function

@@ -33,6 +33,14 @@ def complete_data(state, water_level=None):
     # if thickness is not defined in the netcdf, then it is set to zero
     if not hasattr(state, "thk"):
         state.thk = tf.Variable(tf.zeros((state.y.shape[0], state.x.shape[0])), trainable=False)
+    else:
+        # Clamp to non-negative: some input NetCDFs encode small negative thk
+        # values near ice edges (interpolation/rounding artifacts). The legacy
+        # emulated path masked those out via `tf.where(thk > 0, U, 0)` so it
+        # silently absorbed the inconsistency, but the unified solver feeds
+        # `thk` directly into the gravity + viscosity-column integration and
+        # blows up to NaN on negative values. Clamping here is a global cure.
+        state.thk = tf.Variable(tf.maximum(state.thk, 0.0), trainable=False)
 
     assert hasattr(state, "topg") | hasattr(state, "usurf")
 

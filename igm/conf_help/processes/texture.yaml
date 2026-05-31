@@ -11,10 +11,10 @@ verbosity:
   Units: dimless
   Description: "Python Logger verbosity level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)"
 divide_by_density:
-  Type: boolean
+  Type: integer
   Units: dimless
-  Description: "This parameter solves an incompatibility (this option will be removed in the future)"
+  Description: "Divisor applied to the precipitation field when converting from model units to monthly values for texture generation; set to 1 to disable unit conversion."
 resolution:
   Type: integer
   Units: dimless
-  Description: "This parameter solves an incompatibility (this option will be removed in the future)"
+  Description: "Override the grid resolution for texture generation; set to -1 to use the simulation resolution."

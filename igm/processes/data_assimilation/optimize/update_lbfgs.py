@@ -21,12 +21,12 @@ def optimize_update_lbfgs(cfg, state, cost, i):
     sc = {}
     sc["thk"] = cfg.processes.data_assimilation.scaling.thk
     sc["usurf"] = cfg.processes.data_assimilation.scaling.usurf
-    sc["slidingco"] = cfg.processes.data_assimilation.scaling.slidingco
+    sc[state.da_friction] = cfg.processes.data_assimilation.scaling[state.da_friction]
     sc["arrhenius"] = cfg.processes.data_assimilation.scaling.arrhenius
 
     for f in cfg.processes.data_assimilation.control_list:
         vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
-        if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
+        if cfg.processes.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
             vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
         else:
             vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
@@ -42,7 +42,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
 
         for f in cfg.processes.data_assimilation.control_list:
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
-                f == "slidingco"
+                f == state.da_friction
             ):
                 vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
             else:

@@ -88,7 +88,7 @@ def update_iceflow_emulator(
         nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
 
-        fieldin = fieldin_state_to_X(cfg, state)
+        fieldin = fieldin_state_to_X(state, cfg.processes.iceflow.emulator.fieldin)
         X = prepare_X(
             cfg,
             fieldin,
@@ -185,7 +185,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     cfg_physics = cfg.processes.iceflow.physics
 
     # need to do this dummy call to prepare_X to get the dimensions right
-    fieldin = fieldin_state_to_X(cfg, state)
+    fieldin = fieldin_state_to_X(state, cfg.processes.iceflow.emulator.fieldin)
     X = prepare_X(
         cfg,
         fieldin,

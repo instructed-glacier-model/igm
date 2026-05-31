@@ -17,4 +17,4 @@ pad:
 quiet:
   Type: boolean
   Units: dimless
-  Description: "TBD."
+  Description: "Intended to suppress gFlex console output; currently not applied (gFlex Quiet is hardcoded to False in the implementation)."

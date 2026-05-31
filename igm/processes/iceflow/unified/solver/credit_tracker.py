@@ -121,7 +121,7 @@ def _ct_full_field(cfg, state) -> tf.Tensor:
     final small-scalar log step.
     """
     from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
-    X = fieldin_state_to_X(cfg, state)
+    X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
     if not isinstance(X, tf.Tensor):
         X = tf.convert_to_tensor(X)
     return tf.cast(X, tf.float32)

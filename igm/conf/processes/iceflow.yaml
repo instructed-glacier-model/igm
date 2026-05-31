@@ -6,29 +6,31 @@ iceflow:
     sliding:
       law: weertman
       use_mask_gr: false
-      weertman:
-        regu: 1.0e-10
-        exponent: 3.0
-        u_ref: 1.0  # (m/yr)
-      coulomb:
-        regu: 1.0e-10
-        exponent: 3.0
-        u_ref: 1.0  # (m/yr)
-        mu: 0.4
-      budd:
-        regu: 1.0e-10
-        exponent: 3.0
-        u_ref: 1.0  # (m/yr)
-        N_ref: 1.0
-        q_exponent: 1.0  # effective-pressure exponent (1.0=linear Budd, 0.5=Tsai sublinear)
+      slidingco: 0.0464      # legacy stack (was init_slidingco; MPa)
+      tau_ref: 0.0464        # new stack (was init_tau_ref; same MPa value)
+      regularization: 1.0e-10  # was sliding.<law>.regu
+      exponent: 3.0            # was sliding.<law>.exponent
+      u_ref: 1.0               # m/yr — set to 100.0 if law is mohr_coulomb
+      N_ref: 1.0               # budd only
+      mu: 0.4                  # coulomb only
+      q_exponent: 1.0          # budd only (1.0=linear, 0.5=Tsai sublinear)
+      # mohr_coulomb-specific keys (ignored by other laws):
+      phi: 30.0      # uniform friction angle (deg); used unless both bed_min and bed_max are finite
+      phi_min: 15.0  # friction angle at bed = bed_min
+      phi_max: 45.0  # friction angle at bed = bed_max
+      bed_min: .nan  # NaN disables bed-elevation interpolation -> uniform phi
+      bed_max: .nan
+      tauc_min: 1.0e-1     # MPa, floor on tau_c
+      tauc_max: 1.0e+4     # MPa, ceiling on tau_c
+      tauc_ice_free: 1.0   # MPa, HARD assignment in ice-free cells
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
-    init_slidingco: 0.0464
-    init_arrhenius: 78.0
-    enhancement_factor: 1.0
-    exp_glen: 3.0
-    regu_glen: 1.0e-05
+    viscosity:
+      arrhenius: 78.0          # was init_arrhenius
+      enhancement_factor: 1.0
+      exponent: 3.0            # was exp_glen
+      regularization: 1.0e-05  # was regu_glen
     thr_ice_thk: 0.1
     min_sr: 1.0e-20
     max_sr: 1.0e+20
@@ -142,23 +144,23 @@ iceflow:
     sequential:
       stages: []
     line_search: hager-zhang
-    inputs: [thk, usurf, arrhenius, slidingco, dX]
+    inputs: [thk, usurf, arrhenius, tau_ref, dX]
     normalization:
       method: adaptive
       fixed:
-        inputs_offsets: 
+        inputs_offsets:
           thk: 0.0
           usurf: 0.0
           arrhenius: 0.0
-          slidingco: 0.0
+          tau_ref: 0.0
           dX: 0.0
           X: 0.0
           Y: 0.0
-        inputs_variances: 
+        inputs_variances:
           thk: 1.0
           usurf: 1.0
           arrhenius: 1.0
-          slidingco: 1.0
+          tau_ref: 1.0
           dX: 1.0
           X: 1.0
           Y: 1.0

@@ -38,7 +38,8 @@ processes:
       - 2.0
   iceflow:
     physics:
-      init_slidingco: 0.1
+      sliding:
+        slidingco: 0.1
   time:
     start: 2000.0
     end: 2100.0

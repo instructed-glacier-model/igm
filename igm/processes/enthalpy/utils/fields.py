@@ -22,12 +22,14 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     and default values for till hydrology and friction.
 
     Initializes state.basal_melt_rate (m ice yr^-1), state.E (J kg^-1),
-    state.h_water_till (m), state.basal_heat_flux (W m^-2), state.N (Pa),
-    state.phi (°), and state.tauc (Pa).
+    and state.basal_heat_flux (W m^-2).
+
+    Till-related fields (state.h_water_till, state.effective_pressure) are
+    now the responsibility of the `effective_pressure` process module
+    (mode `vanpelt_bueler`); friction-related fields (state.phi, state.tauc)
+    were folded into the `mohr_coulomb` sliding law in iceflow.
     """
     cfg_thermal = cfg.processes.enthalpy.thermal
-    cfg_friction = cfg.processes.enthalpy.till.friction
-    cfg_hydro = cfg.processes.enthalpy.till.hydro
     Nz = cfg.processes.enthalpy.numerics.Nz
     Ny = state.thk.shape[0]
     Nx = state.thk.shape[1]
@@ -43,28 +45,16 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
         T_ref = cfg_thermal.T_ref
         state.E = c_ice * (T_pmp_ref - T_ref) * tf.ones(shape_3d)
 
-    if not hasattr(state, "h_water_till"):
-        state.h_water_till = tf.zeros(shape_2d)
-
     if not hasattr(state, "basal_heat_flux"):
         basal_heat_flux_ref = cfg_thermal.basal_heat_flux_ref
         state.basal_heat_flux = basal_heat_flux_ref * tf.ones(shape_2d)
 
-    if not hasattr(state, "N"):
-        N_ref = cfg_hydro.N_ref
-        state.N = N_ref * tf.ones(shape_2d)
-
-    if not hasattr(state, "phi"):
-        phi = cfg_friction.phi
-        state.phi = phi * tf.ones(shape_2d)
-
-    if not hasattr(state, "tauc"):
-        tauc = cfg_friction.tauc_ice_free
-        state.tauc = tauc * tf.ones(shape_2d)
-
+    # Defensive fallback: in a normal run, iceflow.initialize and/or the
+    # standalone arrhenius module set state.arrhenius. We keep this guard
+    # so enthalpy can be exercised in isolation (e.g. unit tests).
     if not hasattr(state, "arrhenius"):
         cfg_physics = cfg.processes.iceflow.physics
-        arrhenius = cfg_physics.init_arrhenius
+        arrhenius = cfg_physics.viscosity.arrhenius
         state.arrhenius = arrhenius * tf.ones(shape_2d)
 
     # Fallback: initialize vertical discretization for testing purposes.
@@ -104,15 +94,6 @@ def compute_variables_enthalpy_state(cfg: DictConfig, state: State) -> None:
 def compute_variables_enthalpy_np(
     cfg: DictConfig, state: State
 ) -> Dict[str, np.ndarray]:
-    # Retrieve from state
-    E = state.E
-    basal_melt_rate = state.basal_melt_rate
-    arrhenius = state.arrhenius
-    h_water_till = state.h_water_till
-    N = state.N
-    tauc = state.tauc
-    phi = state.phi
-
     # Compute auxiliary variables
     E_s, T_s = compute_surface(cfg, state)
     E_pmp, T_pmp = compute_pmp(cfg, state)
@@ -120,20 +101,23 @@ def compute_variables_enthalpy_np(
     T_pa = compute_pa(cfg, state, T)
     T_pa_b = T_pa[0]
 
-    return {
-        "E": E.numpy(),
+    out = {
+        "E": state.E.numpy(),
         "E_pmp": E_pmp.numpy(),
         "E_s": E_s.numpy(),
-        "N": N.numpy(),
         "T": T.numpy(),
         "T_pa": T_pa.numpy(),
         "T_pa_b": T_pa_b.numpy(),
         "T_pmp": T_pmp.numpy(),
         "T_s": T_s.numpy(),
-        "arrhenius": arrhenius.numpy(),
-        "basal_melt_rate": basal_melt_rate.numpy(),
-        "h_water_till": h_water_till.numpy(),
+        "arrhenius": state.arrhenius.numpy(),
+        "basal_melt_rate": state.basal_melt_rate.numpy(),
         "omega": omega.numpy(),
-        "phi": phi.numpy(),
-        "tauc": tauc.numpy(),
     }
+    # Till-related fields are now owned by `effective_pressure.vanpelt_bueler`
+    # and the `mohr_coulomb` sliding law. Include them only if set elsewhere.
+    for name in ("h_water_till", "effective_pressure", "N", "phi", "tauc"):
+        val = getattr(state, name, None)
+        if val is not None:
+            out[name] = val.numpy()
+    return out

@@ -23,7 +23,7 @@ from ._power_law import power_law_cost
 class WeertmanParams(tf.experimental.ExtensionType):
     """Parameters for Weertman sliding law."""
 
-    regu: float
+    regularization: float
     exponent: float
     u_ref: float  # (m/yr)
     rho_ratio: float
@@ -62,14 +62,15 @@ def cost_weertman(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    from ..sliding import get_friction_field
+    tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
 
     V_b = discr_v.V_b
 
     dtype = U.dtype
     m = tf.cast(weertman_params.exponent, dtype)
-    u_regu = tf.cast(weertman_params.regu, dtype)
+    u_regu = tf.cast(weertman_params.regularization, dtype)
     u_ref = tf.cast(weertman_params.u_ref, dtype)
     rho_ratio = tf.cast(weertman_params.rho_ratio, dtype)
     use_mask_gr = tf.cast(weertman_params.use_mask_gr, tf.bool)

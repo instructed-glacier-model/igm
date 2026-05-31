@@ -74,7 +74,7 @@ def get_status(
 
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
     """Returns [N, ly, lx, C] non-overlapping patches, same strategy as emulated approach."""
-    X = fieldin_state_to_X(cfg, state)
+    X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
     framesizemax = cfg.processes.iceflow.unified.data_preparation.framesizemax
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
     return tf.cast(split_field_into_patches(X, framesizemax), dtype)

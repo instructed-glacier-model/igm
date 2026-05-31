@@ -45,8 +45,9 @@ def optimize_initialize(cfg, state):
     else:
         state.dens_thkobs = tf.ones_like(state.thkobs)
         
-    # force zero slidingco in the floating areas
-    state.slidingco = tf.where( state.icemaskobs == 2, 0.0, state.slidingco)
+    # force zero friction control (slidingco or tau_ref) in the floating areas
+    fric = state.da_friction
+    setattr(state, fric, tf.where(state.icemaskobs == 2, 0.0, getattr(state, fric)))
     
     # this will infer values for slidingco and convexity weight based on the ice velocity and an empirical relationship from test glaciers with thickness profiles
     if cfg.processes.data_assimilation.cook.infer_params:

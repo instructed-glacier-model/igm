@@ -33,6 +33,11 @@ from datetime import datetime
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
+    # Reject pre-step-2 parameter names before doing any work, so the user
+    # sees a clear migration message rather than a downstream Hydra error.
+    from igm.common.legacy import check_legacy_keys
+    check_legacy_keys(cfg)
+
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
@@ -88,6 +93,7 @@ def main(cfg: DictConfig) -> None:
     (
         imported_inputs_modules,
         imported_processes_modules,
+        imported_assimilations_modules,
         imported_outputs_modules,
     ) = setup_igm_modules(cfg, state)
 
@@ -102,10 +108,13 @@ def main(cfg: DictConfig) -> None:
             )
         output_method.initialize(cfg, state)
 
+    # Assimilations run before processes at every lifecycle stage.
+    combined_modules = imported_assimilations_modules + imported_processes_modules
+
     with strategy.scope():
-        initialize_modules(imported_processes_modules, cfg, state)
-        update_modules(imported_processes_modules, imported_outputs_modules, cfg, state)
-        finalize_modules(imported_processes_modules, cfg, state)
+        initialize_modules(combined_modules, cfg, state)
+        update_modules(combined_modules, imported_outputs_modules, cfg, state)
+        finalize_modules(combined_modules, cfg, state)
 
     if cfg.core.print_comp:
         print_comp(state)

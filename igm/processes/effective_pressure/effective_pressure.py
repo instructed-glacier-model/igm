@@ -24,26 +24,41 @@ from omegaconf import DictConfig
 
 from igm.common import State
 
+from . import vanpelt_bueler
 
-VALID_MODES = ("constant_one", "percentage", "ocean_connected", "from_input")
+
+VALID_MODES = (
+    "constant_one",
+    "percentage",
+    "ocean_connected",
+    "from_input",
+    "vanpelt_bueler",
+)
 
 
 def initialize(cfg: DictConfig, state: State) -> None:
-    _compute(cfg, state)
+    if cfg.processes.effective_pressure.mode == "vanpelt_bueler":
+        vanpelt_bueler.initialize(cfg, state)
+        return
+    _compute_simple(cfg, state)
 
 
 def update(cfg: DictConfig, state: State) -> None:
     if hasattr(state, "logger"):
         state.logger.info(f"Update EFFECTIVE_PRESSURE at time: {state.t.numpy()}")
-    _compute(cfg, state)
+
+    if cfg.processes.effective_pressure.mode == "vanpelt_bueler":
+        vanpelt_bueler.update(cfg, state)
+        return
+    _compute_simple(cfg, state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:
     pass
 
 
-def _compute(cfg: DictConfig, state: State) -> None:
-    """Write state.effective_pressure (MPa) according to the chosen mode."""
+def _compute_simple(cfg: DictConfig, state: State) -> None:
+    """Write state.effective_pressure (MPa) for the simple closed-form modes."""
 
     cfg_ep = cfg.processes.effective_pressure
     mode = cfg_ep.mode

@@ -98,15 +98,17 @@ def split_field_into_patches(X: tf.Tensor, framesizemax: int) -> tf.Tensor:
     return tf.stack(patches, axis=0)  # [sy*sx, ly, lx, C]
 
 
-def fieldin_state_to_X(cfg, state) -> tf.Tensor:
-    """This is a bit confusing variable naming. Essentially, it takes the inputs specified in the config files, checks they are in state, and then returns a stacked tensor.
-    Previously, this was called 'get_fieldin' but typically field_in is a dictionary - not a stacked tensor - hence the confusion.
+def fieldin_state_to_X(state, inputs) -> tf.Tensor:
+    """Stack the named input fields read from `state` into a [H, W, C]
+    tensor, in the order given by `inputs`.
+
+    The caller passes the channel-list appropriate to its iceflow
+    method (`cfg.unified.inputs`, `cfg.emulator.fieldin`, or
+    `cfg.solver.fieldin`). The function itself is name-agnostic; the
+    dual-name handling for the friction field is localized in
+    `sliding.get_friction_field`, on the consumer side.
     """
-
-    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.unified.inputs]
-    fieldin = tf.stack(fieldin, axis=-1)
-
-    return fieldin
+    return tf.stack([vars(state)[f] for f in inputs], axis=-1)
 
 
 @tf.function(jit_compile=True)
@@ -118,7 +120,11 @@ def fieldin_to_X_2d(fieldin):
 
 @tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
-    """Converts the input tensor X to a dictionary of fieldin variables."""
+    """Converts the input tensor X to a dictionary of fieldin variables.
+
+    Name-agnostic. The dual-name handling for the friction field is on
+    the consumer side, in `sliding.get_friction_field`.
+    """
     return {name: X[..., i] for i, name in enumerate(fieldin_names)}
 
 

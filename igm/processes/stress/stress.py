@@ -36,7 +36,7 @@ def update(cfg, state):
     depth = compute_depth(dz)
 
     B = (tf.expand_dims(state.arrhenius, axis=0)) ** (
-        -1.0 / cfg.processes.iceflow.physics.exp_glen
+        -1.0 / cfg.processes.iceflow.physics.viscosity.exponent
     )
 
     Exx, Eyy, Ezz, Exy, Exz, Eyz = compute_strainratetensor_tf(
@@ -55,12 +55,12 @@ def update(cfg, state):
             + Exz**2
             + Eyz**2
             + Ezz**2
-            + cfg.processes.iceflow.physics.regu_glen**2
+            + cfg.processes.iceflow.physics.viscosity.regularization**2
         )
         ** 0.5
     )
 
-    mu = 0.5 * B * strainrate ** (1.0 / cfg.processes.iceflow.physics.exp_glen - 1)
+    mu = 0.5 * B * strainrate ** (1.0 / cfg.processes.iceflow.physics.viscosity.exponent - 1)
 
     state.tau_xx = 2 * mu * Exx
     state.tau_yy = 2 * mu * Eyy

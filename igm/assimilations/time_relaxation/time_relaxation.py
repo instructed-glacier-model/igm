@@ -681,7 +681,7 @@ def _run_loop(cfg, p, state, forward_mod, pre_modules, post_modules, steps):
 # ===================================================================== #
 
 def initialize(cfg, state):
-    p = cfg.processes.time_relaxation
+    p = cfg.assimilations.time_relaxation
 
     forward_mod = importlib.import_module(f"igm.processes.{p.forward_model}")
     pre_modules = [importlib.import_module(f"igm.processes.{n}")

@@ -24,11 +24,11 @@ def optimize_update(cfg, state, cost, i):
     sc = {}
     sc["thk"] = cfg.processes.data_assimilation.scaling.thk
     sc["usurf"] = cfg.processes.data_assimilation.scaling.usurf
-    sc["slidingco"] = cfg.processes.data_assimilation.scaling.slidingco
+    sc[state.da_friction] = cfg.processes.data_assimilation.scaling[state.da_friction]
     sc["arrhenius"] = cfg.processes.data_assimilation.scaling.arrhenius
 
     for f in cfg.processes.data_assimilation.control_list:
-        if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
+        if cfg.processes.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
             vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
         else:
             vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
@@ -50,7 +50,7 @@ def optimize_update(cfg, state, cost, i):
 
         for f in cfg.processes.data_assimilation.control_list:
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
-                f == "slidingco"
+                f == state.da_friction
             ):
                 vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
             else:
@@ -92,13 +92,13 @@ def optimize_update(cfg, state, cost, i):
         # this serve to restict the optimization of controls to the mask
         if cfg.processes.data_assimilation.optimization.sole_mask:
             for ii in range(grads.shape[0]):
-                if not "slidingco" == cfg.processes.data_assimilation.control_list[ii]:
+                if not state.da_friction == cfg.processes.data_assimilation.control_list[ii]:
                     grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
                 else:
                     grads[ii].assign(tf.where((state.icemaskobs == 1), grads[ii], 0))
         else:
             for ii in range(grads.shape[0]):
-                if not "slidingco" == cfg.processes.data_assimilation.control_list[ii]:
+                if not state.da_friction == cfg.processes.data_assimilation.control_list[ii]:
                     grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
 
         # One step of descent -> this will update input variable X
@@ -111,7 +111,7 @@ def optimize_update(cfg, state, cost, i):
         # get back optimized variables in the pool of state.variables
         for f in cfg.processes.data_assimilation.control_list:
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
-                f == "slidingco"
+                f == state.da_friction
             ):
                 vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
             else:
@@ -129,8 +129,9 @@ def optimize_update(cfg, state, cost, i):
             if "thk" in cfg.processes.data_assimilation.control_list:
                 state.thk = tf.where(state.thk < 0, 0, state.thk)
 
-            if "slidingco" in cfg.processes.data_assimilation.control_list:
-                state.slidingco = tf.where(state.slidingco < 0, 0, state.slidingco)
+            fric = state.da_friction
+            if fric in cfg.processes.data_assimilation.control_list:
+                setattr(state, fric, tf.where(getattr(state, fric) < 0, 0, getattr(state, fric)))
 
             if "arrhenius" in cfg.processes.data_assimilation.control_list:
                 # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)

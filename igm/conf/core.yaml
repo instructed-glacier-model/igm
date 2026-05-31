@@ -30,4 +30,5 @@ core:
     code_foldername: code
     input_modules_foldername: inputs
     process_modules_foldername: processes
+    assimilation_modules_foldername: assimilations
     output_modules_foldername: outputs

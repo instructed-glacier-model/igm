@@ -31,7 +31,8 @@ processes:
       plot2d: false
   iceflow:
     physics:
-      init_slidingco: 0.045
+      sliding:
+        slidingco: 0.045
        
 
       

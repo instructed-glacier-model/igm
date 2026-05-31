@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.processes.enthalpy.temperature.utils import compute_pa_tf
-from igm.processes.enthalpy.arrhenius.utils import compute_arrhenius_3d_tf
+from igm.processes.arrhenius.arrhenius import compute_arrhenius_3d_tf
 
 # Data type
 dtype = tf.float32

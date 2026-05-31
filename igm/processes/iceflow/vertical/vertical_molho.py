@@ -36,7 +36,7 @@ class MOLHODiscr(VerticalDiscr):
         cfg_physics = cfg.processes.iceflow.physics
 
         Nz = cfg_numerics.Nz
-        n = cfg_physics.exp_glen
+        n = cfg_physics.viscosity.exponent
 
         if Nz != 2:
             raise ValueError("❌ MOLHO vertical basis only supports Nz=2.")

@@ -14,7 +14,7 @@ from igm.processes.iceflow.vertical import VerticalDiscr
 class CoulombParams(tf.experimental.ExtensionType):
     """Parameters for Coulomb sliding law."""
 
-    regu: float
+    regularization: float
     exponent: float
     mu: float
     u_ref: float  # (m/yr)
@@ -54,7 +54,8 @@ def cost_coulomb(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    from ..sliding import get_friction_field
+    tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
     N = fieldin["effective_pressure"]
 
@@ -62,7 +63,7 @@ def cost_coulomb(
 
     dtype = U.dtype
     m = tf.cast(coulomb_params.exponent, dtype)
-    u_regu = tf.cast(coulomb_params.regu, dtype)
+    u_regu = tf.cast(coulomb_params.regularization, dtype)
     μ = tf.cast(coulomb_params.mu, dtype)
     u_ref = tf.cast(coulomb_params.u_ref, dtype)
     rho_ratio = tf.cast(coulomb_params.rho_ratio, dtype)
