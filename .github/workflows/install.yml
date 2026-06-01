@@ -1,0 +1,52 @@
+name: Install Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  from-pypi:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-pypi-${{ hashFiles('setup.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-pypi-
+      - name: Install igm-model from PyPI
+        run: pip install igm-model
+      - name: Verify installation
+        run: igm_run --help
+
+  from-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-source-${{ hashFiles('setup.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-source-
+      - name: Install igm-model from source
+        run: pip install -e .
+      - name: Verify installation
+        run: igm_run --help
