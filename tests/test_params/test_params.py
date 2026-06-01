@@ -10,7 +10,8 @@ def test_load_json_params_with_comments():
     """Tests that adding comments to the json will not fail with a decode error."""
 
     igm.get_modules_list("./test_params/param_files/params_comments.json")
-    
+
+
 @pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_yaml_params_with_comments():
     """Tests that adding comments to the json will not fail with a decode error."""
@@ -41,6 +42,7 @@ def test_load_igm_modules_json():
     assert set(igm_core_preproc_modules).issubset(preproc_modules)
     assert set(igm_core_process_modules).issubset(process_modules)
     assert set(igm_core_postproc_modules).issubset(postproc_modules)
+
 
 @pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_igm_modules_yaml():
@@ -109,6 +111,7 @@ def test_params_core():
         "folder_data": "data",
     }
 
+
 # def test_params_core_overwrite():
 #     state = igm.State()  # class acting as a dictionary
 #     parser = igm.params_core()
@@ -139,7 +142,7 @@ def test_params_core():
 #     # print(params_dict)
 
 #     parser.set_defaults(**params_dict)
-    
+
 #     # print(parser)
 #     # params = parser.parse_args()
 #     return parser
@@ -155,7 +158,7 @@ def test_params_core():
 #     print(params_dict)
 
 #     parser.set_defaults(**params_dict)
-    
+
 #     print(parser)
 #     params = parser.parse_args()
 #     # args = ['--arg1', 'value1', '--arg2', 'value2']  # replace with your arguments

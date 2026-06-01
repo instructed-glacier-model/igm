@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
@@ -11,12 +11,13 @@ import xarray as xr
 import json
 from igm.utils.math.interp1d_tf import interp1d_tf
 
+
 def initialize(cfg, state):
     # load the given parameters from the json file
 
-    path_data = os.path.join(state.original_cwd,cfg.core.folder_data)
+    path_data = os.path.join(state.original_cwd, cfg.core.folder_data)
     path_RGI = os.path.join(path_data, cfg.inputs.oggm_shop.RGI_ID)
-    
+
     with open(os.path.join(path_RGI, "mb_calib.json"), "r") as json_file:
         jsonString = json_file.read()
 
@@ -25,22 +26,22 @@ def initialize(cfg, state):
     state.temp_default_gradient = oggm_mb_calib["mb_global_params"][
         "temp_default_gradient"
     ]
-    
+
     # ! I am passing these through the 'state' object instead of the cfg object as the cfg should be static ideally... we can change this later...
-    
+
     state.temp_bias = oggm_mb_calib["temp_bias"]
     state.prcp_fac = oggm_mb_calib["prcp_fac"]
- 
+
     ds = xr.open_dataset(os.path.join(path_RGI, "climate_historical.nc"))
-    
-    time = ds["time"].values.astype("float32").squeeze()       # unit: year
-    prcp = ds["prcp"].values.astype("float32").squeeze()       # unit: kg * m^(-2)
-    temp = ds["temp"].values.astype("float32").squeeze()       # unit: degree Celsius
+
+    time = ds["time"].values.astype("float32").squeeze()  # unit: year
+    prcp = ds["prcp"].values.astype("float32").squeeze()  # unit: kg * m^(-2)
+    temp = ds["temp"].values.astype("float32").squeeze()  # unit: degree Celsius
     temp_std = ds["temp_std"].values.astype("float32").squeeze()  # unit: degree Celsius
 
     state.ref_hgt = ds.attrs["ref_hgt"]
     state.yr_0 = ds.attrs["yr_0"]
-  
+
     # reshape climate data per year and month
     nb_y = int(time.shape[0] / 12)
     nb_m = 12
@@ -59,15 +60,18 @@ def initialize(cfg, state):
     # intitalize air_temp and precipitation fields
     state.air_temp = tf.Variable(
         tf.zeros((nb_m, state.y.shape[0], state.x.shape[0])),
-        dtype="float32", trainable=False
+        dtype="float32",
+        trainable=False,
     )
     state.air_temp_std = tf.Variable(
         tf.zeros((nb_m, state.y.shape[0], state.x.shape[0])),
-        dtype="float32", trainable=False
+        dtype="float32",
+        trainable=False,
     )
     state.precipitation = tf.Variable(
         tf.zeros((nb_m, state.y.shape[0], state.x.shape[0])),
-        dtype="float32", trainable=False
+        dtype="float32",
+        trainable=False,
     )
 
     state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
@@ -77,14 +81,14 @@ def initialize(cfg, state):
 
     if cfg.processes.climate.oggm.clim_trend_array == []:
         state.climpar = np.loadtxt(
-            cfg.processes.climate.oggm.file, # ! does this exist? if not, I will set it...
+            cfg.processes.climate.oggm.file,  # ! does this exist? if not, I will set it...
             skiprows=1,
             dtype=np.float32,
         )
     else:
-        state.climpar = np.array(cfg.processes.climate.oggm.clim_trend_array[1:]).astype(
-            np.float32
-        )
+        state.climpar = np.array(
+            cfg.processes.climate.oggm.clim_trend_array[1:]
+        ).astype(np.float32)
 
     np.random.seed(cfg.processes.climate.oggm.seed_par)  # fix the seed
 
@@ -133,12 +137,11 @@ def update(cfg, state):
 
         # the final precipitation and temperature must have shape (12,ny,nx)
         state.air_temp = state.air_temp + temp_corr_addi
-        
+
         state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
         state.meantemp = tf.math.reduce_mean(state.air_temp, axis=0)
 
         state.tlast_clim_oggm.assign(state.t)
-
 
 
 def finalize(cfg, state):

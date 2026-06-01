@@ -71,12 +71,17 @@ def _publish_2d_temperatures(cfg: DictConfig, state: State, T) -> None:
     legacy `temppasurf` / `temppabase` names (Kelvin, pressure-adjusted)."""
     cfg_phys = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
+
     # Surface temperature: p_ice = 0 at the surface, so T_pa_s = T_s
     state.temppasurf = T[-1]
+
     # Basal pressure-adjusted temperature:
     #     T_pa_b = T_b + beta * rho_ice * g * thk
     # so that at PMP it equals T_pmp_ref (= 273.15 K) regardless of depth.
-    state.temppabase = T[0] + cfg_thermal.beta * cfg_phys.ice_density * cfg_phys.gravity_cst * state.thk
+    state.temppabase = (
+        T[0]
+        + cfg_thermal.beta * cfg_phys.ice_density * cfg_phys.gravity_cst * state.thk
+    )
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

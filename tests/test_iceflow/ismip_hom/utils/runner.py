@@ -64,7 +64,9 @@ def run_experiment_test(
         status = "✅" if is_valid else "❌"
         comparison = "<" if is_valid else ">"
         length_str = f"L={length}km" if length is not None else ""
-        print(f"{status} {experiment} {length_str} {mapping}/{optimizer}: error = {error_pct:.1f}% {comparison} {tol_pct:.0f}%")
+        print(
+            f"{status} {experiment} {length_str} {mapping}/{optimizer}: error = {error_pct:.1f}% {comparison} {tol_pct:.0f}%"
+        )
 
     # Assert validation if in compare mode
     if error is not None:

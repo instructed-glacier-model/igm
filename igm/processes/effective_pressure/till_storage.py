@@ -60,10 +60,8 @@ def compute_N_MPa_tf(
     PA_TO_MPA = tf.cast(1.0e-6, h_ice.dtype)
 
     s = h_water_till / h_water_till_max
-    p_ice = rho_ice * g * h_ice * PA_TO_MPA   # (MPa)
+    p_ice = rho_ice * g * h_ice * PA_TO_MPA  # (MPa)
 
-    N = N_ref * tf.pow(delta * p_ice / N_ref, s) * tf.pow(
-        10.0, e_ref * (1.0 - s) / C_c
-    )
+    N = N_ref * tf.pow(delta * p_ice / N_ref, s) * tf.pow(10.0, e_ref * (1.0 - s) / C_c)
 
     return tf.minimum(p_ice, N)

@@ -190,6 +190,7 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
             _compute_phi as _mc_compute_phi,
             MohrCoulombParams,
         )
+
         params = MohrCoulombParams(
             regularization=cfg_sl.regularization,
             exponent=cfg_sl.exponent,
@@ -207,7 +208,9 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
         )
         topg = state.usurf - state.thk
         phi = _mc_compute_phi(topg, params)
-        tan_phi = tf.math.tan(phi * tf.constant(3.14159265358979 / 180.0, dtype=phi.dtype))
+        tan_phi = tf.math.tan(
+            phi * tf.constant(3.14159265358979 / 180.0, dtype=phi.dtype)
+        )
         tauc = state.effective_pressure * tan_phi
         # Match the sliding law's ordering: ice-free hard assign before clip.
         tauc = tf.where(state.thk > 0.0, tauc, cfg_sl.tauc_ice_free)

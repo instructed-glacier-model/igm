@@ -9,7 +9,11 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         parts = item.nodeid.replace("\\", "/").split("/")
         exp_part = next((p for p in parts if p.startswith("exp_")), None)
-        if exp_part is not None and "ismip_hom" in item.nodeid and exp_part not in active_exps:
+        if (
+            exp_part is not None
+            and "ismip_hom" in item.nodeid
+            and exp_part not in active_exps
+        ):
             deselected.append(item)
         else:
             remaining.append(item)

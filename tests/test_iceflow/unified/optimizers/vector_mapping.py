@@ -5,17 +5,21 @@ import tensorflow as tf
 from typing import List, Tuple
 from igm.processes.iceflow.unified.mappings.mapping import Mapping
 
+
 class VectorMapping(Mapping):
     """
     Minimal Mapping for optimizer tests.
     - Parameters: a single trainable vector theta ∈ R^n
     - U,V: dummy tensors (cost_fn will ignore them and read theta directly)
     """
+
     def __init__(self, n: int, dtype=tf.float32):
         super().__init__(bcs=[])
-        self.theta = tf.Variable(tf.zeros([n], dtype=dtype), trainable=True, name="theta")
+        self.theta = tf.Variable(
+            tf.zeros([n], dtype=dtype), trainable=True, name="theta"
+        )
         self._shapes: List[tf.TensorShape] = [self.theta.shape]
-        self._sizes:  List[tf.Tensor]       = [tf.size(self.theta)]
+        self._sizes: List[tf.Tensor] = [tf.size(self.theta)]
 
     # --- Forward (dummy) ---
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -52,13 +56,16 @@ class VectorMapping(Mapping):
         # Keep running unless Optimizer stops by its own criteria
         return tf.constant(False, tf.bool), tf.constant("", tf.string)
 
+
 # --- Bounded mapping for box-constraint tests --------------------------------
+
 
 class BoundedVectorMapping(VectorMapping):
     """
     Extends the simple vector mapping with θ-space box bounds to activate
     the projected path line-search and free-mask logic in optimizers.
     """
+
     def __init__(self, n: int, L: float, U: float, dtype=tf.float64):
         super().__init__(n=n, dtype=dtype)
         L = tf.convert_to_tensor(L, dtype=self.theta.dtype)
@@ -73,15 +80,17 @@ class BoundedVectorMapping(VectorMapping):
 
 # --- Simple identity sampler for tests ---------------------------------------
 
+
 class IdentitySampler:
     """
     Mock sampler for optimizer tests.
     Returns inputs wrapped in batch dimension [1, ...] to match expected
     shape [M, B, H, W, C] where M=1 (single batch).
     """
+
     def __init__(self):
         self.dynamic_augmentation = False
-    
+
     def __call__(self, inputs: tf.Tensor) -> tf.Tensor:
         # inputs is expected to be [B, H, W, C] or similar
         # Return [1, B, H, W, C] to indicate single batch

@@ -10,33 +10,52 @@ from .vector_mapping import VectorMapping, BoundedVectorMapping, IdentitySampler
 # Mark the whole module as slow
 pytestmark = pytest.mark.slow
 
+
 # ---------- ID helpers (pretty failure names) ----------
-def id_n(n): return f"n={n}"
-def id_mem(m): return f"mem={m}"
-def id_alpha(a): return "alpha=0" if float(a) == 0.0 else f"alpha={a:.0e}"
-def id_ls(s): return f"ls={s}"
+def id_n(n):
+    return f"n={n}"
+
+
+def id_mem(m):
+    return f"mem={m}"
+
+
+def id_alpha(a):
+    return "alpha=0" if float(a) == 0.0 else f"alpha={a:.0e}"
+
+
+def id_ls(s):
+    return f"ls={s}"
+
 
 # --- Utilities ---------------------------------------------------------------
+
 
 def _dummy_inputs_5d(dtype=tf.float32):
     return tf.zeros([1, 1, 1, 1, 1], dtype=dtype)
 
-# --- Tests ------------------------------------------------------------------- 
+
+# --- Tests -------------------------------------------------------------------
+
 
 @pytest.mark.skip
 @pytest.mark.parametrize("n", [10, 100], ids=id_n)
 @pytest.mark.parametrize("memory", [1, 10], ids=id_mem)  # stress different histories
 @pytest.mark.parametrize("alpha_min", [0.0, 1e-6], ids=id_alpha)
 @pytest.mark.parametrize("ls_method", ["hager-zhang", "armijo", "wolfe"], ids=id_ls)
-def test_rosenbrock_unconstrained_converges_parametric(request, n, memory, alpha_min, ls_method):
+def test_rosenbrock_unconstrained_converges_parametric(
+    request, n, memory, alpha_min, ls_method
+):
     # HZ enforces strong Wolfe conditions; with memory=1 the L-BFGS directions
     # are too poor for the Rosenbrock valley — the curvature condition causes
     # zigzagging and the cost stagnates well above 1e-6.
     if ls_method == "hager-zhang" and memory == 1:
-        request.applymarker(pytest.mark.xfail(
-            reason="Hager-Zhang stagnates with memory=1 on Rosenbrock",
-            strict=True,
-        ))
+        request.applymarker(
+            pytest.mark.xfail(
+                reason="Hager-Zhang stagnates with memory=1 on Rosenbrock",
+                strict=True,
+            )
+        )
 
     mapping = VectorMapping(n=n, dtype=tf.float32)
 
@@ -58,13 +77,15 @@ def test_rosenbrock_unconstrained_converges_parametric(request, n, memory, alpha
         iter_max=2000,
         alpha_min=alpha_min,
         memory=memory,
-        precision=tf.float32
+        precision=tf.float32,
     )
     opt.sampler = IdentitySampler()
 
     costs = opt.minimize(_dummy_inputs_5d())
     final = float(costs[-1].numpy())
-    assert final <= 1e-6, f"Did not converge: cost={final} (n={n}, mem={memory}, alpha_min={alpha_min}, ls={ls_method})"
+    assert (
+        final <= 1e-6
+    ), f"Did not converge: cost={final} (n={n}, mem={memory}, alpha_min={alpha_min}, ls={ls_method})"
 
 
 @pytest.mark.skip
@@ -88,7 +109,7 @@ def test_rosenbrock_float64_support():
         line_search_method="hager-zhang",
         iter_max=1500,
         memory=10,
-        precision=tf.float64
+        precision=tf.float64,
     )
     opt.sampler = IdentitySampler()
     costs = opt.minimize(_dummy_inputs_5d(tf.float64))
@@ -97,6 +118,7 @@ def test_rosenbrock_float64_support():
 
 # --- Convex quadratic: exact solution checks ---------------------------------
 
+
 def _quadratic_cost(mapping, d_vec, b_vec):
     """
     f(x) = 0.5 * sum_i d_i x_i^2 - sum_i b_i x_i
@@ -104,14 +126,18 @@ def _quadratic_cost(mapping, d_vec, b_vec):
     """
     d = tf.convert_to_tensor(d_vec, dtype=mapping.theta.dtype)
     b = tf.convert_to_tensor(b_vec, dtype=mapping.theta.dtype)
+
     def cost_fn(U, V, inputs):
         x = mapping.theta
         return 0.5 * tf.reduce_sum(d * x * x) - tf.reduce_sum(b * x)
+
     return cost_fn
+
 
 def _quadratic_grad(x, d_vec, b_vec):
     # ∇f = d ⊙ x - b
     return d_vec * x - b_vec
+
 
 @pytest.mark.parametrize("n", [8, 32], ids=id_n)
 def test_quadratic_unconstrained_matches_closed_form(n):
@@ -134,7 +160,7 @@ def test_quadratic_unconstrained_matches_closed_form(n):
         line_search_method="hager-zhang",
         iter_max=1000,
         memory=10,
-        precision=tf.float64
+        precision=tf.float64,
     )
     opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))
@@ -146,6 +172,7 @@ def test_quadratic_unconstrained_matches_closed_form(n):
 
 # --- Box-constrained quadratic: interior and active-set ----------------------
 
+
 @pytest.mark.parametrize("n", [16, 128], ids=id_n)
 def test_quadratic_box_interior_solution(n):
     """Optimum is strictly inside bounds; should match unconstrained solution."""
@@ -153,7 +180,9 @@ def test_quadratic_box_interior_solution(n):
     mapping = BoundedVectorMapping(n=n, L=L, U=U, dtype=tf.float64)
 
     d = np.linspace(1.0, 10.0, num=n).astype(np.float64)
-    b = np.linspace(0.5, 5.0, num=n).astype(np.float64)  # x* = b/d ∈ (0.05..5) → interior
+    b = np.linspace(0.5, 5.0, num=n).astype(
+        np.float64
+    )  # x* = b/d ∈ (0.05..5) → interior
     x_star = b / d
 
     mapping.theta.assign(tf.zeros([n], tf.float64))
@@ -167,7 +196,7 @@ def test_quadratic_box_interior_solution(n):
         line_search_method="hager-zhang",
         iter_max=700,
         memory=10,
-        precision=tf.float64
+        precision=tf.float64,
     )
     opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))
@@ -204,7 +233,7 @@ def test_quadratic_box_boundary_active_set_and_KKT():
         line_search_method="hager-zhang",
         iter_max=500,
         memory=10,
-        precision=tf.float64
+        precision=tf.float64,
     )
     opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))

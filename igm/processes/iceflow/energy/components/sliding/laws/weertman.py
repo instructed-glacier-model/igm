@@ -63,6 +63,7 @@ def cost_weertman(
     h = fieldin["thk"]
     s = fieldin["usurf"]
     from ..sliding import get_friction_field
+
     tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
 
@@ -81,6 +82,20 @@ def cost_weertman(
     q = tf.cast(1.0, dtype)
 
     return power_law_cost(
-        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref, q,
-        rho_ratio, use_mask_gr, discr_h, V_b,
+        U,
+        V,
+        h,
+        s,
+        tau_ref,
+        N,
+        dx,
+        m,
+        u_regu,
+        u_ref,
+        N_ref,
+        q,
+        rho_ratio,
+        use_mask_gr,
+        discr_h,
+        V_b,
     )

@@ -5,7 +5,7 @@
 
 """
 # Implements the level-set calving-front scheme of Bondzio et al. (2016),
-# The Cryosphere 10, 497-510, as implmented in ISSM 
+# The Cryosphere 10, 497-510, as implmented in ISSM
 """
 
 import tensorflow as tf
@@ -19,7 +19,6 @@ from utils import (
     bulk_mask_5x5,
     advect_thickness_standard,
 )
-
 
 # ---------------------------------------------------------------------------
 # Level-set kernels
@@ -43,13 +42,17 @@ def _godunov_grad_mag(Dxm, Dxp, Dym, Dyp, sign):
     pos = tf.cast(sign > 0.0, Dxm.dtype)
     neg = 1.0 - pos
     g_plus = tf.sqrt(
-        tf.square(tf.maximum(Dxm, 0.0)) + tf.square(tf.minimum(Dxp, 0.0))
-        + tf.square(tf.maximum(Dym, 0.0)) + tf.square(tf.minimum(Dyp, 0.0))
+        tf.square(tf.maximum(Dxm, 0.0))
+        + tf.square(tf.minimum(Dxp, 0.0))
+        + tf.square(tf.maximum(Dym, 0.0))
+        + tf.square(tf.minimum(Dyp, 0.0))
         + 1.0e-20
     )
     g_minus = tf.sqrt(
-        tf.square(tf.minimum(Dxm, 0.0)) + tf.square(tf.maximum(Dxp, 0.0))
-        + tf.square(tf.minimum(Dym, 0.0)) + tf.square(tf.maximum(Dyp, 0.0))
+        tf.square(tf.minimum(Dxm, 0.0))
+        + tf.square(tf.maximum(Dxp, 0.0))
+        + tf.square(tf.minimum(Dym, 0.0))
+        + tf.square(tf.maximum(Dyp, 0.0))
         + 1.0e-20
     )
     return pos * g_plus + neg * g_minus
@@ -73,8 +76,7 @@ def _build_initial_psi(cfg, state):
     """Build state.psi as a signed-distance field consistent with thk > 0."""
     ls = cfg.processes.thk.level_set
     if hasattr(state, "psi"):
-        state.psi = tf.Variable(tf.cast(state.psi, state.thk.dtype),
-                                trainable=False)
+        state.psi = tf.Variable(tf.cast(state.psi, state.thk.dtype), trainable=False)
         return
 
     mask_inside = state.thk > 0.0
@@ -106,29 +108,29 @@ def _advect_psi(cfg, state):
     c = tf.cast(state.calving_rate, dtype)
     if ls.only_near_front:
         band = tf.cast(ls.band_cells, dtype) * dx
-        c = c * tf.exp(-(state.psi / band) ** 2)
+        c = c * tf.exp(-((state.psi / band) ** 2))
     if p.only_marine and hasattr(state, "water_level"):
         c = c * tf.cast(state.topg < state.water_level, dtype)
     elif p.only_marine:
         c = tf.zeros_like(c)
 
     grad_plus = tf.sqrt(
-        tf.square(tf.maximum(Dxm, 0.0)) + tf.square(tf.minimum(Dxp, 0.0))
-        + tf.square(tf.maximum(Dym, 0.0)) + tf.square(tf.minimum(Dyp, 0.0))
+        tf.square(tf.maximum(Dxm, 0.0))
+        + tf.square(tf.minimum(Dxp, 0.0))
+        + tf.square(tf.maximum(Dym, 0.0))
+        + tf.square(tf.minimum(Dyp, 0.0))
         + 1.0e-20
     )
     grad_minus = tf.sqrt(
-        tf.square(tf.minimum(Dxm, 0.0)) + tf.square(tf.maximum(Dxp, 0.0))
-        + tf.square(tf.minimum(Dym, 0.0)) + tf.square(tf.maximum(Dyp, 0.0))
+        tf.square(tf.minimum(Dxm, 0.0))
+        + tf.square(tf.maximum(Dxp, 0.0))
+        + tf.square(tf.minimum(Dym, 0.0))
+        + tf.square(tf.maximum(Dyp, 0.0))
         + 1.0e-20
     )
-    calving_term = (
-        tf.maximum(c, 0.0) * grad_minus + tf.minimum(c, 0.0) * grad_plus
-    )
+    calving_term = tf.maximum(c, 0.0) * grad_minus + tf.minimum(c, 0.0) * grad_plus
 
-    state.psi.assign(
-        state.psi - dt * (adv_x + adv_y) + dt * calving_term
-    )
+    state.psi.assign(state.psi - dt * (adv_x + adv_y) + dt * calving_term)
 
 
 def _advect_mass(cfg, state, phi_old, phi_new):
@@ -141,16 +143,24 @@ def _advect_mass(cfg, state, phi_old, phi_new):
     M_old = state.thk * phi_old
 
     divflux_front = compute_divflux_slope_limiter(
-        state.ubar, state.vbar, M_old,
-        state.dx, state.dx, state.dt,
+        state.ubar,
+        state.vbar,
+        M_old,
+        state.dx,
+        state.dx,
+        state.dt,
         slope_type=p.front_slope_type,
     )
     if p.interior_slope_type == p.front_slope_type:
         state.divflux = divflux_front
     else:
         divflux_interior = compute_divflux_slope_limiter(
-            state.ubar, state.vbar, M_old,
-            state.dx, state.dx, state.dt,
+            state.ubar,
+            state.vbar,
+            M_old,
+            state.dx,
+            state.dx,
+            state.dt,
             slope_type=p.interior_slope_type,
         )
         bulk = bulk_mask_5x5(phi_old > (1.0 - eps), dtype)
@@ -158,9 +168,7 @@ def _advect_mass(cfg, state, phi_old, phi_new):
     if not hasattr(state, "smb"):
         state.smb = tf.zeros_like(state.thk)
 
-    M_new = tf.maximum(
-        M_old + state.dt * (state.smb * phi_old - state.divflux), 0.0
-    )
+    M_new = tf.maximum(M_old + state.dt * (state.smb * phi_old - state.divflux), 0.0)
 
     thk_new = tf.where(
         phi_new > eps, M_new / tf.maximum(phi_new, eps), tf.zeros_like(M_new)
@@ -177,9 +185,7 @@ def _advect_mass(cfg, state, phi_old, phi_new):
             thk_new,
         )
         dx = tf.cast(state.dx, dtype)
-        discarded = tf.reduce_sum(
-            (thk_new - thk_capped) * phi_new * dx * dx
-        )
+        discarded = tf.reduce_sum((thk_new - thk_capped) * phi_new * dx * dx)
         state.cf_capped_volume.assign_add(discarded)
         state.cf_capped_volume_step.assign(discarded)
         thk_new = thk_capped
@@ -205,10 +211,12 @@ def _extend_thk_for_iceflow(cfg, state, phi_new):
     if halo_steps > 0:
         thresh = tf.cast(p.extend_thresh, dtype)
         halo_band = dilate_bool(partial_mask, halo_steps)
-        halo_lo = (halo_band
-                   & tf.logical_not(partial_mask)
-                   & full_mask
-                   & (thk < thk_ref * thresh))
+        halo_lo = (
+            halo_band
+            & tf.logical_not(partial_mask)
+            & full_mask
+            & (thk < thk_ref * thresh)
+        )
         extend_mask = partial_mask | halo_lo
 
     has_ref = thk_ref > 0.0
@@ -218,12 +226,9 @@ def _extend_thk_for_iceflow(cfg, state, phi_new):
 def _reinit_maybe(cfg, state):
     ls = cfg.processes.thk.level_set
     state._cf_steps_since_reinit += 1
-    if (ls.reinit_freq > 0
-            and state._cf_steps_since_reinit >= int(ls.reinit_freq)):
+    if ls.reinit_freq > 0 and state._cf_steps_since_reinit >= int(ls.reinit_freq):
         s0 = state.psi / tf.sqrt(state.psi * state.psi + state.dx * state.dx)
-        state.psi.assign(
-            _reinitialise(state.psi, s0, state.dx, ls.reinit_iter)
-        )
+        state.psi.assign(_reinitialise(state.psi, s0, state.dx, ls.reinit_iter))
         state._cf_steps_since_reinit = 0
 
 

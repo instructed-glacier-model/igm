@@ -12,7 +12,6 @@ import tensorflow as tf
 from igm.processes.enthalpy.solver.vertical.utils.assembly import assemble_system
 from igm.processes.enthalpy.solver.vertical.utils.solver import solve_tridiagonal_system
 
-
 # Data type
 dtype = tf.float32
 

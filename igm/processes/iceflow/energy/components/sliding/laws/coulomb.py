@@ -55,6 +55,7 @@ def cost_coulomb(
     h = fieldin["thk"]
     s = fieldin["usurf"]
     from ..sliding import get_friction_field
+
     tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
     N = fieldin["effective_pressure"]

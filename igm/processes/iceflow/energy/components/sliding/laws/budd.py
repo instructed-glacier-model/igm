@@ -70,6 +70,7 @@ def cost_budd(
     h = fieldin["thk"]
     s = fieldin["usurf"]
     from ..sliding import get_friction_field
+
     tau_ref = get_friction_field(fieldin)
     N = fieldin["effective_pressure"]
     dx = fieldin["dX"]
@@ -90,6 +91,20 @@ def cost_budd(
     N = tf.where(N < tf.cast(1e-3, dtype), tf.cast(1e-3, dtype), N)
 
     return power_law_cost(
-        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref, q,
-        rho_ratio, use_mask_gr, discr_h, V_b,
+        U,
+        V,
+        h,
+        s,
+        tau_ref,
+        N,
+        dx,
+        m,
+        u_regu,
+        u_ref,
+        N_ref,
+        q,
+        rho_ratio,
+        use_mask_gr,
+        discr_h,
+        V_b,
     )

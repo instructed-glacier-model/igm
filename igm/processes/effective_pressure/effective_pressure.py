@@ -26,7 +26,6 @@ from igm.common import State
 
 from . import till_storage
 
-
 VALID_MODES = (
     "constant_one",
     "percentage",

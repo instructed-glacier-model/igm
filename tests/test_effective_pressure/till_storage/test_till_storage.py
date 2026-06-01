@@ -24,7 +24,7 @@ def test_N_dry() -> None:
     h_water_till = tf.constant([[0.0]], dtype=dtype)
     h_water_till_max = tf.constant(2.0, dtype=dtype)
     h_ice = tf.constant([[1000.0]], dtype=dtype)
-    N_ref = tf.constant(1.0e-3, dtype=dtype)   # MPa
+    N_ref = tf.constant(1.0e-3, dtype=dtype)  # MPa
     e_ref = tf.constant(0.69, dtype=dtype)
     C_c = tf.constant(0.12, dtype=dtype)
     delta = tf.constant(0.02, dtype=dtype)
@@ -44,7 +44,7 @@ def test_N_saturated() -> None:
     h_water_till = tf.constant([[2.0]], dtype=dtype)
     h_water_till_max = tf.constant(2.0, dtype=dtype)
     h_ice = tf.constant([[1000.0]], dtype=dtype)
-    N_ref = tf.constant(1.0e-3, dtype=dtype)   # MPa
+    N_ref = tf.constant(1.0e-3, dtype=dtype)  # MPa
     e_ref = tf.constant(0.69, dtype=dtype)
     C_c = tf.constant(0.12, dtype=dtype)
     delta = tf.constant(0.02, dtype=dtype)
@@ -64,7 +64,7 @@ def test_N_shape() -> None:
     h_water_till = tf.ones((ny, nx), dtype=dtype) * 1.0
     h_water_till_max = tf.constant(2.0, dtype=dtype)
     h_ice = tf.ones((ny, nx), dtype=dtype) * 1000.0
-    N_ref = tf.constant(1.0e-3, dtype=dtype)   # MPa
+    N_ref = tf.constant(1.0e-3, dtype=dtype)  # MPa
     e_ref = tf.constant(0.69, dtype=dtype)
     C_c = tf.constant(0.12, dtype=dtype)
     delta = tf.constant(0.02, dtype=dtype)

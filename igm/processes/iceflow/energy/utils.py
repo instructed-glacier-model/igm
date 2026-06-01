@@ -43,12 +43,12 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
     # `emulated` path uses a CNN with checkpoint-fixed inputs and is
     # exempt from this requirement.
     method = cfg.processes.iceflow.method
-    if (
-        method in ("unified", "solved")
-        and "sliding" in cfg_physics.energy_components
-    ):
+    if method in ("unified", "solved") and "sliding" in cfg_physics.energy_components:
         law = cfg_physics.sliding.law
-        if law in ("budd", "coulomb", "mohr_coulomb") and "effective_pressure" not in unified_inputs:
+        if (
+            law in ("budd", "coulomb", "mohr_coulomb")
+            and "effective_pressure" not in unified_inputs
+        ):
             raise ValueError(
                 f"❌ The '{law}' sliding law (with iceflow.method={method!r}) "
                 "requires 'effective_pressure' in "

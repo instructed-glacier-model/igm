@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 """Shared helpers for thk / cf_level_set / cf_sub_grid."""
@@ -28,15 +28,17 @@ def advect_thickness_standard(cfg, state):
     """Stock IGM mass-conservation update on thk."""
     p = cfg.processes.thk
     state.divflux = compute_divflux_slope_limiter(
-        state.ubar, state.vbar, state.thk,
-        state.dx, state.dx, state.dt,
+        state.ubar,
+        state.vbar,
+        state.thk,
+        state.dx,
+        state.dx,
+        state.dt,
         slope_type=p.slope_type,
     )
     if not hasattr(state, "smb"):
         state.smb = tf.zeros_like(state.thk)
-    state.thk = tf.maximum(
-        state.thk + state.dt * (state.smb - state.divflux), 0.0
-    )
+    state.thk = tf.maximum(state.thk + state.dt * (state.smb - state.divflux), 0.0)
 
 
 def neighbour_bool_any(mask):
@@ -53,9 +55,13 @@ def neighbour_mean(f, mask):
     m = tf.cast(mask, f.dtype)
     fp = tf.pad(f, [[1, 1], [1, 1]], mode="SYMMETRIC")
     mp = tf.pad(m, [[1, 1], [1, 1]], mode="SYMMETRIC")
-    s = (fp[:-2, 1:-1] * mp[:-2, 1:-1] + fp[2:, 1:-1] * mp[2:, 1:-1]
-         + fp[1:-1, :-2] * mp[1:-1, :-2] + fp[1:-1, 2:] * mp[1:-1, 2:])
-    n = (mp[:-2, 1:-1] + mp[2:, 1:-1] + mp[1:-1, :-2] + mp[1:-1, 2:])
+    s = (
+        fp[:-2, 1:-1] * mp[:-2, 1:-1]
+        + fp[2:, 1:-1] * mp[2:, 1:-1]
+        + fp[1:-1, :-2] * mp[1:-1, :-2]
+        + fp[1:-1, 2:] * mp[1:-1, 2:]
+    )
+    n = mp[:-2, 1:-1] + mp[2:, 1:-1] + mp[1:-1, :-2] + mp[1:-1, 2:]
     return tf.where(n > 0.0, s / tf.maximum(n, 1.0), tf.zeros_like(s))
 
 
@@ -80,6 +86,8 @@ def bulk_mask_5x5(is_ice, dtype):
     bulk = tf.ones_like(full)
     for di in range(-2, 3):
         for dj in range(-2, 3):
-            bulk = bulk * fp[2 + di : 2 + di + full.shape[0],
-                             2 + dj : 2 + dj + full.shape[1]]
+            bulk = (
+                bulk
+                * fp[2 + di : 2 + di + full.shape[0], 2 + dj : 2 + dj + full.shape[1]]
+            )
     return bulk
