@@ -7,7 +7,7 @@
 
 During the slidingco → tau_ref migration, the legacy stack
 (emulated/solved/diagnostic + data_assimilation) keeps `state.slidingco`
-while the new stack (unified + data_assimilation_SR + pretraining)
+while the new stack (unified + field_inversion + pretraining)
 uses `state.tau_ref`. Modules that need to read this field
 stack-agnostically (enthalpy/till, stress diagnostics, NetCDF outputs)
 go through `get_tau_ref(state)`.

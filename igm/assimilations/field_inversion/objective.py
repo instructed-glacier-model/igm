@@ -69,7 +69,7 @@ class DAObjective:
 def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
     """Build DAObjective from misfit and regularization terms defined in cfg."""
 
-    obj_cfg = cfg.processes.data_assimilation_SR.objective
+    obj_cfg = cfg.assimilations.field_inversion.objective
     misfit_list = list(obj_cfg.misfit or [])
     reg_list = list(obj_cfg.regularization or [])
 

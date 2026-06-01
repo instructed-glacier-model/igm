@@ -26,7 +26,7 @@ physics:
       Units: MPa
     tau_ref:
       Type: float
-      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
+      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + field_inversion + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
       Units: MPa
     regularization:
       Type: float

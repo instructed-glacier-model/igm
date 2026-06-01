@@ -23,7 +23,7 @@ class VariableSpec:
     optimizer; the complement keeps its initial physical values.
     """
 
-    name: str  # e.g. "thk", "slidingco"
+    name: str  # e.g. "thk", "tau_ref"
     transform: str = (
         "identity"  # key in TRANSFORMS
     )
@@ -75,7 +75,7 @@ class MappingDataAssimilation(Mapping):
             "thk": 0,
             "usurf": 1,
             "arrhenius": 2,
-            "slidingco": 3,
+            "tau_ref": 3,
             "dX": 4,
         }
 

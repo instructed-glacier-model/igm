@@ -1,4 +1,4 @@
-data_assimilation_SR:
+field_inversion:
   optimization:
     minimizer_patience: 20
     retrain_lr: 1e-5 # Learning rate for network retraining steps

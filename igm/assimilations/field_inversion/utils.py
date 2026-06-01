@@ -47,7 +47,7 @@ def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
     """
     inverted = {
         str(item["name"])
-        for item in cfg.processes.data_assimilation_SR.variables
+        for item in cfg.assimilations.field_inversion.variables
     }
 
     # These are not inversion variables, just cast once for consistency.
@@ -67,16 +67,16 @@ def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
         )
         state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
 
-    if "slidingco" in inverted:
-        state.slidingco = (
+    if "tau_ref" in inverted:
+        state.tau_ref = (
             tf.ones_like(state.usurf, dtype=dtype)
-            * tf.cast(cfg.processes.iceflow.physics.init_slidingco, dtype)
+            * tf.cast(cfg.processes.iceflow.physics.sliding.tau_ref, dtype)
         )
 
     if "arrhenius" in inverted:
         state.arrhenius = (
             tf.ones_like(state.usurf, dtype=dtype)
-            * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
+            * tf.cast(cfg.processes.iceflow.physics.viscosity.arrhenius, dtype)
         )
 
     # convert dtype on any other input fields to avoid dtype mismatch

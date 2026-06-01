@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import Tuple
 
@@ -18,7 +19,7 @@ from igm.processes.iceflow.emulate.utils.artifacts import (
     save_emulator_artifact,
     wrap_emulator_artifact,
 )
-from igm.processes.pretraining.cost_tmp import get_cost_fn
+from igm.assimilations.pretraining.cost_tmp import get_cost_fn
 from igm.utils.math.precision import normalize_precision
 
 from .trainer import Trainer
@@ -54,7 +55,7 @@ def _prepare_run_dirs(
             if ckpt_dir.exists() and any(ckpt_dir.glob("ckpt-*")):
                 raise FileExistsError(
                     f"Experiment already has checkpoints at {ckpt_dir} but resume=False. "
-                    "Set cfg.processes.pretraining.resume=true or use a new experiment_name."
+                    "Set cfg.assimilations.pretraining.resume=true or use a new experiment_name."
                 )
             ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -89,8 +90,15 @@ def _resolve_accum_steps(cfg_pretraining) -> Tuple[int, int, int]:
 def initialize(cfg, state):
     tf.config.optimizer.set_jit(False)
 
-    cfg_pretraining = cfg.processes.pretraining
+    cfg_pretraining = cfg.assimilations.pretraining
     cfg_iceflow = cfg.processes.iceflow
+
+    # pretraining is an /assimilations module, so it initialises *before* the
+    # /processes (iceflow included). We write state.iceflow.mapping below, and
+    # that namespace is created by iceflow.initialize, so initialise the
+    # forward model here first. iceflow.initialize is idempotent (guarded by
+    # state.iceflow_initialized), so the later /processes pass is a no-op.
+    importlib.import_module("igm.processes.iceflow").initialize(cfg, state)
 
     make_plots = bool(cfg_pretraining.make_plots)
     save_model = bool(cfg_pretraining.save_model)

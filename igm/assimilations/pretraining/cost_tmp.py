@@ -9,7 +9,7 @@ from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
 
-DesiredInputs = ("thk", "usurf", "arrhenius", "slidingco", "dX")
+DesiredInputs = ("thk", "usurf", "arrhenius", "tau_ref", "dX")
 
 """
 This is a temporary replacement for the default energy cost since that does not currently support certain fields missing from the inputs cfg 
@@ -26,8 +26,8 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
     Nz = int(cfg_numerics.Nz)
 
     # Defaults when missing from cfg_unified.inputs
-    slidingco0 = float(cfg_physics.init_slidingco)
-    arrhenius0 = float(cfg_physics.init_arrhenius)
+    tau_ref0 = float(cfg_physics.sliding.tau_ref)
+    arrhenius0 = float(cfg_physics.viscosity.arrhenius)
     dX0 = 90.0
 
     # Network input schema (single-channel per name, order matters)
@@ -67,8 +67,8 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
             else:
                 if key == "dx":
                     chans.append(const_chan(dX0))
-                elif key == "slidingco":
-                    chans.append(const_chan(slidingco0))
+                elif key == "tau_ref":
+                    chans.append(const_chan(tau_ref0))
                 elif key == "arrhenius":
                     chans.append(const_chan(arrhenius0))
                 else:

@@ -1,4 +1,4 @@
-from .data_assimilation_SR import (
+from .field_inversion import (
     initialize,
     finalize,
     update

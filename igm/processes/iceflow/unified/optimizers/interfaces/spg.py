@@ -37,7 +37,7 @@ def _select(cfg: DictConfig, path: str, default: Any) -> Any:
 
 
 def _spg_path(cfg: DictConfig, map: Mapping) -> str:
-    da_path = "processes.data_assimilation_SR.optimization.spg"
+    da_path = "assimilations.field_inversion.optimization.spg"
     if _is_data_assimilation_mapping(map) and OmegaConf.select(cfg, da_path, default=None) is not None:
         return da_path
     return "processes.iceflow.unified.spg"
@@ -60,7 +60,7 @@ class InterfaceSPG(InterfaceOptimizer):
             iter_max = int(
                 _select(
                     cfg,
-                    "processes.data_assimilation_SR.optimization.nbitmax",
+                    "assimilations.field_inversion.optimization.nbitmax",
                     cfg_unified.nbit,
                 )
             )

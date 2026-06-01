@@ -13,11 +13,11 @@ import tensorflow as tf
 
 from .phase_runner import build_current_inputs
 from .utils import _safe_loss_scale
-from igm.processes.pretraining.cost_tmp import get_cost_fn
+from igm.assimilations.pretraining.cost_tmp import get_cost_fn
 
 logger = logging.getLogger(__name__)
 
-from igm.processes.pretraining.training_utils import (
+from igm.assimilations.pretraining.training_utils import (
     _anchor_loss,
     build_tfrecord_datasets_for_nz,
     build_velocity_data_loss,
@@ -182,7 +182,7 @@ class RetrainStepRunner:
 
 
 def _read_retraining_settings(cfg) -> RetrainingSettings:
-    cfg_opt = cfg.processes.data_assimilation_SR.optimization
+    cfg_opt = cfg.assimilations.field_inversion.optimization
     return RetrainingSettings(
         steps=int(cfg_opt.retrain_steps),
         lr=float(cfg_opt.retrain_lr),

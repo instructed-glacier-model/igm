@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import keras
 import tensorflow as tf
 
@@ -37,12 +39,12 @@ def _require_supported_keras_version() -> None:
     major = int(str(getattr(keras, "__version__", "0")).split(".", 1)[0])
     if major < 3:
         raise RuntimeError(
-            f"data_assimilation_SR requires Keras 3 or newer. "
+            f"field_inversion requires Keras 3 or newer. "
             f"Detected keras == {keras.__version__}."
         )
 
 def _build_halt(cfg) -> Halt:
-    cfg_da = cfg.processes.data_assimilation_SR
+    cfg_da = cfg.assimilations.field_inversion
 
     log_burst_crit = Criteria["log_burst"](
         metric=Metrics["cost"](),
@@ -74,7 +76,16 @@ def _build_halt(cfg) -> Halt:
 def data_assimilation_initialize(cfg, state) -> None:
     _require_supported_keras_version()
 
-    cfg_da = cfg.processes.data_assimilation_SR
+    # field_inversion is an /assimilations module, so it initialises *before*
+    # the /processes (iceflow included). The DA mapping below needs
+    # state.iceflow.mapping/optimizer, so initialise the forward model here.
+    # iceflow stays listed in /processes (its config is read throughout this
+    # module) and is re-initialised harmlessly in the processes pass — same
+    # contract used by the time_relaxation assimilation.
+    iceflow = importlib.import_module("igm.processes.iceflow")
+    iceflow.initialize(cfg, state)
+
+    cfg_da = cfg.assimilations.field_inversion
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
     retrain_iter = int(cfg_da.optimization.retrain_iter)
 

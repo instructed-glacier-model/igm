@@ -26,7 +26,7 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg_numerics = cfg.processes.iceflow.numerics
 
         if isinstance(map, MappingDataAssimilation):
-            lr = cfg.processes.data_assimilation_SR.optimization.learning_rate
+            lr = cfg.assimilations.field_inversion.optimization.learning_rate
         else:
             lr = cfg_unified.adam.lr
 

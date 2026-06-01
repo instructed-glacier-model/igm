@@ -20,10 +20,10 @@ from ..transforms import TRANSFORMS
 class InterfaceDataAssimilation(InterfaceMapping):
     """
     Reads Hydra config:
-      data_assimilation_SR:
+      field_inversion:
         variables:
-          - { name: thk,        transform: identity }
-          - { name: slidingco,  transform: log10 }
+          - { name: thk,      transform: identity }
+          - { name: tau_ref,  transform: log10 }
 
     and produces the kwargs for `MappingDataAssimilation`.
     """
@@ -31,7 +31,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
     @staticmethod
     def _parse_specs(cfg: DictConfig) -> List[VariableSpec]:
         specs = []
-        for item in cfg.processes.data_assimilation_SR.variables:
+        for item in cfg.assimilations.field_inversion.variables:
             name = str(item["name"])
             transform = str(item.get("transform", "identity")).lower()
             if transform not in TRANSFORMS:

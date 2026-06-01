@@ -54,7 +54,7 @@ class Trainer:
         self.save_model = bool(save_model)
         self.make_plots = bool(make_plots)
 
-        cfg_p = cfg.processes.pretraining
+        cfg_p = cfg.assimilations.pretraining
 
         # ------------------------------------------------------------------
         # Hyperparameters
@@ -166,7 +166,7 @@ class Trainer:
     def run(self, start_epoch: int = 0) -> None:
         if start_epoch > self.n_epochs:
             raise ValueError(
-                f"start_epoch={start_epoch} exceeds cfg.processes.pretraining.epochs={self.n_epochs}"
+                f"start_epoch={start_epoch} exceeds cfg.assimilations.pretraining.epochs={self.n_epochs}"
             )
         train_it = iter(self.train_ds)
 
