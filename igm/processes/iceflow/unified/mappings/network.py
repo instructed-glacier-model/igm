@@ -22,6 +22,8 @@ class MappingNetwork(Mapping):
     ):
         super().__init__(bcs, precision)
         self.network = network
+        if not network.built:
+            network.build((None, None, None, network.nb_inputs))
         self.output_scale = output_scale
         self.shapes = [w.shape for w in network.trainable_variables]
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
@@ -41,7 +43,7 @@ class MappingNetwork(Mapping):
         return tf.identity(theta_flat)
 
     def get_theta(self) -> list[tf.Variable]:
-        return self.network.trainable_variables
+        return [v._value for v in self.network.trainable_variables]
 
     def set_theta(self, theta: list[tf.Tensor]) -> None:
         for var, val in zip(self.network.trainable_variables, theta):

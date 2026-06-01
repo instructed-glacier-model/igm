@@ -11,16 +11,6 @@ def _as_list(x):
     return [x]
 
 
-
-def masked_mean(x: tf.Tensor, mask: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
-    m = tf.cast(mask, x.dtype)
-    num = tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
-    den = tf.reduce_sum(m) + tf.cast(eps, x.dtype)
-    return num / den
-
-def masked_sum(x: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
-    return tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
-
 def cell_area_like(dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
     """
     Cell area ΔA inferred from dx. Assumes square cells: ΔA = dx^2.
@@ -34,6 +24,68 @@ def masked_integral(x: tf.Tensor, mask: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
     """
     area = cell_area_like(dx, x)
     return tf.reduce_sum(tf.where(mask, x * area, tf.zeros_like(x)))
+
+
+def masked_area(mask: tf.Tensor, dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
+    """
+    Area covered by `mask`, using the same dA = dx^2 convention as masked_integral.
+    """
+    one = tf.ones_like(like, dtype=like.dtype)
+    return masked_integral(one, tf.cast(mask, tf.bool), dx)
+
+
+def _safe_loss_scale(value: tf.Tensor, dtype: tf.dtypes.DType, floor: float = 1e-6) -> tf.Tensor:
+    value = tf.cast(value, dtype)
+    return tf.maximum(tf.abs(value), tf.cast(floor, dtype))
+
+    
+def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
+    """
+    Only initialize fields that are actually inverted for.
+    Non-inverted iceflow inputs are cast to ``dtype`` in place so the
+    network's input stack is dtype-homogeneous.
+    """
+    inverted = {
+        str(item["name"])
+        for item in cfg.processes.data_assimilation_SR.variables
+    }
+
+    # These are not inversion variables, just cast once for consistency.
+    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
+    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
+    state.usurf = tf.cast(state.usurf, dtype=dtype)
+    state.dX = tf.cast(state.dX, dtype=dtype)
+
+    if "thk" in inverted:
+        thk0 = initial_thickness(
+            s=state.usurf,
+            u=state.uvelsurfobs,
+            v=state.vvelsurfobs,
+            mask=state.icemask,
+            dx=state.dX[0, 0],
+            dy=state.dX[0, 0],
+        )
+        state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
+
+    if "slidingco" in inverted:
+        state.slidingco = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_slidingco, dtype)
+        )
+
+    if "arrhenius" in inverted:
+        state.arrhenius = (
+            tf.ones_like(state.usurf, dtype=dtype)
+            * tf.cast(cfg.processes.iceflow.physics.init_arrhenius, dtype)
+        )
+
+    # convert dtype on any other input fields to avoid dtype mismatch
+    for field_name in cfg.processes.iceflow.unified.inputs:
+        value = getattr(state, field_name)
+        if hasattr(value, "dtype") and value.dtype != dtype:
+            setattr(state, field_name, tf.cast(value, dtype=dtype))
+
+    return inverted
 
 def initial_thickness(
     s,                 # surface elevation [m], shape (Ny, Nx)
@@ -76,8 +128,6 @@ def initial_thickness(
 
     if not (np.isfinite(n) and n > 0.0):
         raise ValueError(f"initial_thickness: n must be finite and > 0. Got n={n}.")
-
-    Ny, Nx = s.shape
 
     # --- sanitize mask: treat NaN/inf as non-ice; then cast to bool
     if mask.dtype != bool:

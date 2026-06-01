@@ -1,33 +1,84 @@
 data_dir:
   Type: string
-  Description: "Path to the directory containing the TFRecord glacier catalog used for training."
   Units: dimless
-batch_size:
-  Type: integer
-  Description: "Number of samples per training batch for the neural network."
-  Units: dimless
-epochs:
-  Type: integer
-  Description: "Total number of training epochs for neural network pre-training."
-  Units: dimless
-experiment_name:
-  Type: string
-  Description: "Name of the experiment; used as the subdirectory under `out_dir` where checkpoints, figures, and artifacts are saved."
-  Units: dimless
-loss_type:
-  Type: string
-  Description: "Loss function for the data fidelity term: `mse` (mean squared error) or `huber`."
-  Units: dimless
-learning_rate:
-  Type: float
-  Description: "Learning rate for the Adam optimizer."
-  Units: dimless
+  Description: "Path to the TFRecord dataset root directory. Must contain metadata.json and train/ and val/ subdirectories organised by Nz."
 out_dir:
   Type: string
-  Description: "Base output directory; the experiment subdirectory (named by `experiment_name`) is created here to store checkpoints, figures, and artifacts."
   Units: dimless
+  Description: "Root directory under which the experiment output folder is created."
+experiment_name:
+  Type: string
+  Units: dimless
+  Description: "Name of the subdirectory created inside out_dir that holds the trained model, checkpoints, and figures."
+batch_size:
+  Type: integer
+  Units: dimless
+  Description: "Effective batch size: the number of training examples processed before each optimizer weight update. Must be divisible by micro_batch_size."
+micro_batch_size:
+  Type: integer
+  Units: dimless
+  Description: "Number of examples processed simultaneously on the GPU per forward-backward pass. Gradients are accumulated over batch_size / micro_batch_size micro-steps before each update. Reduce this if GPU memory is insufficient for the full batch size."
+epochs:
+  Type: integer
+  Units: dimless
+  Description: "Total number of training epochs."
+steps_per_epoch:
+  Type: integer
+  Units: dimless
+  Description: "Number of optimizer weight updates performed per epoch."
+val_steps:
+  Type: integer
+  Units: dimless
+  Description: "Number of validation mini-batches evaluated at the end of each epoch."
+learning_rate:
+  Type: float
+  Units: dimless
+  Description: "Learning rate for the Adam optimizer."
+split_seed:
+  Type: integer
+  Units: dimless
+  Description: "Integer seed used to shuffle the list of training shards at the start of training. Set to a fixed value for reproducibility."
+loss_type:
+  Type: string
+  Units: dimless
+  Description: "Data loss function applied to predicted vs. reference velocities. Options: huber (recommended; robust to outliers near glacier margins) or mse."
+huber_delta:
+  Type: float
+  Units: "m y^{-1}"
+  Description: "Transition point of the Huber loss: residuals smaller than delta are penalised quadratically, larger residuals linearly. Only used when loss_type is huber."
+warmup_steps:
+  Type: integer
+  Units: dimless
+  Description: "Number of optimizer updates at the start of training during which the physics loss is disabled. The network learns from data alone during this phase, which stabilises early training."
+lambda_update_every:
+  Type: integer
+  Units: dimless
+  Description: "After the warmup phase, the physics loss weight lambda is recomputed every this many optimizer steps by comparing data and physics gradient norms."
+lambda_ema:
+  Type: float
+  Units: dimless
+  Description: "Exponential moving average factor applied when updating lambda. Values close to 1 produce slow, stable adaptation; lower values respond faster but with more variance."
+lambda_min:
+  Type: float
+  Units: dimless
+  Description: "Lower bound on the adaptive physics loss weight lambda."
+lambda_max:
+  Type: float
+  Units: dimless
+  Description: "Upper bound on the adaptive physics loss weight lambda."
+lambda_max_change:
+  Type: float
+  Units: dimless
+  Description: "Multiplicative clamp applied to each lambda update: the new value is restricted to [lambda / c, lambda * c] where c is this parameter. Prevents large sudden changes."
 resume:
   Type: boolean
-  Description: "If True, restores the latest checkpoint from the experiment directory and continues training from the last saved epoch; raises an error if no checkpoint is found."
   Units: dimless
-
+  Description: "Resume training from the latest checkpoint in out_dir/experiment_name/checkpoints/. The experiment directory must already exist. Has no effect when save_model is false."
+make_plots:
+  Type: boolean
+  Units: dimless
+  Description: "Write a loss curve figure and per-epoch speed-comparison plots to out_dir/experiment_name/figures/ during training."
+save_model:
+  Type: boolean
+  Units: dimless
+  Description: "Save the trained emulator artifact and training checkpoints to disk. Set to false during hyperparameter searches to avoid writing many models."

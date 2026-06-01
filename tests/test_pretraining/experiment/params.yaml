@@ -1,0 +1,58 @@
+# @package _global_
+#
+# Lightweight experiment config for the pretraining integration test.
+# iceflow is loaded so pretraining can read its config (Nz, architecture,
+# inputs, BCs). iceflow.initialize detects "pretraining" in the processes
+# list and skips glacier-field setup (see iceflow.py:65-67).
+
+defaults:
+  - override /processes:
+    - iceflow
+    - pretraining
+
+processes:
+  iceflow:
+    method: unified
+    numerics:
+      Nz: 2
+      precision: single
+    unified:
+      bcs: []
+      inputs: [thk, usurf, slidingco]
+      mapping: network
+      network:
+        pretrained: false
+        architecture: CNN
+        print_summary: false
+    emulator:
+      network:
+        params: 
+          nb_layers: 2
+          nb_out_filter: 4
+          conv_ker_size: 3
+          batch_norm: false
+          residual: false
+          separable: false
+
+  pretraining:
+    data_dir: ???
+    out_dir: ???
+    experiment_name: test_pretraining_run
+    batch_size: 2
+    micro_batch_size: 2
+    epochs: 1
+    steps_per_epoch: 2
+    val_steps: 2
+    learning_rate: 0.0001
+    split_seed: 0
+    loss_type: mse
+    huber_delta: 50.0
+    warmup_steps: 10000
+    lambda_update_every: 100
+    lambda_ema: 0.99
+    lambda_min: 0.001
+    lambda_max: 100.0
+    lambda_max_change: 2.0
+    resume: false
+    make_plots: false
+    save_model: true

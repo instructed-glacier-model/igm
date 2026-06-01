@@ -6,21 +6,22 @@ from typing import Any, Dict, Optional, Tuple
 
 import tensorflow as tf
 
-from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.utils.velocities import get_velsurf
+from igm.utils.math.precision import normalize_precision
+
+
+_DEFAULT_MASK_CACHE_KEY = "__default_icemask__"
 
 
 @dataclass
 class DAEvaluationContext:
     """
-    This holds references and computed derived fields to avoid recomputing
-    key quantities in every term in the DA cost. I can add various other
-    derived fields in the future: in particular divflux would probably
-    be useful...
+    Per-objective-evaluation cache for DA quantities.
 
     IMPORTANT: any θ-dependent physical field MUST be accessed via da_map
     (ctx.physical(...)) to guarantee gradients flow properly.
     """
+
     cfg: Any
     state: Any
     da_map: Any
@@ -32,15 +33,16 @@ class DAEvaluationContext:
     _U: Optional[tf.Tensor] = None
     _V: Optional[tf.Tensor] = None
     _dx: Optional[tf.Tensor] = None
-    _A_domain: Optional[tf.Tensor] = None
 
     _uvelsurf: Optional[tf.Tensor] = None
     _vvelsurf: Optional[tf.Tensor] = None
 
-    _mask_cache: Dict[str, tf.Tensor] = None
+    _mask_cache: Optional[Dict[str, tf.Tensor]] = None
+    _physical_cache: Optional[Dict[str, tf.Tensor]] = None
 
     def __post_init__(self) -> None:
         self._mask_cache = {}
+        self._physical_cache = {}
 
     @property
     def dtype(self) -> tf.DType:
@@ -66,47 +68,27 @@ class DAEvaluationContext:
             self._dx = tf.cast(self.state.dX, self.dtype)
         return self._dx
 
-    @property
-    def A_domain(self) -> tf.Tensor:
-        """
-        Area (A) of the inversion domain (icemask), using dA = dx^2.
-        Assumes uniform grid spacing
-        """
-        if self._A_domain is None:
-            m = self.get_mask(None)  # icemask
-            area = tf.ones_like(tf.cast(m, self.dtype), dtype=self.dtype) * (self.dx * self.dx)
-            self._A_domain = tf.reduce_sum(tf.where(m, area, tf.zeros_like(area)))
-        return self._A_domain
-
-    # ---- data access ----
-
-
     def state_field(self, name: str) -> tf.Tensor:
-        """Non-θ field from state (e.g. an observation like 'uvelsurfobs' or a prior like 'thk_prior')."""
+        """Non-θ field from state, such as an observation or prior field."""
         if not hasattr(self.state, name):
             raise AttributeError(f"State has no field '{name}'")
-        x = getattr(self.state, name)
-        return tf.cast(tf.convert_to_tensor(x), self.dtype)
+        return tf.cast(tf.convert_to_tensor(getattr(self.state, name)), self.dtype)
 
     def physical(self, name: str) -> tf.Tensor:
-        """θ-dependent physical field (e.g. 'thk', 'slidingco') via mapping."""
-        return self.da_map.get_physical_field(name)
+        """θ-dependent physical field, cached within this objective evaluation."""
+        assert self._physical_cache is not None
+        if name not in self._physical_cache:
+            self._physical_cache[name] = self.da_map.get_physical_field(name)
+        return self._physical_cache[name]
 
     def model(self, name: str) -> tf.Tensor:
-        """
-        Model quantity provider.
-
-        Special cases can be added at a future date as necessary e.g. divflux
-        """
+        """Model quantity provider."""
         if name == "uvelsurf":
             u, _ = self.velsurf()
             return u
         if name == "vvelsurf":
             _, v = self.velsurf()
             return v
-
-        # Default: treat as physical field
-        # (works for 'thk', 'slidingco', etc.)
         return self.physical(name)
 
     def velsurf(self) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -118,14 +100,22 @@ class DAEvaluationContext:
 
     def get_mask(self, mask_name: Optional[str]) -> tf.Tensor:
         """
-        Returns a boolean mask tensor.
+        Return a boolean mask tensor.
 
-        Default (mask_name is None): state.icemask
-        Override (mask_name is a string): state.<mask_name> (error if missing)
+        mask_name is None: state.icemask.
+        mask_name is a string: state.<mask_name>, or AttributeError if missing.
         """
-        if mask_name is None:
-            return tf.cast(self.state.icemask, tf.bool)
+        assert self._mask_cache is not None
+        key = _DEFAULT_MASK_CACHE_KEY if mask_name is None else mask_name
+        if key in self._mask_cache:
+            return self._mask_cache[key]
 
-        if not hasattr(self.state, mask_name):
-            raise AttributeError(f"State has no mask field '{mask_name}'.")
-        return tf.cast(getattr(self.state, mask_name), tf.bool)
+        if mask_name is None:
+            mask = tf.cast(self.state.icemask, tf.bool)
+        else:
+            if not hasattr(self.state, mask_name):
+                raise AttributeError(f"State has no mask field '{mask_name}'.")
+            mask = tf.cast(getattr(self.state, mask_name), tf.bool)
+
+        self._mask_cache[key] = mask
+        return mask

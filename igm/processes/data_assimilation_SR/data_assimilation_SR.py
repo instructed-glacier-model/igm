@@ -2,134 +2,132 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
+from __future__ import annotations
+
+import keras
 import tensorflow as tf
 
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
-from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
-
-from .outputs.output_ncdf import update_ncdf_optimize
-
-from .utils import initial_thickness
-from igm.utils.math.precision import normalize_precision
-
+from igm.processes.iceflow.unified.halt import Halt
+from igm.processes.iceflow.unified.halt.criteria import Criteria
+from igm.processes.iceflow.unified.halt.metrics import Metrics
 from igm.processes.iceflow.unified.mappings.data_assimilation import MappingDataAssimilation
 from igm.processes.iceflow.unified.mappings.interfaces.data_assimilation import InterfaceDataAssimilation
+from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS, InterfaceSPG
 from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoundsDA
-from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS
+from igm.utils.math.precision import normalize_precision
 
-from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
-from igm.processes.data_assimilation_SR.objective import build_objective_from_cfg
+from igm.processes.iceflow.unified.optimizers.spectral_projected_gradient import (
+    OptimizerSpectralProjectedGradient,
+)
 
-class DataAssimilation:
-    def __init__(self):
-        self.map = None
-        self.opt = None
-        self.cost_fn = None
-        self.maxiter = 0
-        self.out_freq = 0
-        self.result = None
+from .phase_runner import (
+    DataAssimilationRuntime,
+    build_cost_and_objective,
+    reset_da_run_state,
+    run_da_phase,
+)
+from .retraining import (
+    initialize_retraining,
+    reset_retraining_run_state,
+    run_retraining_phase,
+)
+from .utils import _initialize_inverted_fields
+
+def _require_supported_keras_version() -> None:
+    major = int(str(getattr(keras, "__version__", "0")).split(".", 1)[0])
+    if major < 3:
+        raise RuntimeError(
+            f"data_assimilation_SR requires Keras 3 or newer. "
+            f"Detected keras == {keras.__version__}."
+        )
+
+def _build_halt(cfg) -> Halt:
+    cfg_da = cfg.processes.data_assimilation_SR
+
+    log_burst_crit = Criteria["log_burst"](
+        metric=Metrics["cost"](),
+        dtype=cfg.processes.iceflow.numerics.precision,
+        patience=cfg_da.optimization.minimizer_patience,
+        log_tol=1.0e-4,
+        burst_log_tol=9.53e-2,
+        patience_growth= 1.5,
+        max_patience= 5 * cfg_da.optimization.minimizer_patience,
+        min_iter= 0,
+        cost_floor=1.0e-6,
+    )
+
+    grad_crit = Criteria["abs_tol"](
+        metric=Metrics["grad_theta_norm"](),
+        tol=1.0e-4,
+        ord="id",
+    )
+
+    return Halt(
+        crit_success=[log_burst_crit, grad_crit],
+        crit_failure=[],
+        freq=1,
+        dtype=cfg.processes.iceflow.numerics.precision,
+        success_mode="all",
+    )
 
 
-def get_cost_and_obj(cfg, state, da_map):
-    objective = build_objective_from_cfg(cfg, state, da_map)
+def data_assimilation_initialize(cfg, state) -> None:
+    _require_supported_keras_version()
 
-    def cost_function(U, V, inputs):
-        total, misfit, reg, _ = objective(U, V, inputs)
-        return total, misfit, reg
-
-    return cost_function, objective
-
-def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.data_assimilation_SR
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+    retrain_iter = int(cfg_da.optimization.retrain_iter)
 
-    da = DataAssimilation()
+    _initialize_inverted_fields(cfg, state, dtype)
 
-    # Initial thickness and slidingco guess (for now keep this simple, could be improved in the future with more sophisticated initializations)
-    # mainly I just want to avoid cheating by unintentionally using the true thickness as initial guess
-    thk0 = initial_thickness(
-        s=state.usurf,
-        u=state.uvelsurfobs,
-        v=state.vvelsurfobs,
-        mask=state.icemask,
-        dx=state.dX[0, 0],
-        dy=state.dX[0, 0],
+    da_map = MappingDataAssimilation(
+        **InterfaceDataAssimilation.get_mapping_args(cfg, state)
     )
-    slidingco0 = np.zeros_like(thk0) + cfg.processes.iceflow.physics.init_slidingco 
+    cost_fn, objective = build_cost_and_objective(cfg, state, da_map)
 
-    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
-    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
-    state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
-    state.slidingco = tf.convert_to_tensor(slidingco0, dtype=dtype)     
-    state.usurf = tf.cast(state.usurf, dtype)
-    state.dX = tf.cast(state.dX, dtype) 
+    optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
+    optimizer_args["halt"] = _build_halt(cfg)
+    optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
 
-    mapping_args = InterfaceDataAssimilation.get_mapping_args(cfg, state)
-    da.map = MappingDataAssimilation(**mapping_args)
+    # optimizer_args = InterfaceSPG.get_optimizer_args(cfg, cost_fn, da_map)
+    # optimizer_args["halt"] = _build_halt(cfg)
+    # optimizer = OptimizerSpectralProjectedGradient(**optimizer_args)
 
-    da.cost_fn, da.objective = get_cost_and_obj(cfg, state, da.map)
+    retraining = None
+    if retrain_iter > 0:
+        retraining = initialize_retraining(cfg, state, da_map)
 
-    optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, da.cost_fn, da.map)
-    da.opt = OptimizerLBFGSBoundsDA(**optimizer_args)
-
-    num_patches = state.iceflow.patching.num_patches
-    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
-    sampler = TrainingBatchBuilder(
-        preparation_params=state.iceflow.preparation_params,
-        fieldin_names=state.iceflow.preparation_params.fieldin_names,
-        patch_shape=(patch_H, patch_W, patch_C),
-        num_patches=num_patches,
+    da = DataAssimilationRuntime(
+        map=da_map,
+        opt=optimizer,
+        cost_fn=cost_fn,
+        objective=objective,
+        out_freq=int(cfg_da.output.freq),
+        retrain_iter=retrain_iter,
+        retraining=retraining,
     )
-    da.opt.sampler = sampler
-
-    da.maxiter = cfg_da.optimization.nbitmax
-    da.out_freq = cfg_da.output.freq
-
-    def _step_callback(it_tf):
-        it = int(it_tf.numpy())
-
-        # For outputs (not for gradients): sync state fields for netcdf writing
-        da.map.update_state_fields(state)
-
-        X = fieldin_state_to_X(cfg, state)
-        inputs = state.iceflow.patching.generate_patches(X)
-
-        U, V = da.map.get_UV(inputs)
-        inputs_used = da.map.inputs if hasattr(da.map, "inputs") else inputs
-        total, data, reg = da.cost_fn(U, V, inputs_used)
-
-        state.da_cost_total = float(total.numpy())
-        state.da_cost_data  = float(data.numpy())
-        state.da_cost_reg   = float(reg.numpy())
-
-        evaluate_iceflow(cfg, state)
-        update_ncdf_optimize(cfg, state, it)
-
-    da.map.set_step_callback(_step_callback, out_freq=da.out_freq)
     state.data_assimilation = da
 
-def initialize(cfg, state):
+
+def initialize(cfg, state) -> None:
     data_assimilation_initialize(cfg, state)
 
-def update(cfg, state):
+
+def update(cfg, state) -> None:
     da = state.data_assimilation
+    reset_da_run_state(da)
 
-    # Initial output (iteration 0)
-    da.map.update_state_fields(state)
-    evaluate_iceflow(cfg, state)
-    update_ncdf_optimize(cfg, state, 0)
+    if da.retraining is not None:
+        reset_retraining_run_state(da.retraining)
 
-    X = fieldin_state_to_X(cfg, state)
-    inputs = state.iceflow.patching.generate_patches(X)
+    da.retrain_iter_num = 0
+    run_da_phase(cfg, state, da)
 
-    da.opt.minimize(inputs)
-
-    # Final write
-    da.map.update_state_fields(state)
-    evaluate_iceflow(cfg, state)
-    update_ncdf_optimize(cfg, state, int(da.maxiter))
+    for retrain_iter_num in range(1, da.retrain_iter + 1):
+        da.retrain_iter_num = retrain_iter_num
+        run_retraining_phase(cfg, state, da)
+        run_da_phase(cfg, state, da)
 
 
-def finalize(cfg, state):
+def finalize(cfg, state) -> None:
     pass

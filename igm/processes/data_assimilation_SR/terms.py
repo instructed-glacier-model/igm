@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from .context import DAEvaluationContext
 from .penalties import PenaltyRegistry
-from .utils import masked_integral
+from .utils import masked_area, masked_integral
 
 
 Misfit = "misfit"
@@ -18,7 +18,6 @@ Regularization = "regularization"
 
 @dataclass(frozen=True)
 class MisfitSpec:
-    kind: str
     name: str
     components: Sequence[str]
     obs: Sequence[str]
@@ -39,7 +38,7 @@ class FieldPenaltySpec:
 
 class CostTerm(ABC):
     name: str
-    group: str  # MISFIT / REGULARIZATION
+    group: str
 
     @abstractmethod
     def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
@@ -56,59 +55,26 @@ class GaussianMisfitTerm(CostTerm):
     def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
         dtype = ctx.dtype
         std = tf.cast(self.spec.std, dtype)
+        obs_fields = [ctx.state_field(obs_name) for obs_name in self.spec.obs]
 
-        # Base mask (default: icemask unless user overrides)
-        mask = ctx.get_mask(self.spec.mask)
+        # Misfit defaults to icemask. An explicit mask name must exist on state.
+        mask = ctx.get_mask(self.spec.mask) if self.spec.mask is not None else ctx.get_mask(None)
 
-        # Observation availability: NaN means "no data"
-        for obs_name in self.spec.obs:
-            y = ctx.state_field(obs_name)
+        # Observation NaNs mean "no data" and are excluded before residual arithmetic.
+        for y in obs_fields:
             mask = mask & tf.math.is_finite(y)
 
         res2 = None
-        for comp_name, obs_name in zip(self.spec.components, self.spec.obs):
-            y = ctx.state_field(obs_name)
+        for comp_name, y in zip(self.spec.components, obs_fields):
             m = ctx.model(comp_name)
-            r = (y - m) / std
-            r = tf.where(mask, r, tf.zeros_like(r))  # kill NaNs that would pollute gradients
-            term = tf.square(tf.cast(r, dtype))
-            res2 = term if res2 is None else (res2 + term)
+            y_eff = tf.where(mask, y, tf.zeros_like(y))
+            m_eff = tf.where(mask, m, tf.zeros_like(m))
+            term = tf.square(tf.cast((y_eff - m_eff) / std, dtype))
+            res2 = term if res2 is None else res2 + term
 
         integral = masked_integral(tf.cast(res2, dtype), mask, ctx.dx)
-        denom = tf.cast(ctx.A_domain, dtype) + tf.cast(self.spec.eps, dtype)
+        denom = masked_area(mask, ctx.dx, res2) + tf.cast(self.spec.eps, dtype)
         return tf.cast(0.5, dtype) * integral / denom
-
-
-class HuberMisfitTerm(CostTerm):
-    group = Misfit
-
-    def __init__(self, spec: MisfitSpec) -> None:
-        self.spec = spec
-        self.name = f"misfit:{spec.name}"
-
-    def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
-        dtype = ctx.dtype
-        std = tf.cast(self.spec.std, dtype)
-        delta = tf.cast(1.0, dtype)  # fixed for now
-        mask = ctx.get_mask(self.spec.mask)
-
-        for obs_name in self.spec.obs:
-            y = ctx.state_field(obs_name)  # <- fixed (no ctx.obs method)
-            mask = mask & tf.math.is_finite(y)
-
-        res = None
-        for comp_name, obs_name in zip(self.spec.components, self.spec.obs):
-            y = ctx.state_field(obs_name)
-            m = ctx.model(comp_name)
-            r = (y - m) / std
-            r = tf.where(mask, r, tf.zeros_like(r))
-            a = tf.abs(tf.cast(r, dtype))
-            term = tf.where(a <= delta, 0.5 * tf.square(a), delta * (a - 0.5 * delta))
-            res = term if res is None else (res + term)
-
-        integral = masked_integral(tf.cast(res, dtype), mask, ctx.dx)
-        denom = tf.cast(ctx.A_domain, dtype) + tf.cast(self.spec.eps, dtype)
-        return integral / denom
 
 
 class FieldPenaltyTerm(CostTerm):
@@ -116,20 +82,29 @@ class FieldPenaltyTerm(CostTerm):
 
     def __init__(self, spec: FieldPenaltySpec) -> None:
         if spec.penalty not in PenaltyRegistry:
-            raise ValueError(f"Unknown penalty '{spec.penalty}'. Available: {list(PenaltyRegistry.keys())}")
+            raise ValueError(
+                f"Unknown penalty '{spec.penalty}'. Available: {list(PenaltyRegistry.keys())}"
+            )
         self.spec = spec
         self.name = f"reg:{spec.name}:{spec.penalty}"
 
     def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
         dtype = ctx.dtype
-
         field = ctx.physical(self.spec.name)  # ensures tape tracks θ
         lam = tf.cast(self.spec.lam, dtype)
-        mask = ctx.get_mask(self.spec.mask)  # None => icemask
+
+        # Regularization defaults to the full tensor domain. An explicit mask
+        # name must exist on state.
+        mask = (
+            ctx.get_mask(self.spec.mask)
+            if self.spec.mask is not None
+            else tf.ones_like(field, dtype=tf.bool)
+        )
 
         ref_tensor = None
         if self.spec.ref is not None:
             ref_tensor = ctx.state_field(self.spec.ref)
+            mask = mask & tf.math.is_finite(ref_tensor)
 
         fn = PenaltyRegistry[self.spec.penalty]
         return fn(
@@ -137,7 +112,7 @@ class FieldPenaltyTerm(CostTerm):
             dx=ctx.dx,
             lam=lam,
             mask=mask,
-            A_domain=tf.cast(ctx.A_domain, dtype),
+            area=masked_area(mask, ctx.dx, field),
             eps=float(self.spec.eps),
             ref=ref_tensor,
         )
@@ -145,5 +120,4 @@ class FieldPenaltyTerm(CostTerm):
 
 MisfitRegistry = {
     "gaussian": GaussianMisfitTerm,
-    "huber": HuberMisfitTerm,
 }
