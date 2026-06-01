@@ -1,0 +1,20 @@
+law:
+  Type: string
+  Units: dimless
+  Description: "Calving law: `zero` (no calving), `water_depth` (c = k * D_w, Brown/Meier/Post 1982), `eigen` (c = K2 * max(e1,0) * max(e2,0), Levermann 2012), or `thickness_threshold` (c = c_max where thk < Hcr)."
+k:
+  Type: float
+  Units: yr^{-1}
+  Description: "Proportionality constant for the water-depth calving law."
+K2:
+  Type: float
+  Units: m yr
+  Description: "Proportionality constant for the eigen calving law (Levermann 2012)."
+Hcr:
+  Type: float
+  Units: m
+  Description: "Critical ice thickness below which calving rate is set to c_max (thickness-threshold law)."
+c_max:
+  Type: float
+  Units: m yr^{-1}
+  Description: "Safety cap applied to the calving rate output field."
