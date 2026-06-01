@@ -24,7 +24,7 @@ from omegaconf import DictConfig
 
 from igm.common import State
 
-from . import vanpelt_bueler
+from . import till_storage
 
 
 VALID_MODES = (
@@ -32,42 +32,28 @@ VALID_MODES = (
     "percentage",
     "ocean_connected",
     "from_input",
-    "vanpelt_bueler",
+    "till_storage",
 )
 
 
 def initialize(cfg: DictConfig, state: State) -> None:
-    if cfg.processes.effective_pressure.mode == "vanpelt_bueler":
-        vanpelt_bueler.initialize(cfg, state)
-        return
-    _compute_simple(cfg, state)
+    state.effective_pressure = _compute_N(cfg, state)
 
 
 def update(cfg: DictConfig, state: State) -> None:
     if hasattr(state, "logger"):
         state.logger.info(f"Update EFFECTIVE_PRESSURE at time: {state.t.numpy()}")
-
-    if cfg.processes.effective_pressure.mode == "vanpelt_bueler":
-        vanpelt_bueler.update(cfg, state)
-        return
-    _compute_simple(cfg, state)
+    state.effective_pressure = _compute_N(cfg, state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:
     pass
 
 
-def _compute_simple(cfg: DictConfig, state: State) -> None:
-    """Write state.effective_pressure (MPa) for the simple closed-form modes."""
-
+def _compute_N(cfg: DictConfig, state: State) -> tf.Tensor:
+    """Return state.effective_pressure (MPa) for the configured mode."""
     cfg_ep = cfg.processes.effective_pressure
     mode = cfg_ep.mode
-
-    if mode not in VALID_MODES:
-        raise ValueError(
-            f"❌ Unknown effective_pressure.mode: {mode!r}. "
-            f"Valid modes: {VALID_MODES}."
-        )
 
     if mode == "from_input":
         if not hasattr(state, "effective_pressure"):
@@ -76,21 +62,23 @@ def _compute_simple(cfg: DictConfig, state: State) -> None:
                 "state.effective_pressure is not set. Provide it as a "
                 "variable in the input NetCDF, or pick a different mode."
             )
-        return
+        return state.effective_pressure
 
+    if mode == "till_storage":
+        return till_storage.compute_N_MPa(cfg, state)
+
+    # Remaining modes all derive N from the ice-overburden pressure.
     cfg_phys = cfg.processes.iceflow.physics
-    rho_i = tf.cast(cfg_phys.ice_density, state.thk.dtype)
-    rho_w = tf.cast(cfg_phys.water_density, state.thk.dtype)
-    g = tf.cast(cfg_phys.gravity_cst, state.thk.dtype)
-    PA_TO_MPA = tf.cast(1.0e-6, state.thk.dtype)
-
+    dtype = state.thk.dtype
+    PA_TO_MPA = tf.cast(1.0e-6, dtype)
+    rho_i = tf.cast(cfg_phys.ice_density, dtype)
+    g = tf.cast(cfg_phys.gravity_cst, dtype)
     p_ice = rho_i * g * state.thk * PA_TO_MPA  # MPa
 
     if mode == "constant_one":
         N = tf.ones_like(state.thk)
     elif mode == "percentage":
-        pct = tf.cast(cfg_ep.percentage, state.thk.dtype)
-        N = (1.0 - pct) * p_ice
+        N = (1.0 - tf.cast(cfg_ep.percentage, dtype)) * p_ice
     elif mode == "ocean_connected":
         if not hasattr(state, "water_level"):
             raise ValueError(
@@ -98,9 +86,13 @@ def _compute_simple(cfg: DictConfig, state: State) -> None:
                 "state.water_level. Activate the 'thk' module (which "
                 "creates state.water_level) before 'effective_pressure'."
             )
+        rho_w = tf.cast(cfg_phys.water_density, dtype)
         Dw = tf.maximum(state.water_level - state.topg, 0.0)
-        p_water = rho_w * g * Dw * PA_TO_MPA  # MPa
-        N = p_ice - p_water
+        N = p_ice - rho_w * g * Dw * PA_TO_MPA
+    else:
+        raise ValueError(
+            f"❌ Unknown effective_pressure.mode: {mode!r}. "
+            f"Valid modes: {VALID_MODES}."
+        )
 
-    N_min = tf.cast(cfg_ep.N_min, state.thk.dtype)
-    state.effective_pressure = tf.maximum(N, N_min)
+    return tf.maximum(N, tf.cast(cfg_ep.N_min, dtype))

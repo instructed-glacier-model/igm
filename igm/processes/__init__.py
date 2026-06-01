@@ -1,4 +1,4 @@
-from . import time, thk, iceflow, vert_flow, enthalpy, arrhenius, stress, effective_pressure
+from . import time, thk, iceflow, vert_flow, enthalpy, arrhenius, stress, h_water_till, effective_pressure
 from . import smb_accpdd, smb_oggm, smb_simple
 from . import smb, climate
 from . import clim_glacialindex, clim_oggm, glerosion

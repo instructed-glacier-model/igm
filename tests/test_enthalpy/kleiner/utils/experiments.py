@@ -13,7 +13,7 @@ import igm
 from igm.common import State
 from igm.common.runner.configuration.loader import load_yaml_recursive
 from igm.processes.enthalpy import enthalpy, compute_variables_enthalpy_state
-from igm.processes.effective_pressure.vanpelt_bueler import update as _vanpelt_bueler_update
+from igm.processes.h_water_till import h_water_till
 
 
 def _load_config():
@@ -44,8 +44,8 @@ def _configure_enthalpy_solver(cfg, drain=False, refreezing=True, correct_w=Fals
     cfg.processes.enthalpy.solver.allow_basal_refreezing = refreezing
     cfg.processes.enthalpy.solver.correct_w_for_melt = correct_w
     # Till storage: large cap and no drainage to match the Kleiner benchmark setup
-    cfg.processes.effective_pressure.vanpelt_bueler.h_water_till_max = 200.0
-    cfg.processes.effective_pressure.vanpelt_bueler.drainage_rate = 0.0
+    cfg.processes.h_water_till.h_water_till_max = 200.0
+    cfg.processes.h_water_till.drainage_rate = 0.0
 
 
 def setup_experiment_a(dt: float = 200.0, Nz_E: int = 50):
@@ -151,7 +151,7 @@ def run_simulation_a(cfg, state, dt: float):
         state.air_temp.assign(T_surface * tf.ones((1, 2, 2)))
 
         enthalpy.update(cfg, state)
-        _vanpelt_bueler_update(cfg, state)
+        h_water_till.update(cfg, state)
         compute_variables_enthalpy_state(cfg, state)
 
         results["time"].append(t)
@@ -178,7 +178,7 @@ def run_simulation_b(cfg, state, max_iter: int = 1500, tol: float = 1e-3):
         state.t.assign(it * dt)
         state.arrhenius = (A * 1e18 * spy) * tf.ones_like(state.arrhenius)
         enthalpy.update(cfg, state)
-        _vanpelt_bueler_update(cfg, state)
+        h_water_till.update(cfg, state)
 
         if it % 10 == 0 and it > 0:
             max_change = np.max(np.abs(state.E.numpy() - prev_E))

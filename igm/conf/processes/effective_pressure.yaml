@@ -4,9 +4,10 @@ effective_pressure:
   #   percentage      — N = (1 - percentage) * rho_ice * g * h
   #   ocean_connected — N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0)
   #   from_input      — leave state.effective_pressure as already loaded
-  #   vanpelt_bueler  — Tulaczyk till hydrology (Van Pelt & Bueler 2015);
-  #                     evolves state.h_water_till from state.basal_melt_rate
-  #                     and writes N from saturation
+  #   till_storage    — Tulaczyk till hydrology (Van Pelt & Bueler 2015);
+  #                     reads state.h_water_till (owned by the `h_water_till` module)
+  #                     and writes N from saturation. Requires `h_water_till` to run
+  #                     before `effective_pressure` in the process order.
   #
   # Unit is MPa to match the rest of the iceflow stresses (slidingco, σ, τ).
   # Literature N_ref values are typically O(1 MPa) (Brondex et al. 2019,
@@ -15,13 +16,10 @@ effective_pressure:
   percentage: 0.0      # only used if mode == percentage
   N_min: 1.0e-3        # MPa: floor (1 kPa) applied after the closed-form modes
 
-  vanpelt_bueler:
-    # Tulaczyk till-hydrology parameters. Same constants as the legacy
-    # enthalpy/till/hydro YAML, with N_ref expressed in MPa.
-    h_water_till_max: 2.0      # m water
-    N_ref: 1.0e-3              # MPa (legacy: 1000 Pa = 1e-3 MPa)
-    e_ref: 0.69
-    C_c: 0.12
-    delta: 0.02
-    drainage_rate: 0.001       # m water / yr
-    water_density: 1000.0      # kg m^-3
+  till_storage:
+    # Tulaczyk effective-pressure parameters. h_water_till_max is owned by
+    # the `h_water_till` module (cfg.processes.h_water_till.h_water_till_max).
+    N_ref:  1.0e-3   # MPa (legacy: 1000 Pa = 1e-3 MPa)
+    e_ref:  0.69
+    C_c:    0.12
+    delta:  0.02
