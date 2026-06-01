@@ -22,6 +22,7 @@ processes:
       sliding:
         law: weertman
         exponent: 1.0
+        u_ref: 1.0
     unified:
       data_preparation:
         noise_type: none
