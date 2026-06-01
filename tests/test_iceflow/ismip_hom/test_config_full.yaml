@@ -1,13 +1,16 @@
-# ISMIP-HOM Test Configuration
-# This file controls which tests are run and how they are validated
+# ISMIP-HOM Test Configuration — Full Suite
+# Run with: IGM_TEST_CONFIG=test_config_full.yaml pytest
 
 # Experiments to test
 experiments:
   - exp_a
+  - exp_b
   - exp_c
+  - exp_d
+  - exp_e_1
 
 # Length scales to test (in km)
-lengths: [20]
+lengths: [20, 40, 80, 160]
 
 # Methods to test
 methods:
