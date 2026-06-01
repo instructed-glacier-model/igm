@@ -20,11 +20,11 @@ pretraining:
 
   # --- Adaptive physics weighting (lambda) ---
   warmup_steps: 100000        # physics loss disabled for this many optimizer updates
-  lambda_update_every: 100    # recompute lambda every N optimizer steps post-warmup
+  lambda_update_every: 200    # recompute lambda every N optimizer steps post-warmup
   lambda_ema: 0.99            # EMA factor when adopting the new lambda
   lambda_min: 0.001           # lower clip on lambda
   lambda_max: 100.0           # upper clip on lambda
-  lambda_max_change: 2.0      # symmetric per-update multiplicative clamp
+  lambda_max_change: 1.2      # symmetric per-update multiplicative clamp; growth per epoch ≈ ×1.01 (×1.002^5 updates), ~380 epochs to scale 2000×
 
   # --- I/O ---
   resume: false
