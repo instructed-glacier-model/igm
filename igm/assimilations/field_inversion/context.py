@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import tensorflow as tf
 
-from igm.processes.iceflow.utils.velocities import get_velsurf
+from igm.processes.iceflow.utils.velocities import get_velsurf, get_velbar
+from igm.processes.iceflow.utils.compute_divflux import compute_divflux
 from igm.utils.math.precision import normalize_precision
 
 
@@ -36,6 +37,9 @@ class DAEvaluationContext:
 
     _uvelsurf: Optional[tf.Tensor] = None
     _vvelsurf: Optional[tf.Tensor] = None
+    _ubar: Optional[tf.Tensor] = None
+    _vbar: Optional[tf.Tensor] = None
+    _divflux: Optional[tf.Tensor] = None
 
     _mask_cache: Optional[Dict[str, tf.Tensor]] = None
     _physical_cache: Optional[Dict[str, tf.Tensor]] = None
@@ -89,6 +93,8 @@ class DAEvaluationContext:
         if name == "vvelsurf":
             _, v = self.velsurf()
             return v
+        if name == "divflux":
+            return self.divflux()
         return self.physical(name)
 
     def velsurf(self) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -97,6 +103,32 @@ class DAEvaluationContext:
             self._uvelsurf = u
             self._vvelsurf = v
         return self._uvelsurf, self._vvelsurf
+    
+    def velbar(self) -> Tuple[tf.Tensor, tf.Tensor]:
+        if self._ubar is None or self._vbar is None:
+            u, v = get_velbar(
+                self.U,
+                self.V,
+                self.state.iceflow.discr_v.V_bar,
+            )
+            self._ubar = u
+            self._vbar = v
+        return self._ubar, self._vbar
+
+    def divflux(self) -> tf.Tensor:
+        if self._divflux is None:
+            thk = self.physical("thk")
+            ubar, vbar = self.velbar()
+
+            self._divflux = compute_divflux(
+                ubar,
+                vbar,
+                thk,
+                self.dx,
+                self.dx,
+                method="upwind",
+            )
+        return self._divflux
 
     def get_mask(self, mask_name: Optional[str]) -> tf.Tensor:
         """
