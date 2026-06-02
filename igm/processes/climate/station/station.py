@@ -133,7 +133,9 @@ def produce_climate_data(cfg, state):
 
     # Compute the mean annual air temperature field using input topography
     diff_elev_temp = cfg.processes.climate.station.zero_degree_isotherm - state.usurf
-    air_temp = 0.0 + (cfg.processes.climate.station.adiabatic_lapse_rate * diff_elev_temp)
+    air_temp = 0.0 + (
+        cfg.processes.climate.station.adiabatic_lapse_rate * diff_elev_temp
+    )
 
     # Compute the mean annual precipitation field using input topography
     diff_elev_precip = (
@@ -210,7 +212,9 @@ def produce_climate_data(cfg, state):
     # We shift the climate time dimension to represent the hydrological year (start of the year becomes start of the accumulation season)
     # Start of accumulation season is set as 1st November in Northern Hemisphere, and 1st May in Southern hemisphere.
     shift = (
-        2 / 12 if not cfg.processes.climate.station.southern_hemisphere_climate else 8 / 12
+        2 / 12
+        if not cfg.processes.climate.station.southern_hemisphere_climate
+        else 8 / 12
     )
     # Apply shift using np.roll, this should work for any number of time steps in a year (monthly, weekly, daily data)
     air_temp = np.roll(air_temp.numpy(), int(len(air_temp) * (1 - shift)), axis=0)

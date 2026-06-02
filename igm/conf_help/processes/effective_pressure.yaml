@@ -1,7 +1,7 @@
 mode:
   Type: string
   Units: dimless
-  Description: "Closure used to compute `state.effective_pressure` (MPa). One of: `constant_one` (N = 1 MPa everywhere), `percentage` (N = (1 - percentage) * rho_ice * g * h), `ocean_connected` (N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0); requires `state.water_level`), or `from_input` (leave `state.effective_pressure` as already loaded from the input data)."
+  Description: "Closure used to compute `state.effective_pressure` (MPa). One of: `constant_one` (N = 1 MPa everywhere), `percentage` (N = (1 - percentage) * rho_ice * g * h), `ocean_connected` (N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0); requires `state.water_level`), `from_input` (leave `state.effective_pressure` as already loaded from the input data), or `till_storage` (Tulaczyk parameterisation driven by `state.h_water_till`; requires the `h_water_till` process module)."
 percentage:
   Type: float
   Units: dimless
@@ -10,3 +10,19 @@ N_min:
   Type: float
   Units: MPa
   Description: "Lower floor applied to N after the chosen formula (default 1.0e-3 MPa = 1 kPa) to avoid the singularity in the Budd / Coulomb sliding cost."
+till_storage.N_ref:
+  Type: float
+  Units: MPa
+  Description: "Reference effective pressure in the Tulaczyk parameterisation (N = N_ref * (delta*p_ice/N_ref)^s * 10^((e_ref*(1-s))/C_c)). Legacy value is 1000 Pa = 1e-3 MPa."
+till_storage.e_ref:
+  Type: float
+  Units: dimless
+  Description: "Void-ratio parameter in the Tulaczyk effective-pressure formula. Controls the magnitude of N for dry till (s=0)."
+till_storage.C_c:
+  Type: float
+  Units: dimless
+  Description: "Compression index in the Tulaczyk effective-pressure formula. Controls how steeply N varies with saturation."
+till_storage.delta:
+  Type: float
+  Units: dimless
+  Description: "Ratio of effective pressure to overburden at full saturation (s=1): N = delta * p_ice when the till is completely saturated."

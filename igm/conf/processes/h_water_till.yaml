@@ -1,0 +1,4 @@
+h_water_till:
+  h_water_till_max: 2.0     # m water: maximum till water thickness (capacity)
+  drainage_rate:   0.001    # m water / yr: basal drainage rate to the groundwater system
+  water_density:   1000.0   # kg m^-3: density of liquid water

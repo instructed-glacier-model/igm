@@ -1,0 +1,47 @@
+# ISMIP-HOM Test Configuration — Full Suite
+# Run with: IGM_TEST_CONFIG=test_config_full.yaml pytest
+
+# Experiments to test
+experiments:
+  - exp_a
+  - exp_b
+  - exp_c
+  - exp_d
+  - exp_e_1
+
+# Length scales to test (in km)
+lengths: [20, 40, 80, 160]
+
+# Methods to test
+methods:
+  unified:
+    enabled: true
+    mappings: [identity, network]
+    optimizers: [adam, lbfgs]
+
+  emulated:
+    enabled: false
+
+  solved:
+    enabled: false
+
+# Validation settings
+validation:
+  mode: compare_reference  # "run_only" | "compare_reference"
+
+  # Tolerance for comparison (used when mode is "compare_reference")
+  tolerance:
+    type: relative_l2      # "relative_l2" | "absolute_l2" | "relative_max" | "absolute_max"
+    default: 0.10          # Default: 10% relative L2 error
+
+    # Per-experiment overrides
+    experiments:
+      exp_e_1: 0.20        # 20% for exp_e_1
+      exp_e_2: 0.20        # 20% for exp_e_2
+
+  save_plots: true
+
+# Optional: Skip specific test combinations
+skip:
+  # Example: - {experiment: exp_a, length: 160, method: unified, mapping: network, optimizer: adam}
+  []

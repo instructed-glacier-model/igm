@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import os
 import tensorflow as tf
 import json
 
+
 def initialize(cfg, state):
     state.tlast_mb = tf.Variable(-1.0e5000)
 
-    path_data = os.path.join(state.original_cwd,cfg.core.folder_data)
+    path_data = os.path.join(state.original_cwd, cfg.core.folder_data)
     path_RGI = os.path.join(path_data, cfg.inputs.oggm_shop.RGI_ID)
 
     # load the given parameters from the json file
@@ -61,8 +62,10 @@ def update(cfg, state):
 
         accumulation /= cfg.processes.smb.oggm.wat_density  # unit [ m water ]
 
-        ablation = state.melt_f * cfg.processes.smb.oggm.melt_enhancer * tf.clip_by_value(
-            state.air_temp - state.temp_melt, 0, 10**10
+        ablation = (
+            state.melt_f
+            * cfg.processes.smb.oggm.melt_enhancer
+            * tf.clip_by_value(state.air_temp - state.temp_melt, 0, 10**10)
         )  # unit: [ mm * day^(-1) water ]
 
         ablation *= 365.242198781 / 1000.0  # unit to [ m * y^(-1) water ]

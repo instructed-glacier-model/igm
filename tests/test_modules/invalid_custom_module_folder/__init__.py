@@ -1,6 +1,6 @@
 from .invalid_custom_module import (
-	params,
-	# initialize, # ! Whoops :)
-	update,
-	finalize
+    params,
+    # initialize, # ! Whoops :)
+    update,
+    finalize,
 )

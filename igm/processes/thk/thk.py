@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 """
@@ -55,15 +55,14 @@ def initialize(cfg, state):
     if p.calving_front and p.method == "level_set":
         cf_level_set.initialize(cfg, state)
         raise ValueError(
-                f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
-                f"Please use 'sub_grid' instead."
-         )
+            f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
+            f"Please use 'sub_grid' instead."
+        )
     elif p.calving_front and p.method == "sub_grid":
         cf_sub_grid.initialize(cfg, state)
     elif p.calving_front:
         raise ValueError(
-            f"cfg.processes.thk.method must be 'level_set' "
-            f"got: {p.method!r}"
+            f"cfg.processes.thk.method must be 'level_set' " f"got: {p.method!r}"
         )
 
     update_surfaces(cfg, state)
@@ -82,8 +81,12 @@ def update(cfg, state):
         if not p.calving_front:
             # Stock IGM thk update, inlined to match igm.processes.thk shape.
             state.divflux = compute_divflux_slope_limiter(
-                state.ubar, state.vbar, state.thk,
-                state.dx, state.dx, state.dt,
+                state.ubar,
+                state.vbar,
+                state.thk,
+                state.dx,
+                state.dx,
+                state.dt,
                 slope_type=p.slope_type,
             )
             if not hasattr(state, "smb"):
@@ -95,17 +98,16 @@ def update(cfg, state):
         elif p.method == "level_set":
             cf_level_set.update(cfg, state)
             raise ValueError(
-                    f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
-                    f"Please use 'sub_grid' instead."
-                )
+                f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
+                f"Please use 'sub_grid' instead."
+            )
 
         elif p.method == "sub_grid":
             cf_sub_grid.update(cfg, state)
 
         else:
             raise ValueError(
-                f"cfg.processes.thk.method must be 'level_set' "
-                f"got: {p.method!r}"
+                f"cfg.processes.thk.method must be 'level_set' " f"got: {p.method!r}"
             )
 
         update_surfaces(cfg, state)

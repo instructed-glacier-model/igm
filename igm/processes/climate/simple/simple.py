@@ -11,7 +11,6 @@
 import numpy as np
 import tensorflow as tf
 
-
 _N_MONTHS = 12
 
 
@@ -29,7 +28,8 @@ def initialize(cfg, state):
         tf.zeros((_N_MONTHS, ny, nx), dtype="float32"), trainable=False
     )
     state.air_temp_sd = tf.Variable(
-        tf.fill((_N_MONTHS, ny, nx), float(p.temp_std)), dtype="float32",
+        tf.fill((_N_MONTHS, ny, nx), float(p.temp_std)),
+        dtype="float32",
         trainable=False,
     )
 
@@ -82,7 +82,9 @@ def _fill_constant_fields(cfg, state):
             seasonal = p.cosine_yearly_cycle_amplitude * np.cos(
                 2.0 * np.pi * (months - 6.0) / _N_MONTHS
             )
-        seasonal = tf.reshape(tf.constant(seasonal, dtype=tf.float32), (_N_MONTHS, 1, 1))
+        seasonal = tf.reshape(
+            tf.constant(seasonal, dtype=tf.float32), (_N_MONTHS, 1, 1)
+        )
         air_temp = air_temp + seasonal
 
     state.air_temp.assign(air_temp)

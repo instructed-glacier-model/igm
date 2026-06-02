@@ -120,9 +120,7 @@ def _compute_field(cfg, state):
         # cliff cells via thk drain (calve_cliff).
         Hcr = tf.cast(p.Hcr, dtype)
         thk_eff = tf.cast(state.thk, dtype)
-        c = tf.where(thk_eff < Hcr,
-                     tf.cast(p.c_max, dtype),
-                     tf.zeros_like(topg))
+        c = tf.where(thk_eff < Hcr, tf.cast(p.c_max, dtype), tf.zeros_like(topg))
 
     else:
         raise ValueError(

@@ -3,7 +3,7 @@
 """
 
 Implements the Parameterization for subgrid-scale motion of ice-shelf calving fronts
-of Albrecht et al. (2011), The Cryosphere 5, 35-44; 
+of Albrecht et al. (2011), The Cryosphere 5, 35-44;
 It is a vectorized TensorFlow
 rewrite of PISM's reference implementation (https://github.com/pism/pism,
 Copyright (C) PISM Authors, GNU GPL v3+) with these IGM modifications:
@@ -37,12 +37,11 @@ from utils import (
     bulk_mask_5x5,
 )
 
+
 def _ocean(state):
     is_ice = state.thk > 0.0
     if hasattr(state, "water_level"):
-        return tf.logical_and(
-            tf.logical_not(is_ice), state.topg < state.water_level
-        )
+        return tf.logical_and(tf.logical_not(is_ice), state.topg < state.water_level)
     return tf.logical_not(is_ice)
 
 
@@ -63,25 +62,31 @@ def _threshold_thickness(cfg, state, is_ice):
         Dw = tf.maximum(state.water_level - state.topg, 0.0)
         H_float = Dw / p.ratio_density
         marine = Dw > 0.0
-        H_threshold = tf.where(
-            marine, tf.minimum(H_threshold, H_float), H_threshold
-        )
+        H_threshold = tf.where(marine, tf.minimum(H_threshold, H_float), H_threshold)
     return H_threshold
 
 
 def _advect_and_route(cfg, state, is_partial):
     p = cfg.processes.thk
     divflux_front = compute_divflux_slope_limiter(
-        state.ubar, state.vbar, state.thk,
-        state.dx, state.dx, state.dt,
+        state.ubar,
+        state.vbar,
+        state.thk,
+        state.dx,
+        state.dx,
+        state.dt,
         slope_type=p.front_slope_type,
     )
     if p.interior_slope_type == p.front_slope_type:
         state.divflux = divflux_front
     else:
         divflux_interior = compute_divflux_slope_limiter(
-            state.ubar, state.vbar, state.thk,
-            state.dx, state.dx, state.dt,
+            state.ubar,
+            state.vbar,
+            state.thk,
+            state.dx,
+            state.dx,
+            state.dt,
             slope_type=p.interior_slope_type,
         )
         bulk = bulk_mask_5x5(state.thk > 0.0, state.thk.dtype)
@@ -147,10 +152,9 @@ def _extend_thk_for_iceflow(cfg, state):
     if halo_steps > 0:
         thresh = tf.cast(p.extend_thresh, thk.dtype)
         halo_band = dilate_bool(is_partial, halo_steps)
-        halo_lo = (halo_band
-                   & tf.logical_not(is_partial)
-                   & is_ice
-                   & (thk < thk_ref * thresh))
+        halo_lo = (
+            halo_band & tf.logical_not(is_partial) & is_ice & (thk < thk_ref * thresh)
+        )
         extend_mask = tf.logical_or(is_partial, halo_lo)
 
     has_ref = thk_ref > 0.0
@@ -195,9 +199,7 @@ def _apply_calving(cfg, state):
 
     remaining = budget - lose_href
     is_ice = state.thk > 0.0
-    front_full = tf.logical_and(
-        is_ice, neighbour_bool_any(_ocean(state))
-    )
+    front_full = tf.logical_and(is_ice, neighbour_bool_any(_ocean(state)))
     drain = tf.where(
         front_full, tf.minimum(state.thk, remaining), tf.zeros_like(state.thk)
     )
@@ -211,9 +213,7 @@ def _apply_calving(cfg, state):
 
 def initialize(cfg, state):
     if not hasattr(state, "Href"):
-        state.Href = tf.Variable(
-            tf.zeros_like(state.thk), trainable=False, name="Href"
-        )
+        state.Href = tf.Variable(tf.zeros_like(state.thk), trainable=False, name="Href")
     if not hasattr(state, "thk_true"):
         state.thk_true = tf.Variable(state.thk, trainable=False)
 

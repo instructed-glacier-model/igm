@@ -13,11 +13,11 @@ from .validation import validate_results
 from .config import get_unified_parameters, get_unified_parameters_no_length
 
 Experiments = {
-    'A': ExperimentA,
-    'B': ExperimentB,
-    'C': ExperimentC,
-    'CInversion': ExperimentCInversion,
-    'D': ExperimentD,
-    'E1': ExperimentE1,
-    'E2': ExperimentE2,
+    "A": ExperimentA,
+    "B": ExperimentB,
+    "C": ExperimentC,
+    "CInversion": ExperimentCInversion,
+    "D": ExperimentD,
+    "E1": ExperimentE1,
+    "E2": ExperimentE2,
 }

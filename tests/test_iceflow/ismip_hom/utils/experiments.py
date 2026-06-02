@@ -70,7 +70,7 @@ class ExperimentA(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }
 
@@ -102,7 +102,7 @@ class ExperimentB(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }
 
@@ -134,7 +134,7 @@ class ExperimentC(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }
 
@@ -166,8 +166,8 @@ class ExperimentCInversion(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": tf.Variable(
-                tf.ones_like(h, dtype=tf.float32), trainable=True, name="slidingco"
+            "tau_ref": tf.Variable(
+                tf.ones_like(h, dtype=tf.float32), trainable=True, name="tau_ref"
             ),
             "arrhenius": A,
         }
@@ -200,7 +200,7 @@ class ExperimentD(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }
 
@@ -238,7 +238,7 @@ class ExperimentE1(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }
 
@@ -278,6 +278,6 @@ class ExperimentE2(Experiment):
             "thk": h,
             "topg": z_b,
             "usurf": z_s,
-            "slidingco": C,
+            "tau_ref": C,
             "arrhenius": A,
         }

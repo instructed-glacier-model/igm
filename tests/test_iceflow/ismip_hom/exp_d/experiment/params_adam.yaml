@@ -21,6 +21,7 @@ processes:
       sliding:
         law: weertman
         exponent: 1.0
+        u_ref: 1.0
     unified:
       bcs: [periodic_ns, periodic_we]
       optimizer: adam
