@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 import tensorflow as tf
 
 from igm.processes.iceflow.utils.velocities import get_velsurf, get_velbar
-from igm.processes.iceflow.utils.compute_divflux import compute_divflux
+from igm.utils.grad.compute_divflux import compute_divflux
 from igm.utils.math.precision import normalize_precision
 
 
