@@ -187,7 +187,6 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
 
     # need to do this dummy call to prepare_X to get the dimensions right
     fieldin = fieldin_state_to_X(state, cfg.processes.iceflow.emulator.fieldin)
@@ -238,14 +237,20 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
             network_params=build_network_params(cfg, arch_cls),
         )
 
-    # Pre-build the retrain optimizer's momentum/velocity state outside any
-    # @tf.function context. Keras 3 builds optimizer state lazily on the first
-    # apply_gradients call, but that call happens inside @tf.function update_emulator,
-    # which forbids new tf.Variable creation. Forcing the build here avoids the
-    # "tf.function only supports singleton tf.Variables ..." failure.
     if not state.iceflow_model.built:
         state.iceflow_model.build((None, None, None, len(cfg_emulator.fieldin)))
-    state.opti_retrain.build(state.iceflow_model.trainable_variables)
+
+    # Build optimizer slot variables eagerly outside any @tf.function trace to avoid
+    # "singleton tf.Variables created on first call" errors on retrace.
+    if version_tf >= 16:  # Keras 3: .build() allocates slots cleanly, no side effects
+        state.opti_retrain.build(state.iceflow_model.trainable_variables)
+    else:  # legacy tf.keras: force slot creation via a dummy zero-gradient step
+        _zero_grads = [
+            tf.zeros_like(v) for v in state.iceflow_model.trainable_variables
+        ]
+        state.opti_retrain.apply_gradients(
+            zip(_zero_grads, state.iceflow_model.trainable_variables)
+        )
 
     @tf.function(jit_compile=True)
     def fast_inference(x):
@@ -269,15 +274,6 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
-
-    # Eagerly initialize all optimizer variables (iterations, slots, lr) before
-    # update_emulator is traced as a tf.function.  The legacy Keras optimizer
-    # creates them lazily; if that happens inside a tf.function TF raises
-    # "singleton tf.Variables created on the first call" on any retrace.
-    _zero_grads = [tf.zeros_like(v) for v in state.iceflow_model.trainable_variables]
-    state.opti_retrain.apply_gradients(
-        zip(_zero_grads, state.iceflow_model.trainable_variables)
-    )
 
     # Update the emulator and evaluate it once
     update_iceflow_emulator(cfg, state, initial=True)
