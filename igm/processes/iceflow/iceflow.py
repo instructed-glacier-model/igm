@@ -36,21 +36,6 @@ class Iceflow:
     pass
 
 
-def _pretraining_active(cfg: DictConfig) -> bool:
-    """True when the pretraining module is in the run, in either group.
-
-    Pretraining only needs the iceflow discretization (discr_h/discr_v); it
-    has no glacier geometry, so the thk-based field initialization must be
-    skipped. The module lives under /assimilations (it used to be under
-    /processes), so check both groups.
-    """
-    for group in ("processes", "assimilations"):
-        node = cfg.get(group)
-        if node is not None and "pretraining" in node:
-            return True
-    return False
-
-
 def initialize(cfg: DictConfig, state: State) -> None:
     """Initialize the iceflow module."""
 
@@ -77,7 +62,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
 
-    if _pretraining_active(cfg):
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
         return
 
@@ -103,7 +88,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
-    if _pretraining_active(cfg):
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         return
 
     # Logger

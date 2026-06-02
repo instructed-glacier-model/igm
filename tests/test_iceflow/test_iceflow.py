@@ -10,7 +10,7 @@ def test_iceflow():
 
     state = igm.common.State()
     cfg = load_yaml_recursive(
-        os.path.join(igm.__path__[0], "conf"), exclude=["processes/pretraining"]
+        os.path.join(igm.__path__[0], "conf"), exclude=["assimilations/pretraining"]
     )
 
     Ny, Nx = 40, 30

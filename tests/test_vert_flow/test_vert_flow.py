@@ -11,7 +11,7 @@ def test_vert_flow():
     state = State()
 
     cfg = load_yaml_recursive(
-        os.path.join(igm.__path__[0], "conf"), exclude=["processes/pretraining"]
+        os.path.join(igm.__path__[0], "conf"), exclude=["processes/pretraining", "assimilations/pretraining"]
     )
 
     Nz, Ny, Nx = 10, 40, 30
