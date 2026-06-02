@@ -49,36 +49,21 @@ def finalize(cfg: DictConfig, state: State) -> None:
 
 
 def compute_diagnostics(cfg: DictConfig, state: State, requested=None) -> None:
-    # Function-local groups reflect shared computation (E_pmp shared across several vars)
-    _temp_group = frozenset({"T", "omega", "E_pmp", "T_pmp", "T_pa", "T_pa_b"})
-    _surf_group = frozenset({"E_s", "T_s"})
-    _all = _temp_group | _surf_group
+    E_s, T_s = compute_surface(cfg, state)
+    E_pmp, T_pmp = compute_pmp(cfg, state)
+    T, omega = compute_temperature(cfg, state, E_pmp)
+    T_pa = compute_pa(cfg, state, T)
+    T_pa_b = T_pa[0]
 
-    want = set(requested) if requested is not None else _all
-
-    T = None
-    if want & _temp_group:
-        E_pmp, T_pmp = compute_pmp(cfg, state)
-        T, omega = compute_temperature(cfg, state, E_pmp)
-        if "E_pmp" in want:
-            state.E_pmp = E_pmp
-        if "T_pmp" in want:
-            state.T_pmp = T_pmp
-        if "T" in want:
-            state.T = T
-        if "omega" in want:
-            state.omega = omega
-
-    if T is not None and want & {"T_pa", "T_pa_b"}:
-        T_pa = compute_pa(cfg, state, T)
-        if "T_pa" in want:
-            state.T_pa = T_pa
-        if "T_pa_b" in want:
-            state.T_pa_b = T_pa[0]
-
-    if want & _surf_group:
-        E_s, T_s = compute_surface(cfg, state)
-        if "E_s" in want:
-            state.E_s = E_s
-        if "T_s" in want:
-            state.T_s = T_s
+    computed = {
+        "E_s": E_s,
+        "T_s": T_s,
+        "E_pmp": E_pmp,
+        "T_pmp": T_pmp,
+        "T": T,
+        "omega": omega,
+        "T_pa": T_pa,
+        "T_pa_b": T_pa_b,
+    }
+    for var in (requested if requested is not None else computed):
+        setattr(state, var, computed[var])
