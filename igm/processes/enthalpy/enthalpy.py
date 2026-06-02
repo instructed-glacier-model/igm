@@ -10,7 +10,7 @@ from igm.common import State
 from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
-from .temperature import compute_pmp
+from .temperature import compute_pa, compute_pmp, compute_temperature
 from .utils import checks, initialize_enthalpy_fields
 
 
@@ -46,3 +46,39 @@ def update(cfg: DictConfig, state: State) -> None:
 
 def finalize(cfg: DictConfig, state: State) -> None:
     pass
+
+
+def compute_diagnostics(cfg: DictConfig, state: State, requested=None) -> None:
+    # Function-local groups reflect shared computation (E_pmp shared across several vars)
+    _temp_group = frozenset({"T", "omega", "E_pmp", "T_pmp", "T_pa", "T_pa_b"})
+    _surf_group = frozenset({"E_s", "T_s"})
+    _all = _temp_group | _surf_group
+
+    want = set(requested) if requested is not None else _all
+
+    T = None
+    if want & _temp_group:
+        E_pmp, T_pmp = compute_pmp(cfg, state)
+        T, omega = compute_temperature(cfg, state, E_pmp)
+        if "E_pmp" in want:
+            state.E_pmp = E_pmp
+        if "T_pmp" in want:
+            state.T_pmp = T_pmp
+        if "T" in want:
+            state.T = T
+        if "omega" in want:
+            state.omega = omega
+
+    if T is not None and want & {"T_pa", "T_pa_b"}:
+        T_pa = compute_pa(cfg, state, T)
+        if "T_pa" in want:
+            state.T_pa = T_pa
+        if "T_pa_b" in want:
+            state.T_pa_b = T_pa[0]
+
+    if want & _surf_group:
+        E_s, T_s = compute_surface(cfg, state)
+        if "E_s" in want:
+            state.E_s = E_s
+        if "T_s" in want:
+            state.T_s = T_s

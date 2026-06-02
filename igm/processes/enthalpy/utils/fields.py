@@ -114,10 +114,4 @@ def compute_variables_enthalpy_np(
         "basal_melt_rate": state.basal_melt_rate.numpy(),
         "omega": omega.numpy(),
     }
-    # Till-related fields are now owned by `effective_pressure.vanpelt_bueler`
-    # and the `mohr_coulomb` sliding law. Include them only if set elsewhere.
-    for name in ("h_water_till", "effective_pressure", "N", "phi", "tauc"):
-        val = getattr(state, name, None)
-        if val is not None:
-            out[name] = val.numpy()
     return out

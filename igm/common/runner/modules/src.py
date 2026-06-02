@@ -60,6 +60,17 @@ def initialize_modules(processes: List, cfg: Any, state: State) -> None:
         module.initialize(cfg, state)
 
 
+def _collect_output_vars(outputs: List, cfg: Any) -> set:
+    """Collect all variable names requested across active output configs."""
+    requested = set()
+    for module in outputs:
+        name = module.__name__.split(".")[-1]
+        module_cfg = getattr(getattr(cfg, "outputs", None), name, None)
+        if module_cfg and hasattr(module_cfg, "vars_to_save"):
+            requested.update(module_cfg.vars_to_save)
+    return requested
+
+
 def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> None:
 
     state.it = 0
@@ -68,6 +79,9 @@ def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> No
         state.tcomp = {
             module.__name__.split(".")[-1]: [] for module in processes + outputs
         }
+
+    requested_output_vars = _collect_output_vars(outputs, cfg)
+
     while state.continue_run:
         for module in processes:
             m = module.__name__.split(".")[-1]
@@ -80,6 +94,16 @@ def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> No
             if cfg.core.print_comp:
                 state.tcomp[m][-1] -= time.time()
                 state.tcomp[m][-1] *= -1
+
+        if getattr(state, "saveresult", True):
+            for module in processes:
+                if hasattr(module, "compute_diagnostics"):
+                    meta = _load_module_meta(module)
+                    module_diag = set(meta.get("diagnostics", [])) if meta else set()
+                    relevant = requested_output_vars & module_diag
+                    if relevant:
+                        module.compute_diagnostics(cfg, state, relevant)
+
         run_outputs(outputs, cfg, state)
         if cfg.core.print_info:
             print_info(state)
