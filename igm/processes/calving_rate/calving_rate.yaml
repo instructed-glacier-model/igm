@@ -1,0 +1,5 @@
+description: Compute calving flux at a marine or lacustrine ice front
+category: hydrosphere
+community: false
+needs: [thk, topg, water_level, ubar, vbar]
+updates: [calving_rate]

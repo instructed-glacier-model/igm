@@ -1,5 +1,1 @@
-from .thk import (
-    initialize,
-    finalize,
-    update
-)
+from .thk import initialize, finalize, update

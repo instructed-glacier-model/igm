@@ -1,0 +1,6 @@
+description: Simulate the transport of supraglacial and englacial debris coupled to ice flow
+category: lithosphere
+community: true
+authors: [Guillaume Jouvet]
+needs: [usurf, thk, U, V]
+updates: [U, V]

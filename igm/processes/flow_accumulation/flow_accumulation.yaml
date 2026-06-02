@@ -1,0 +1,5 @@
+description: Compute subglacial water routing and flow accumulation from bed topography
+category: hydrosphere
+community: true
+needs: [thk, topg, h_water_till]
+updates: [phi, flow_accumulation]
