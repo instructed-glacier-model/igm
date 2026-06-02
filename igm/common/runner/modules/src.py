@@ -115,6 +115,11 @@ def check_module_needs(processes: List, state: State) -> None:
         meta = _load_module_meta(module)
         if not meta or "needs" not in meta:
             continue
+        # If a module declares outputs but none are on state after init, it ran
+        # in a bypassed/reduced mode (e.g. iceflow in pretraining) — skip it.
+        declared_updates = meta.get("updates", [])
+        if declared_updates and not any(hasattr(state, v) for v in declared_updates):
+            continue
         name = module.__name__.split(".")[-1]
         missing = [v for v in meta["needs"] if not hasattr(state, v)]
         if missing:

@@ -82,6 +82,34 @@ def test_skips_module_without_file_attribute():
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_skips_bypassed_module(tmp_path):
+    """A module whose declared outputs are all absent is assumed to have run
+    in a reduced/bypassed mode (e.g. iceflow in pretraining) — its needs are
+    not checked."""
+    mod = _make_module(
+        tmp_path, "iceflow",
+        "needs: [thk, usurf]\nupdates: [U, V]\n"
+    )
+    state = _state_with()  # neither thk/usurf (needs) nor U/V (updates) present
+    check_module_needs([mod], state)  # no raise
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_does_not_skip_when_updates_are_present(tmp_path):
+    """If at least one declared output is on state, the module ran normally —
+    its needs ARE checked."""
+    mod = _make_module(
+        tmp_path, "iceflow",
+        "needs: [thk, usurf]\nupdates: [U, V]\n"
+    )
+    state = _state_with("U")  # U present → module ran → check needs → missing thk, usurf
+    with pytest.raises(RuntimeError, match="iceflow"):
+        check_module_needs([mod], state)
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 @pytest.mark.parametrize("missing", ["thk", "U", "V", "W", "arrhenius"])
 def test_raises_for_each_missing_enthalpy_var(tmp_path, missing):
     needs = ["thk", "U", "V", "W", "arrhenius"]
