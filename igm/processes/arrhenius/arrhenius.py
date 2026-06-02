@@ -6,42 +6,42 @@
 # Standalone process module computing the vertically-averaged Arrhenius
 # factor `state.arrhenius` (MPa^-n yr^-1) used by the iceflow solver.
 #
-# Reads its inputs from state:
-#   - state.T      : 3D ice temperature (K)            — produced by the
-#                    enthalpy module (or any other module that exposes them)
-#   - state.omega  : 3D ice water content fraction (-)
-#
-# So if you use enthalpy, place `arrhenius` AFTER `enthalpy` in the
-# `override /processes` list so that each timestep's T, omega are fresh.
+# Reads state.E (3D enthalpy, J kg^-1) produced by the enthalpy module and
+# derives temperature and water content on-the-fly via compute_pmp /
+# compute_temperature.  Place `arrhenius` AFTER `enthalpy` in the
+# `override /processes` list so that each timestep's E is fresh.
 
 import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
 
-from ..enthalpy.temperature import compute_pa
+from ..enthalpy.temperature import compute_pa, compute_pmp, compute_temperature
 
 
 def initialize(cfg: DictConfig, state: State) -> None:
-    """Compute state.arrhenius from state.T, state.omega at t=0 (if available)."""
-    if hasattr(state, "T") and hasattr(state, "omega"):
-        compute_arrhenius(cfg, state, state.T, state.omega)
+    """Compute state.arrhenius from state.E at t=0 (if available)."""
+    if hasattr(state, "E"):
+        E_pmp, _ = compute_pmp(cfg, state)
+        T, omega = compute_temperature(cfg, state, E_pmp)
+        compute_arrhenius(cfg, state, T, omega)
 
 
 def update(cfg: DictConfig, state: State) -> None:
-    """Recompute state.arrhenius from the current state.T, state.omega."""
+    """Recompute state.arrhenius from the current state.E."""
     if hasattr(state, "logger"):
         state.logger.info(f"Update ARRHENIUS at iteration : {state.it}")
 
-    if not (hasattr(state, "T") and hasattr(state, "omega")):
+    if not hasattr(state, "E"):
         raise RuntimeError(
-            "arrhenius.update: state.T and state.omega are required. "
-            "Make sure the enthalpy module (or another producer of these "
-            "fields) runs BEFORE the arrhenius module in your "
-            "`override /processes` list."
+            "arrhenius.update: state.E is required. "
+            "Make sure the enthalpy module runs BEFORE the arrhenius module "
+            "in your `override /processes` list."
         )
 
-    compute_arrhenius(cfg, state, state.T, state.omega)
+    E_pmp, _ = compute_pmp(cfg, state)
+    T, omega = compute_temperature(cfg, state, E_pmp)
+    compute_arrhenius(cfg, state, T, omega)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

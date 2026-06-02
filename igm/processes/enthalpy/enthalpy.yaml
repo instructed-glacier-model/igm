@@ -3,4 +3,4 @@ category: cryosphere
 community: false
 authors: [Guillaume Jouvet, Thomas Gregov, Lucie Bacchin]
 needs: [thk, U, V, W, arrhenius]
-updates: [E, T, omega, basal_melt_rate, arrhenius, temppasurf, temppabase]
+updates: [E, basal_melt_rate]
