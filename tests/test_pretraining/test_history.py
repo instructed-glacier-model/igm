@@ -1,5 +1,5 @@
 """
-Unit tests for igm.processes.pretraining.history
+Unit tests for igm.assimilations.pretraining.history
 
 Covers: History.append_epoch, save_history_yaml, load_history_yaml
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from igm.processes.pretraining.history import History, load_history_yaml, save_history_yaml
+from igm.assimilations.pretraining.history import History, load_history_yaml, save_history_yaml
 
 
 def _full_epoch_kwargs(**overrides) -> dict:

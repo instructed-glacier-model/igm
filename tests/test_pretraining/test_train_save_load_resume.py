@@ -89,7 +89,7 @@ def _write_fake_tfrecords(
 # ---------------------------------------------------------------------------
 
 _H, _W, _NZ, _CX = 8, 8, 2, 3
-_INPUT_NAMES = ["thk", "usurf", "slidingco"]
+_INPUT_NAMES = ["thk", "usurf", "tau_ref"]
 _EXPERIMENT_NAME = "test_pretraining_run"
 
 
@@ -144,8 +144,8 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(sys, "argv", [
         "igm_run.py",
         "+experiment=params",
-        f"processes.pretraining.data_dir={data_dir}",
-        f"processes.pretraining.out_dir={out_dir}",
+        f"assimilations.pretraining.data_dir={data_dir}",
+        f"assimilations.pretraining.out_dir={out_dir}",
         f"hydra.run.dir={str(tmp_path / 'hydra_output')}",
     ])
 
@@ -196,11 +196,11 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     from omegaconf import OmegaConf
 
     from igm.processes.iceflow.unified.mappings.network import MappingNetwork
-    from igm.processes.pretraining.trainer import Trainer
-    from igm.processes.pretraining.training_utils import build_tfrecord_datasets_for_nz
+    from igm.assimilations.pretraining.trainer import Trainer
+    from igm.assimilations.pretraining.training_utils import build_tfrecord_datasets_for_nz
 
     cfg = OmegaConf.create({
-        "processes": {
+        "assimilations": {
             "pretraining": {
                 "steps_per_epoch": 2,
                 "val_steps": 2,

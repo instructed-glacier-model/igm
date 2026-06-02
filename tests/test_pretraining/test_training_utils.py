@@ -1,5 +1,5 @@
 """
-Unit tests for igm.processes.pretraining.training_utils
+Unit tests for igm.assimilations.pretraining.training_utils
 
 Covers:
   - validate_dataset_matches_inputs: channel-count and name-order validation
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 import tensorflow as tf
 
-from igm.processes.pretraining.training_utils import (
+from igm.assimilations.pretraining.training_utils import (
     build_velocity_data_loss,
     validate_dataset_matches_inputs,
 )

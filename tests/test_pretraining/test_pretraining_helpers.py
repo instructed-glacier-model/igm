@@ -1,5 +1,5 @@
 """
-Unit tests for private helpers in igm.processes.pretraining.pretraining
+Unit tests for private helpers in igm.assimilations.pretraining.pretraining
 
 Covers:
   - _resolve_accum_steps: batch-size / divisibility validation
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from omegaconf import OmegaConf
 
-from igm.processes.pretraining.pretraining import (
+from igm.assimilations.pretraining.pretraining import (
     _prepare_run_dirs,
     _resolve_accum_steps,
 )

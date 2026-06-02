@@ -2,23 +2,27 @@
 #
 # Lightweight experiment config for the pretraining integration test.
 # iceflow is loaded so pretraining can read its config (Nz, architecture,
-# inputs, BCs). iceflow.initialize detects "pretraining" in the processes
+# inputs, BCs). iceflow.initialize detects "pretraining" in the assimilations
 # list and skips glacier-field setup (see iceflow.py:65-67).
 
 defaults:
   - override /processes:
     - iceflow
+  - override /assimilations:
     - pretraining
 
 processes:
   iceflow:
     method: unified
+    physics:
+      sliding:
+        tau_ref: 0.1
     numerics:
       Nz: 2
       precision: single
     unified:
       bcs: []
-      inputs: [thk, usurf, slidingco]
+      inputs: [thk, usurf, tau_ref]
       mapping: network
       network:
         pretrained: false
@@ -26,7 +30,7 @@ processes:
         print_summary: false
     emulator:
       network:
-        params: 
+        params:
           nb_layers: 2
           nb_out_filter: 4
           conv_ker_size: 3
@@ -34,6 +38,7 @@ processes:
           residual: false
           separable: false
 
+assimilations:
   pretraining:
     data_dir: ???
     out_dir: ???
