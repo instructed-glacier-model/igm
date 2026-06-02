@@ -227,6 +227,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
         nb_outputs = 2 * cfg_numerics.Nz
 
         from igm.processes.iceflow.emulate.utils.architectures import Architectures
+
         arch_name = cfg_emulator.network.architecture.upper()
         state.iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
 
@@ -252,6 +253,15 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
+
+    # Eagerly initialize all optimizer variables (iterations, slots, lr) before
+    # update_emulator is traced as a tf.function.  The legacy Keras optimizer
+    # creates them lazily; if that happens inside a tf.function TF raises
+    # "singleton tf.Variables created on the first call" on any retrace.
+    _zero_grads = [tf.zeros_like(v) for v in state.iceflow_model.trainable_variables]
+    state.opti_retrain.apply_gradients(
+        zip(_zero_grads, state.iceflow_model.trainable_variables)
+    )
 
     # Update the emulator and evaluate it once
     update_iceflow_emulator(cfg, state, initial=True)
