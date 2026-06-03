@@ -4,6 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import importlib
+import tensorflow as tf
 
 
 def _impl(cfg):
@@ -13,6 +14,8 @@ def _impl(cfg):
 
 def initialize(cfg, state):
     _impl(cfg).initialize(cfg, state)
+    if not hasattr(state, "smb"):
+        state.smb = tf.zeros_like(state.usurf)
 
 
 def update(cfg, state):
