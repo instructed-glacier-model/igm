@@ -12,6 +12,7 @@ from igm.common import (
     update_modules,
     finalize_modules,
     setup_igm_modules,
+    check_module_needs,
     print_gpu_info,
     add_logger,
     write_igm_version,
@@ -67,6 +68,7 @@ def main(cfg: DictConfig) -> None:
     # Reject pre-step-2 parameter names before doing any work, so the user
     # sees a clear migration message rather than a downstream Hydra error.
     from igm.common.legacy import check_legacy_keys
+
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
@@ -76,7 +78,7 @@ def main(cfg: DictConfig) -> None:
     state.start_time = datetime.now()
 
     write_igm_version(Path(os.getcwd()))
-    
+
     if cfg.core.check_compat_params:
         check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
@@ -98,7 +100,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.core.logging:
         add_logger(cfg=cfg, state=state)
         tf.get_logger().setLevel(cfg.core.tf_logging_level)
-    
+
     if cfg.core.print_params:
         print(OmegaConf.to_yaml(cfg))
 
@@ -129,6 +131,7 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(combined_modules, cfg, state)
+        check_module_needs(combined_modules, state)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
         finalize_modules(combined_modules, cfg, state)
 

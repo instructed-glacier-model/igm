@@ -56,6 +56,14 @@ def initialize(cfg, state):
     ]
     state.var_info_ncdf_ex["velsurfobs_mag"] = ["Obs. surf. speed of ice", "m/y"]
     state.var_info_ncdf_ex["weight_particles"] = ["weight_particles", "no"]
+    state.var_info_ncdf_ex["T"] = ["Ice temperature", "K"]
+    state.var_info_ncdf_ex["omega"] = ["Water content fraction", "1"]
+    state.var_info_ncdf_ex["E_pmp"] = ["Pressure melting point enthalpy", "J kg-1"]
+    state.var_info_ncdf_ex["T_pmp"] = ["Pressure melting point temperature", "K"]
+    state.var_info_ncdf_ex["T_pa"] = ["Pressure-adjusted temperature", "K"]
+    state.var_info_ncdf_ex["T_pa_b"] = ["Pressure-adjusted temperature at bed", "K"]
+    state.var_info_ncdf_ex["E_s"] = ["Surface enthalpy BC", "J kg-1"]
+    state.var_info_ncdf_ex["T_s"] = ["Surface temperature", "K"]
 
 
 def run(cfg, state):

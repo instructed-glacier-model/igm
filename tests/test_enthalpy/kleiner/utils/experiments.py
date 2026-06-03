@@ -80,8 +80,6 @@ def setup_experiment_a(dt: float = 200.0, Nz_E: int = 50):
     T_ref = cfg.processes.enthalpy.thermal.T_ref
     T_init = 243.15 * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
-    state.T = T_init
-    state.omega = tf.zeros_like(state.E)
 
     return cfg, state
 
@@ -130,8 +128,6 @@ def setup_experiment_b(Nz_E: int = 500):
     T_ref = cfg.processes.enthalpy.thermal.T_ref
     T_init = (273.15 - 1.5) * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
-    state.T = T_init
-    state.omega = tf.zeros_like(state.E)
     state.arrhenius = tf.constant(A * 1e18 * spy, dtype=tf.float32) * tf.ones((Ny, Nx))
     enthalpy.initialize(cfg, state)
 

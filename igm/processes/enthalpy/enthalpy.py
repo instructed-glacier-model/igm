@@ -10,7 +10,7 @@ from igm.common import State
 from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
-from .temperature import compute_temperature, compute_pmp
+from .temperature import compute_pa, compute_pmp, compute_temperature
 from .utils import checks, initialize_enthalpy_fields
 
 
@@ -23,21 +23,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Initialize enthalpy fields
     initialize_enthalpy_fields(cfg, state)
 
-    # Compute E_pmp
-    E_pmp, _ = compute_pmp(cfg, state)
-
-    # Compute (T, omega) from E and publish on state for downstream
-    # consumers (e.g. the standalone `arrhenius` process module, the
-    # `effective_pressure` module with `vanpelt_bueler` mode, ...).
-    T, omega = compute_temperature(cfg, state, E_pmp)
-    state.T = T
-    state.omega = omega
-
-    _publish_2d_temperatures(cfg, state, T)
-
 
 def update(cfg: DictConfig, state: State) -> None:
-    """Update enthalpy and derived (T, omega) fields."""
+    """Update enthalpy and derived fields."""
     if hasattr(state, "logger"):
         state.logger.info(f"Update ENTHALPY at time: {state.t.numpy()}")
 
@@ -55,34 +43,27 @@ def update(cfg: DictConfig, state: State) -> None:
     # (ii) SOLVE FOR ENTHALPY (state.E, state.basal_melt_rate)
     update_enthalpy(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
 
-    # (iii) DERIVE QUANTITIES
-
-    # Temperature and water content; publish on state so the standalone
-    # `arrhenius` module (and any other consumer) can pick them up.
-    T, omega = compute_temperature(cfg, state, E_pmp)
-    state.T = T
-    state.omega = omega
-
-    _publish_2d_temperatures(cfg, state, T)
-
-
-def _publish_2d_temperatures(cfg: DictConfig, state: State, T) -> None:
-    """Publish 2D surface and basal temperatures on state, using the
-    legacy `temppasurf` / `temppabase` names (Kelvin, pressure-adjusted)."""
-    cfg_phys = cfg.processes.iceflow.physics
-    cfg_thermal = cfg.processes.enthalpy.thermal
-
-    # Surface temperature: p_ice = 0 at the surface, so T_pa_s = T_s
-    state.temppasurf = T[-1]
-
-    # Basal pressure-adjusted temperature:
-    #     T_pa_b = T_b + beta * rho_ice * g * thk
-    # so that at PMP it equals T_pmp_ref (= 273.15 K) regardless of depth.
-    state.temppabase = (
-        T[0]
-        + cfg_thermal.beta * cfg_phys.ice_density * cfg_phys.gravity_cst * state.thk
-    )
-
 
 def finalize(cfg: DictConfig, state: State) -> None:
     pass
+
+
+def compute_diagnostics(cfg: DictConfig, state: State, requested=None) -> None:
+    E_s, T_s = compute_surface(cfg, state)
+    E_pmp, T_pmp = compute_pmp(cfg, state)
+    T, omega = compute_temperature(cfg, state, E_pmp)
+    T_pa = compute_pa(cfg, state, T)
+    T_pa_b = T_pa[0]
+
+    computed = {
+        "E_s": E_s,
+        "T_s": T_s,
+        "E_pmp": E_pmp,
+        "T_pmp": T_pmp,
+        "T": T,
+        "omega": omega,
+        "T_pa": T_pa,
+        "T_pa_b": T_pa_b,
+    }
+    for var in (requested if requested is not None else computed):
+        setattr(state, var, computed[var])

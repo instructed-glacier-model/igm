@@ -1,0 +1,6 @@
+description: Compute 3D ice velocities — direct solver or neural-network emulator
+category: cryosphere
+community: false
+authors: [Guillaume Jouvet, Thomas Gregov, Brandon Finley, Sebastian Rosier]
+needs: [thk, usurf, topg, arrhenius]
+updates: [U, V, ubar, vbar]

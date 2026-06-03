@@ -1,7 +1,7 @@
 arrhenius:
   # Two-regime Arrhenius law (cold / warm ice) with water-content enhancement.
-  # Reads state.T and state.omega (3D ice temperature and water content),
-  # which are produced by the `enthalpy` module. Place `arrhenius` AFTER
+  # Reads state.E (3D enthalpy) produced by the `enthalpy` module and derives
+  # temperature and water content on-the-fly. Place `arrhenius` AFTER
   # `enthalpy` in the `override /processes` list.
   A_cold: 3.985e-13
   A_warm: 1.916e+3

@@ -1,0 +1,6 @@
+description: Advance the simulation clock with an adaptive CFL time step
+category: time
+community: false
+authors: [Guillaume Jouvet]
+needs: [ubar, vbar]
+updates: [t, dt]
