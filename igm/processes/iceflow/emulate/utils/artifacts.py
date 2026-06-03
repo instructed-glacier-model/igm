@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import tensorflow as tf
+from omegaconf import DictConfig
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -18,7 +19,6 @@ from igm.processes.iceflow.emulate.utils.architectures import Architectures
 
 
 EMULATOR_FILENAME = "emulator.keras"
-
 
 _emulator_theme = Theme(
     {
@@ -188,8 +188,25 @@ def save_emulator_artifact(
     return artifact_path
 
 
-def load_emulator_artifact(artifact_dir: str | Path) -> EmulatorArtifact:
-    """Load a Keras emulator artifact from emulator.keras."""
+def validate_emulator_artifact(model: EmulatorArtifact, cfg: "DictConfig") -> None:
+    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels)."""
+    cfg_Nz = int(cfg.processes.iceflow.numerics.Nz)
+    if model.Nz != cfg_Nz:
+        raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
+
+    model_inputs = list(model.input_names)
+    cfg_inputs = list(cfg.processes.iceflow.unified.inputs)
+    if model_inputs != cfg_inputs:
+        raise ValueError(
+            f"Input channel mismatch: emulator={model_inputs}, config={cfg_inputs}"
+        )
+
+
+def load_emulator_artifact(
+    artifact_dir: str | Path,
+    cfg: "DictConfig | None" = None,
+) -> EmulatorArtifact:
+    """Load a Keras emulator artifact. If *cfg* is given, validates Nz and input channels."""
     artifact_path = _resolve_emulator_path(artifact_dir)
     if not artifact_path.exists():
         raise FileNotFoundError(
@@ -201,9 +218,12 @@ def load_emulator_artifact(artifact_dir: str | Path) -> EmulatorArtifact:
     )
     if not isinstance(model, EmulatorArtifact):
         raise TypeError(
-            f"Expected {artifact_path} to contain an EmulatorArtifact, "
+            f"Expected {artifact_path} to contain an IGM emulator, "
             f"got {type(model)}"
         )
+    
+    validate_emulator_artifact(model, cfg)
 
     _print_loaded_banner(artifact_path, model)
+
     return model

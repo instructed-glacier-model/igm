@@ -57,7 +57,8 @@ class InterfaceNetwork(InterfaceMapping):
                     "float64" if tf.as_dtype(dtype) == tf.float64 else "float32"
                 )
                 iceflow_model = load_emulator_artifact(
-                    cfg_unified.network.pretrained_path
+                    cfg_unified.network.pretrained_path,
+                    cfg=cfg,
                 )
             else:
                 warnings.warn(
