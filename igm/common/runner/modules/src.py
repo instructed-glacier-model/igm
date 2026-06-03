@@ -133,10 +133,26 @@ def setup_igm_modules(cfg, state) -> List[ModuleType]:
     return load_modules(cfg, state)
 
 
-def check_module_needs(processes: List, state: State) -> None:
+def check_module_needs(processes: List, state: State, cfg=None) -> None:
     errors: list[tuple[str, list[str]]] = []
     for module in processes:
         meta = _load_module_meta(module)
+        name = module.__name__.split(".")[-1]
+
+        # Dispatcher resolution: if the module has no/empty needs but exposes
+        # get_active_submodule(cfg), check the active sub-module's needs instead,
+        # using the parent's updates list for the bypass heuristic.
+        if cfg is not None and hasattr(module, "get_active_submodule"):
+            if not meta or not meta.get("needs"):
+                try:
+                    sub = module.get_active_submodule(cfg)
+                    sub_meta = _load_module_meta(sub)
+                    if sub_meta and sub_meta.get("needs"):
+                        parent_updates = (meta or {}).get("updates", [])
+                        meta = dict(sub_meta, updates=parent_updates)
+                except Exception:
+                    pass
+
         if not meta or "needs" not in meta:
             continue
         # If a module declares outputs but none are on state after init, it ran
@@ -144,7 +160,6 @@ def check_module_needs(processes: List, state: State) -> None:
         declared_updates = meta.get("updates", [])
         if declared_updates and not any(hasattr(state, v) for v in declared_updates):
             continue
-        name = module.__name__.split(".")[-1]
         missing = [v for v in meta["needs"] if not hasattr(state, v)]
         if missing:
             errors.append((name, missing))

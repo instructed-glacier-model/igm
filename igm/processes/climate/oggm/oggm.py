@@ -63,7 +63,7 @@ def initialize(cfg, state):
         dtype="float32",
         trainable=False,
     )
-    state.air_temp_std = tf.Variable(
+    state.air_temp_sd = tf.Variable(
         tf.zeros((nb_m, state.y.shape[0], state.x.shape[0])),
         dtype="float32",
         trainable=False,
@@ -128,7 +128,7 @@ def update(cfg, state):
         # extend air_temp and precipitation over the entire glacier and all day of the year
         state.precipitation = tf.tile(PREC, (1, state.y.shape[0], state.x.shape[0]))
         state.air_temp = tf.tile(TEMP, (1, state.y.shape[0], state.x.shape[0]))
-        state.air_temp_std = tf.tile(TEMP_STD, (1, state.y.shape[0], state.x.shape[0]))
+        state.air_temp_sd = tf.tile(TEMP_STD, (1, state.y.shape[0], state.x.shape[0]))
 
         # vertical correction (lapse rates)
         temp_corr_addi = state.temp_default_gradient * (state.usurf - state.ref_hgt)

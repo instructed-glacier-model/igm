@@ -12,10 +12,14 @@ def _impl(cfg):
     return importlib.import_module(f"igm.processes.smb.{method}")
 
 
+def get_active_submodule(cfg):
+    return _impl(cfg)
+
+
 def initialize(cfg, state):
     _impl(cfg).initialize(cfg, state)
     if not hasattr(state, "smb"):
-        state.smb = tf.zeros_like(state.usurf)
+        state.smb = tf.zeros_like(state.usurf) if hasattr(state, "usurf") else None
 
 
 def update(cfg, state):

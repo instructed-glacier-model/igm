@@ -2,5 +2,5 @@ description: Positive degree-day SMB with snowpack tracking and separate melt fa
 category: atmosphere
 community: true
 authors: [Guillaume Jouvet]
-needs: [air_temp, air_temp_sd, precipitation]
+needs: [air_temp, precipitation]
 updates: [smb]
