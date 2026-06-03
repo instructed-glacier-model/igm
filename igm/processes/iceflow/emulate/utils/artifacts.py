@@ -95,11 +95,15 @@ class EmulatorArtifact(tf.keras.Model):
         architecture_name: str,
         architecture_params: dict[str, Any],
         core_model: tf.keras.Model | None = None,
+        basis_vertical: str | None = None,
+        basis_horizontal: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.architecture_name = str(architecture_name)
         self.architecture_params = dict(architecture_params)
+        self.basis_vertical = basis_vertical
+        self.basis_horizontal = basis_horizontal
 
         if core_model is None:
             if self.architecture_name not in Architectures:
@@ -107,9 +111,7 @@ class EmulatorArtifact(tf.keras.Model):
                     f"Unknown architecture {self.architecture_name!r}. "
                     f"Available: {list(Architectures.keys())}"
                 )
-            self.core = Architectures[self.architecture_name](
-                **self.architecture_params
-            )
+            self.core = Architectures[self.architecture_name](**self.architecture_params)
         else:
             self.core = core_model
 
@@ -143,6 +145,8 @@ class EmulatorArtifact(tf.keras.Model):
         config = super().get_config()
         config["architecture_name"] = self.architecture_name
         config["architecture_params"] = self.architecture_params
+        config["basis_vertical"] = self.basis_vertical
+        config["basis_horizontal"] = self.basis_horizontal
         return config
 
     def get_build_config(self) -> dict[str, Any]:
@@ -189,7 +193,7 @@ def save_emulator_artifact(
 
 
 def validate_emulator_artifact(model: EmulatorArtifact, cfg: "DictConfig") -> None:
-    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels)."""
+    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels, discretization)."""
     cfg_Nz = int(cfg.processes.iceflow.numerics.Nz)
     if model.Nz != cfg_Nz:
         raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
@@ -200,6 +204,15 @@ def validate_emulator_artifact(model: EmulatorArtifact, cfg: "DictConfig") -> No
         raise ValueError(
             f"Input channel mismatch: emulator={model_inputs}, config={cfg_inputs}"
         )
+
+    numerics = cfg.processes.iceflow.numerics
+    for attr, cfg_val in [
+        ("basis_vertical", str(numerics.basis_vertical)),
+        ("basis_horizontal", str(numerics.basis_horizontal)),
+    ]:
+        model_val = getattr(model, attr, None)
+        if model_val is not None and model_val != cfg_val:
+            raise ValueError(f"{attr} mismatch: emulator={model_val!r}, config={cfg_val!r}")
 
 
 def load_emulator_artifact(

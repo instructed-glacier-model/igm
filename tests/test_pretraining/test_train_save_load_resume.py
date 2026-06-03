@@ -167,12 +167,21 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     # ------------------------------------------------------------------ #
     # Phase 3: load the saved emulator artifact and verify its properties #
     # ------------------------------------------------------------------ #
+    from omegaconf import OmegaConf
+
     from igm.processes.iceflow.emulate.utils.artifacts import (
         EmulatorArtifact,
         load_emulator_artifact,
     )
 
-    loaded = load_emulator_artifact(artifact_dir)
+    # Mirror the cfg used during training (iceflow.yaml defaults + params.yaml overrides).
+    _load_cfg = OmegaConf.create({
+        "processes": {"iceflow": {
+            "numerics": {"Nz": _NZ, "basis_vertical": "Lagrange", "basis_horizontal": "central"},
+            "unified": {"inputs": list(_INPUT_NAMES)},
+        }}
+    })
+    loaded = load_emulator_artifact(artifact_dir, cfg=_load_cfg)
 
     assert isinstance(loaded, EmulatorArtifact), \
         f"Expected EmulatorArtifact, got {type(loaded)}"
@@ -193,8 +202,6 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     # ------------------------------------------------------------------ #
     # Phase 4: restore from checkpoint and verify start epoch             #
     # ------------------------------------------------------------------ #
-    from omegaconf import OmegaConf
-
     from igm.processes.iceflow.unified.mappings.network import MappingNetwork
     from igm.assimilations.pretraining.trainer import Trainer
     from igm.assimilations.pretraining.training_utils import build_tfrecord_datasets_for_nz
