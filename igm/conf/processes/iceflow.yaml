@@ -200,3 +200,7 @@ iceflow:
     display:
       print_cost: false
       print_cost_freq: 1
+  vertical_velocity:
+    enabled: false
+    version: 2
+    method: kinematic

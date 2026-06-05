@@ -1,6 +1,0 @@
-description: Diagnose the 3D vertical velocity from the horizontal velocity divergence
-category: cryosphere
-community: false
-authors: [Guillaume Jouvet, Claire-Mathile Stücki, Thomas Gregov]
-needs: [U, V, thk]
-updates: [W, wvelbase, wvelsurf]
