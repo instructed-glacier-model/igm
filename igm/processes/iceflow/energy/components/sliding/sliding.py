@@ -47,7 +47,7 @@ def get_friction_field(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
 
 _LAW_KEYS: Dict[str, set] = {
     "weertman": {"regularization", "exponent", "u_ref"},
-    "coulomb": {"regularization", "exponent", "u_ref", "mu"},
+    "regu_coulomb": {"regularization", "exponent", "u_ref", "mu"},
     "budd": {"regularization", "exponent", "u_ref", "N_ref", "q_exponent"},
     "mohr_coulomb": {
         "regularization",

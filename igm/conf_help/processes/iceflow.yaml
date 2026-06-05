@@ -46,7 +46,7 @@ physics:
       Units: MPa
     mu:
       Type: float
-      Description: "Till coefficient (coulomb only)."
+      Description: "Till coefficient (regu_coulomb only)."
       Units: dimless
     q_exponent:
       Type: float

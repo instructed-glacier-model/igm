@@ -46,7 +46,7 @@ def test_raises_on_legacy_flat_key(legacy_path, value):
 
 @pytest.mark.fast
 @pytest.mark.unit
-@pytest.mark.parametrize("law", ["weertman", "coulomb", "budd", "mohr_coulomb"])
+@pytest.mark.parametrize("law", ["weertman", "regu_coulomb", "budd", "mohr_coulomb"])
 def test_raises_on_legacy_sliding_sub_block(law):
     cfg = OmegaConf.create({})
     OmegaConf.update(

@@ -36,7 +36,7 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
                 "must be present as a 2D variable in the input NetCDF."
             )
 
-    # The Budd, Coulomb and mohr_coulomb sliding laws read
+    # The Budd, regularized Coulomb and Mohr-Coulomb sliding laws read
     # `effective_pressure` from fieldin. Weertman does not.
     # This check applies to the `unified` / `solved` paths (which build
     # `fieldin` from `cfg.processes.iceflow.unified.inputs`); the
@@ -46,7 +46,7 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
     if method in ("unified", "solved") and "sliding" in cfg_physics.energy_components:
         law = cfg_physics.sliding.law
         if (
-            law in ("budd", "coulomb", "mohr_coulomb")
+            law in ("budd", "regu_coulomb", "mohr_coulomb")
             and "effective_pressure" not in unified_inputs
         ):
             raise ValueError(

@@ -11,8 +11,8 @@ from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 
 
-class CoulombParams(tf.experimental.ExtensionType):
-    """Parameters for Coulomb sliding law."""
+class ReguCoulombParams(tf.experimental.ExtensionType):
+    """Parameters for the regularized Coulomb sliding law."""
 
     regularization: float
     exponent: float
@@ -22,12 +22,12 @@ class CoulombParams(tf.experimental.ExtensionType):
     use_mask_gr: bool
 
 
-class Coulomb(SlidingComponent):
-    """Sliding component implementing Coulomb's sliding law."""
+class ReguCoulomb(SlidingComponent):
+    """Sliding component implementing the regularized Coulomb sliding law."""
 
-    def __init__(self, params: CoulombParams):
-        """Initialize Coulomb sliding component with parameters."""
-        self.name = "coulomb"
+    def __init__(self, params: ReguCoulombParams):
+        """Initialize regularized Coulomb sliding component with parameters."""
+        self.name = "regu_coulomb"
         self.params = params
 
     def cost(
@@ -38,19 +38,19 @@ class Coulomb(SlidingComponent):
         discr_h: HorizontalDiscr,
         discr_v: VerticalDiscr,
     ) -> tf.Tensor:
-        """Compute Coulomb sliding cost."""
-        return cost_coulomb(U, V, fieldin, discr_h, discr_v, self.params)
+        """Compute regularized Coulomb sliding cost."""
+        return cost_regu_coulomb(U, V, fieldin, discr_h, discr_v, self.params)
 
 
-def cost_coulomb(
+def cost_regu_coulomb(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict[str, tf.Tensor],
     discr_h: HorizontalDiscr,
     discr_v: VerticalDiscr,
-    coulomb_params: CoulombParams,
+    regu_coulomb_params: ReguCoulombParams,
 ) -> tf.Tensor:
-    """Compute Coulomb sliding cost from field inputs."""
+    """Compute regularized Coulomb sliding cost from field inputs."""
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
@@ -63,12 +63,12 @@ def cost_coulomb(
     V_b = discr_v.V_b
 
     dtype = U.dtype
-    m = tf.cast(coulomb_params.exponent, dtype)
-    u_regu = tf.cast(coulomb_params.regularization, dtype)
-    μ = tf.cast(coulomb_params.mu, dtype)
-    u_ref = tf.cast(coulomb_params.u_ref, dtype)
-    rho_ratio = tf.cast(coulomb_params.rho_ratio, dtype)
-    use_mask_gr = tf.cast(coulomb_params.use_mask_gr, tf.bool)
+    m = tf.cast(regu_coulomb_params.exponent, dtype)
+    u_regu = tf.cast(regu_coulomb_params.regularization, dtype)
+    μ = tf.cast(regu_coulomb_params.mu, dtype)
+    u_ref = tf.cast(regu_coulomb_params.u_ref, dtype)
+    rho_ratio = tf.cast(regu_coulomb_params.rho_ratio, dtype)
+    use_mask_gr = tf.cast(regu_coulomb_params.use_mask_gr, tf.bool)
 
     return _cost(
         U,
@@ -108,7 +108,7 @@ def _cost(
     V_b: tf.Tensor,
 ) -> tf.Tensor:
     """
-    Compute the Coulomb sliding law cost term.
+    Compute the regularized Coulomb sliding law cost term.
 
     Calculates the sliding energy dissipation using a regularized
     Coulomb power law, following Shapero et al. (2021).
@@ -132,7 +132,7 @@ def _cost(
     dx : tf.Tensor
         Grid spacing (m)
     m : tf.Tensor
-        Coulomb exponent (-)
+        Sliding exponent (-)
     μ: tf.Tensor
         Till coefficient (-)
     u_regu : tf.Tensor
@@ -149,7 +149,7 @@ def _cost(
     Returns
     -------
     tf.Tensor
-        Coulomb sliding cost in MPa m/year
+        Regularized Coulomb sliding cost in MPa m/year
     """
 
     # Apply grounding mask to basal shear stress
@@ -180,7 +180,7 @@ def _cost(
 
     C_h = tau_ref_h / tf.pow(u_ref, 1.0 / m)
 
-    # Compute smooth transition between Weertman and Coulomb (Shapero et al. 2021)
+    # Compute smooth transition between Weertman and regularized Coulomb (Shapero et al. 2021)
     τ_c = μ * N_h
     u_c = tf.pow(τ_c / C_h, m)
 

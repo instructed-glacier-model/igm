@@ -35,7 +35,7 @@ _LEGACY_KEYS: List[Tuple[str, str]] = [
 
 # Per-law sliding sub-blocks were flattened; presence of any of these
 # indicates the user is still on the pre-step-2 yaml shape.
-_SLIDING_LAWS = ("weertman", "coulomb", "budd", "mohr_coulomb")
+_SLIDING_LAWS = ("weertman", "regu_coulomb", "budd", "mohr_coulomb")
 for _law in _SLIDING_LAWS:
     _LEGACY_KEYS.append((
         f"processes.iceflow.physics.sliding.{_law}",
