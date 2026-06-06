@@ -1,5 +1,1 @@
-from .avalanche import (
-    initialize,
-    finalize,
-    update
-)
+from .avalanche import initialize, finalize, update

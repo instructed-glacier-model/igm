@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 # Copyright (C) 2021-2025 IGM authors
-# Published under the GNU GPL (Version 3), check at the LICENSE file 
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+
 
 def initialize(cfg, state):
     state.tlast_mb = tf.Variable(-1.0e5000)
@@ -59,7 +60,10 @@ def update(cfg, state):
                 0.0,
                 state.precipitation
                 * (cfg.processes.smb.accpdd.thr_temp_rain - state.air_temp)
-                / (cfg.processes.smb.accpdd.thr_temp_rain - cfg.processes.smb.accpdd.thr_temp_snow),
+                / (
+                    cfg.processes.smb.accpdd.thr_temp_rain
+                    - cfg.processes.smb.accpdd.thr_temp_snow
+                ),
             ),
         )
 
@@ -80,10 +84,10 @@ def update(cfg, state):
             pos_temp_year = tf.where(state.air_temp > 0.0, state.air_temp, 0.0)
 
         # unit to [  kg * m^(-2) * y^(-1) water eq  ] -> [ m water eq ]
-        accumulation /= (accumulation.shape[0] * cfg.processes.smb.accpdd.wat_density) 
-        
+        accumulation /= accumulation.shape[0] * cfg.processes.smb.accpdd.wat_density
+
         # unit to [ °C ]  -> [ °C y ]
-        pos_temp_year /= pos_temp_year.shape[0]  
+        pos_temp_year /= pos_temp_year.shape[0]
 
         ablation = []  # [ unit : water-eq m ]
 
@@ -92,7 +96,10 @@ def update(cfg, state):
         for kk in range(state.air_temp.shape[0]):
             # shift to hydro year, i.e. start Oct. 1
             k = (
-                kk + int(state.air_temp.shape[0] * cfg.processes.smb.accpdd.shift_hydro_year)
+                kk
+                + int(
+                    state.air_temp.shape[0] * cfg.processes.smb.accpdd.shift_hydro_year
+                )
             ) % (state.air_temp.shape[0])
 
             # add accumulation to the snow depth
@@ -121,10 +128,12 @@ def update(cfg, state):
             # remove snow melt to snow depth, and cap it as snow_depth can not be negative
             snow_depth = tf.clip_by_value(snow_depth - ablation[-1], 0.0, 1.0e10)
 
-        ablation = (1 - cfg.processes.smb.accpdd.refreeze_factor) * tf.stack(ablation, axis=0)
+        ablation = (1 - cfg.processes.smb.accpdd.refreeze_factor) * tf.stack(
+            ablation, axis=0
+        )
 
         # sum accumulation and ablation over the year, and conversion to ice equivalent
-        state.smb = tf.math.reduce_sum(accumulation - ablation, axis=0)* (
+        state.smb = tf.math.reduce_sum(accumulation - ablation, axis=0) * (
             cfg.processes.smb.accpdd.wat_density / cfg.processes.smb.accpdd.ice_density
         )
 
@@ -133,7 +142,9 @@ def update(cfg, state):
                 (state.smb < 0) | (state.icemask > 0.5), state.smb, -10
             )
 
-        state.smb = tf.clip_by_value(state.smb, -100, cfg.processes.smb.accpdd.smb_maximum_accumulation)
+        state.smb = tf.clip_by_value(
+            state.smb, -100, cfg.processes.smb.accpdd.smb_maximum_accumulation
+        )
 
         state.tlast_mb.assign(state.t)
 

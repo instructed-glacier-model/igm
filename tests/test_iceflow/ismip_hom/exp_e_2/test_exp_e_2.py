@@ -10,7 +10,11 @@ from tests.test_iceflow.ismip_hom.utils import (
 )
 
 pytestmark = pytest.mark.slow
-@pytest.mark.parametrize("mapping,optimizer", get_unified_parameters_no_length("exp_e_2"))
+
+
+@pytest.mark.parametrize(
+    "mapping,optimizer", get_unified_parameters_no_length("exp_e_2")
+)
 def test_exp_e_2_unified(
     monkeypatch: pytest.MonkeyPatch, mapping: str, optimizer: str
 ) -> None:

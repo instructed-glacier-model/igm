@@ -79,10 +79,10 @@ def power_law_cost(
         tau_ref = tau_ref * mask_gr(h, topg, rho_ratio)
 
     # Interpolate to horizontal quad points
-    U_h = discr_h.interp_h(U)                     # (batch, Nq_h, Nz, Ny-1, Nx-1)
+    U_h = discr_h.interp_h(U)  # (batch, Nq_h, Nz, Ny-1, Nx-1)
     V_h = discr_h.interp_h(V)
-    tau_ref_h = discr_h.interp_h(tau_ref)         # (batch, Nq_h, Ny-1, Nx-1)
-    N_h = discr_h.interp_h(N)                     # (batch, Nq_h, Ny-1, Nx-1)
+    tau_ref_h = discr_h.interp_h(tau_ref)  # (batch, Nq_h, Ny-1, Nx-1)
+    N_h = discr_h.interp_h(N)  # (batch, Nq_h, Ny-1, Nx-1)
 
     # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
     ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)

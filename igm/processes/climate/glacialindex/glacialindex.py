@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
@@ -9,7 +9,8 @@ import tensorflow as tf
 import xarray as xr
 from scipy.interpolate import RectBivariateSpline, interp1d
 from igm.utils.math.interp1d_tf import interp1d_tf
- 
+
+
 def initialize(cfg, state):
     load_climate_data_glacialindex(cfg, state)
 
@@ -31,7 +32,6 @@ def update(cfg, state):
     if (state.t - state.tlast_clim) >= cfg.processes.climate.glacialindex.update_freq:
         if hasattr(state, "logger"):
             state.logger.info("update climate at time : " + str(state.t.numpy()))
-
 
         s = interp1d_tf(state.signal[:, 0], state.signal[:, 1], state.t)
 
@@ -58,7 +58,7 @@ def update(cfg, state):
         lapse_rate_cor = (state.usurf - state.tempsurfref) * (state.LR / 1000.0)
 
         state.air_temp.assign(state.air_temp - lapse_rate_cor)
-        
+
         state.meanprec = tf.math.reduce_mean(state.precipitation, axis=0)
         state.meantemp = tf.math.reduce_mean(state.air_temp, axis=0)
 
@@ -77,10 +77,6 @@ def load_climate_data_one_snapshot(cfg, state, filename):
     load the ncdf climate file containing precipitation and temperatures
     """
 
-
-
-
-
     ds = xr.open_dataset(filename)
 
     x = ds["x"].values.astype("float32").squeeze()
@@ -93,8 +89,9 @@ def load_climate_data_one_snapshot(cfg, state, filename):
     if "air_temp_sd" in ds.variables:
         air_temp_sd = ds["air_temp_sd"].values.astype("float32").squeeze()
     else:
-        air_temp_sd = np.ones_like(air_temp) * cfg.processes.climate.glacialindex.temp_std
-  
+        air_temp_sd = (
+            np.ones_like(air_temp) * cfg.processes.climate.glacialindex.temp_std
+        )
 
     air_temp_sd = np.where(air_temp_sd > 0, air_temp_sd, 5.0)
 
@@ -124,22 +121,26 @@ def load_climate_data_one_snapshot(cfg, state, filename):
         precipitation = precipitationN
         surf_clim_ref = surf_clim_refN
 
-    air_temp -= 273.15           # unit to [ °C ]
-    precipitation *= 31556952.0  # unit to [ kg * m^(-2) * s^(-1) ] -> [ kg * m^(-2) * y^(-1) ]
- 
+    air_temp -= 273.15  # unit to [ °C ]
+    precipitation *= (
+        31556952.0  # unit to [ kg * m^(-2) * s^(-1) ] -> [ kg * m^(-2) * y^(-1) ]
+    )
+
     return [air_temp, air_temp_sd, precipitation, surf_clim_ref]
 
 
 def load_signal(cfg, state):
     """
     load signal file to force a transient climate
-    """ 
-    filepath =  os.path.join(state.original_cwd,cfg.processes.climate.glacialindex.signal_file)
+    """
+    filepath = os.path.join(
+        state.original_cwd, cfg.processes.climate.glacialindex.signal_file
+    )
 
     state.signal = np.loadtxt(filepath, dtype=np.float32)
 
 
-def interpolate_climate_over_a_year(climate_snapshot,resampling):
+def interpolate_climate_over_a_year(climate_snapshot, resampling):
     """
     this applies interpolation, and shift to all climatic variables
     """
@@ -151,7 +152,9 @@ def interpolate_climate_over_a_year(climate_snapshot,resampling):
         # use 52 instead of 12 for weekly resolution, but this will increase memory usage
         air_temp = climate_upsampling_and_shift(air_temp, resampling=resampling)
         air_temp_sd = climate_upsampling_and_shift(air_temp_sd, resampling=resampling)
-        precipitation = climate_upsampling_and_shift(precipitation, resampling=resampling)
+        precipitation = climate_upsampling_and_shift(
+            precipitation, resampling=resampling
+        )
 
         climate_snapshot_out.append([air_temp, air_temp_sd, precipitation, usurf, LR])
 
@@ -162,63 +165,68 @@ def load_climate_data_glacialindex(cfg, state):
     """
     load climate data and transient signal, interpolate weekly, and shift
     """
- 
+
     climate_snapshot_0 = load_climate_data_one_snapshot(
-        cfg, state, os.path.join(state.original_cwd,cfg.processes.climate.glacialindex.climate_0_file)
+        cfg,
+        state,
+        os.path.join(
+            state.original_cwd, cfg.processes.climate.glacialindex.climate_0_file
+        ),
     ) + [cfg.processes.climate.glacialindex.vertical_lapse_rate_0]
     climate_snapshot_1 = load_climate_data_one_snapshot(
-        cfg, state, os.path.join(state.original_cwd,cfg.processes.climate.glacialindex.climate_1_file)
+        cfg,
+        state,
+        os.path.join(
+            state.original_cwd, cfg.processes.climate.glacialindex.climate_1_file
+        ),
     ) + [cfg.processes.climate.glacialindex.vertical_lapse_rate_1]
     climate_snapshot = [climate_snapshot_0, climate_snapshot_1]
 
     ##############
 
-    climate_snapshot = interpolate_climate_over_a_year(climate_snapshot,cfg.processes.climate.glacialindex.temporal_resampling)
+    climate_snapshot = interpolate_climate_over_a_year(
+        climate_snapshot, cfg.processes.climate.glacialindex.temporal_resampling
+    )
 
     load_signal(cfg, state)
 
     ##############
 
-    state.air_temp_snap = \
-        np.concatenate(
-            (
-                np.expand_dims(climate_snapshot[0][0], axis=-1),
-                np.expand_dims(climate_snapshot[1][0], axis=-1),
-            ),
-            axis=-1,
-        )
-    state.air_temp_sd_snap = \
-        np.concatenate(
-            (
-                np.expand_dims(climate_snapshot[0][1], axis=-1),
-                np.expand_dims(climate_snapshot[1][1], axis=-1),
-            ),
-            axis=-1,
-        ) 
-    state.precipitation_snap = \
-        np.concatenate(
-            (
-                np.expand_dims(climate_snapshot[0][2], axis=-1),
-                np.expand_dims(climate_snapshot[1][2], axis=-1),
-            ),
-            axis=-1,
-        ) 
-    state.tempsurfref_snap = \
-        np.concatenate(
-            (
-                np.expand_dims(climate_snapshot[0][3], axis=-1),
-                np.expand_dims(climate_snapshot[1][3], axis=-1),
-            ),
-            axis=-1,
-        )
-    state.LR_snap = \
-        np.concatenate(
-            (
-                np.expand_dims(climate_snapshot[0][4], axis=-1),
-                np.expand_dims(climate_snapshot[1][4], axis=-1),
-            ),
-            axis=-1,
-        ) 
+    state.air_temp_snap = np.concatenate(
+        (
+            np.expand_dims(climate_snapshot[0][0], axis=-1),
+            np.expand_dims(climate_snapshot[1][0], axis=-1),
+        ),
+        axis=-1,
+    )
+    state.air_temp_sd_snap = np.concatenate(
+        (
+            np.expand_dims(climate_snapshot[0][1], axis=-1),
+            np.expand_dims(climate_snapshot[1][1], axis=-1),
+        ),
+        axis=-1,
+    )
+    state.precipitation_snap = np.concatenate(
+        (
+            np.expand_dims(climate_snapshot[0][2], axis=-1),
+            np.expand_dims(climate_snapshot[1][2], axis=-1),
+        ),
+        axis=-1,
+    )
+    state.tempsurfref_snap = np.concatenate(
+        (
+            np.expand_dims(climate_snapshot[0][3], axis=-1),
+            np.expand_dims(climate_snapshot[1][3], axis=-1),
+        ),
+        axis=-1,
+    )
+    state.LR_snap = np.concatenate(
+        (
+            np.expand_dims(climate_snapshot[0][4], axis=-1),
+            np.expand_dims(climate_snapshot[1][4], axis=-1),
+        ),
+        axis=-1,
+    )
 
 
 def climate_upsampling_and_shift(field, resampling, shift=0.0):

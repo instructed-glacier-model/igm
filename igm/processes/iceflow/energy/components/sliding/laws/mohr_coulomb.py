@@ -42,21 +42,21 @@ class MohrCoulombParams(tf.experimental.ExtensionType):
 
     regularization: float
     exponent: float
-    u_ref: float          # (m/yr)
-    phi: float            # uniform friction angle (deg); used unless bed_min/bed_max are both set
-    phi_min: float        # friction angle at bed = bed_min (deg)
-    phi_max: float        # friction angle at bed = bed_max (deg)
-    bed_min: float        # m a.s.l.; set NaN to disable interpolation -> uniform phi
-    bed_max: float        # m a.s.l.; set NaN to disable interpolation -> uniform phi
-    tauc_min: float       # MPa, lower clamp on N*tan(phi) (after ice-free assignment)
-    tauc_max: float       # MPa, upper clamp on N*tan(phi)
+    u_ref: float  # (m/yr)
+    phi: float  # uniform friction angle (deg); used unless bed_min/bed_max are both set
+    phi_min: float  # friction angle at bed = bed_min (deg)
+    phi_max: float  # friction angle at bed = bed_max (deg)
+    bed_min: float  # m a.s.l.; set NaN to disable interpolation -> uniform phi
+    bed_max: float  # m a.s.l.; set NaN to disable interpolation -> uniform phi
+    tauc_min: float  # MPa, lower clamp on N*tan(phi) (after ice-free assignment)
+    tauc_max: float  # MPa, upper clamp on N*tan(phi)
     tauc_ice_free: float  # MPa, HARD assignment in ice-free cells (h_ice = 0).
-                          # Matches the legacy enthalpy/till/friction behaviour:
-                          # without it, ice-free cells get the global tauc_min
-                          # floor, which is typically 10x too weak and gives the
-                          # unified solver a near-zero-friction region that
-                          # pulls the optimization toward unphysical fast flow
-                          # in those cells -> NaN at cold-start.
+    # Matches the legacy enthalpy/till/friction behaviour:
+    # without it, ice-free cells get the global tauc_min
+    # floor, which is typically 10x too weak and gives the
+    # unified solver a near-zero-friction region that
+    # pulls the optimization toward unphysical fast flow
+    # in those cells -> NaN at cold-start.
     rho_ratio: float
     use_mask_gr: bool
 
@@ -133,9 +133,9 @@ def cost_mohr_coulomb(
         tauc = tauc * mask_gr(h, topg, rho_ratio)
 
     # Interpolate to horizontal quad points
-    U_h = discr_h.interp_h(U)         # (batch, Nq_h, Nz, Ny-1, Nx-1)
+    U_h = discr_h.interp_h(U)  # (batch, Nq_h, Nz, Ny-1, Nx-1)
     V_h = discr_h.interp_h(V)
-    tauc_h = discr_h.interp_h(tauc)   # (batch, Nq_h, Ny-1, Nx-1)
+    tauc_h = discr_h.interp_h(tauc)  # (batch, Nq_h, Ny-1, Nx-1)
 
     # Basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
     ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)

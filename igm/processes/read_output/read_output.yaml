@@ -1,0 +1,6 @@
+description: Replay a saved NetCDF output file as if freshly computed
+category: misc
+community: true
+authors: [Guillaume Jouvet]
+needs: []
+updates: []

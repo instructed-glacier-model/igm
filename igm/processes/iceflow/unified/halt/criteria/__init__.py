@@ -5,6 +5,7 @@ from .patience import CriterionPatience
 from .inf import CriterionInf
 from .nan import CriterionNaN
 from .threshold import CriterionThreshold
+from .log_burst_patience import CriterionLogBurstPatience
 
 Criteria = {
     "abs_tol": CriterionAbsTol,
@@ -13,4 +14,5 @@ Criteria = {
     "inf": CriterionInf,
     "nan": CriterionNaN,
     "threshold": CriterionThreshold,
+    "log_burst": CriterionLogBurstPatience,
 }

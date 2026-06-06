@@ -65,7 +65,7 @@ class OptimizerAdam(Optimizer):
             )
         else:
             self.optim_adam = module_optimizer.Adam(
-                learning_rate=tf.Variable(lr),
+                learning_rate=lr,
                 beta_1=0.8,
                 beta_2=0.9995,
                 clipnorm=clip_norm,

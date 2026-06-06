@@ -1,0 +1,6 @@
+description: Evolve ice thickness and surface elevation via mass conservation
+category: cryosphere
+community: false
+authors: [Guillaume Cordonnier, Guillaume Jouvet]
+needs: [thk, topg, ubar, vbar, smb, dt]
+updates: [thk, usurf, divflux]

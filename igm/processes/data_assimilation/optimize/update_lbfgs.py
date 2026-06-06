@@ -16,7 +16,13 @@ from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 
 def optimize_update_lbfgs(cfg, state, cost, i):
 
-    import tensorflow_probability as tfp
+    try:
+        import tensorflow_probability as tfp
+    except ImportError:
+        raise ImportError(
+            "The 'lbfgs' optimizer requires tensorflow-probability. "
+            "Install it with: pip install tensorflow-probability"
+        )
 
     sc = {}
     sc["thk"] = cfg.processes.data_assimilation.scaling.thk

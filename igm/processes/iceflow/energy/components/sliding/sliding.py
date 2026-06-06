@@ -46,12 +46,22 @@ def get_friction_field(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
 
 
 _LAW_KEYS: Dict[str, set] = {
-    "weertman":     {"regularization", "exponent", "u_ref"},
-    "coulomb":      {"regularization", "exponent", "u_ref", "mu"},
-    "budd":         {"regularization", "exponent", "u_ref", "N_ref", "q_exponent"},
-    "mohr_coulomb": {"regularization", "exponent", "u_ref",
-                     "phi", "phi_min", "phi_max", "bed_min", "bed_max",
-                     "tauc_min", "tauc_max", "tauc_ice_free"},
+    "weertman": {"regularization", "exponent", "u_ref"},
+    "regu_coulomb": {"regularization", "exponent", "u_ref", "mu"},
+    "budd": {"regularization", "exponent", "u_ref", "N_ref", "q_exponent"},
+    "mohr_coulomb": {
+        "regularization",
+        "exponent",
+        "u_ref",
+        "phi",
+        "phi_min",
+        "phi_max",
+        "bed_min",
+        "bed_max",
+        "tauc_min",
+        "tauc_max",
+        "tauc_ice_free",
+    },
 }
 
 
@@ -65,8 +75,7 @@ def get_sliding_params_args(cfg: DictConfig) -> Dict[str, Any]:
     law = cfg_physics.sliding.law
     if law not in _LAW_KEYS:
         raise ValueError(
-            f"❌ Unknown sliding law '{law}'. "
-            f"Supported: {sorted(_LAW_KEYS)}."
+            f"❌ Unknown sliding law '{law}'. " f"Supported: {sorted(_LAW_KEYS)}."
         )
 
     args = {k: cfg_physics.sliding[k] for k in _LAW_KEYS[law]}

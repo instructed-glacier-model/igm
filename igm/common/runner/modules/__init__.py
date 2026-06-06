@@ -1,1 +1,7 @@
-from .src import initialize_modules, update_modules, finalize_modules, setup_igm_modules
+from .src import (
+    initialize_modules,
+    update_modules,
+    finalize_modules,
+    setup_igm_modules,
+    check_module_needs,
+)

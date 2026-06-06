@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
-import tensorflow as tf 
-from igm.utils.math.interp1d_tf import interp1d_tf 
+import tensorflow as tf
+from igm.utils.math.interp1d_tf import interp1d_tf
+
 
 def initialize(cfg, state):
 
@@ -18,7 +19,9 @@ def initialize(cfg, state):
     else:
         state.smbpar = np.array(cfg.processes.smb.simple.array[1:]).astype(np.float32)
 
-    if len(state.smbpar.shape)==1:  # update() expects 2D array even if state.smbpar has only one row
+    if (
+        len(state.smbpar.shape) == 1
+    ):  # update() expects 2D array even if state.smbpar has only one row
         state.smbpar = np.expand_dims(state.smbpar, axis=0)
 
     state.tlast_mb = tf.Variable(-1.0e5000)
@@ -51,7 +54,6 @@ def update(cfg, state):
             )
 
         state.tlast_mb.assign(state.t)
-
 
 
 def finalize(cfg, state):

@@ -1,0 +1,6 @@
+description: Compute surface mass balance from a user-defined elevation–SMB profile with time-varying ELA
+category: atmosphere
+community: true
+authors: [Guillaume Jouvet]
+needs: [t, usurf]
+updates: [smb]

@@ -1,5 +1,1 @@
-from .calving_rate import (
-    initialize,
-    finalize,
-    update
-)
+from .calving_rate import initialize, finalize, update

@@ -26,7 +26,7 @@ physics:
       Units: MPa
     tau_ref:
       Type: float
-      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + data_assimilation_SR + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
+      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + field_inversion + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
       Units: MPa
     regularization:
       Type: float
@@ -46,7 +46,7 @@ physics:
       Units: MPa
     mu:
       Type: float
-      Description: "Till coefficient (coulomb only)."
+      Description: "Till coefficient (regu_coulomb only)."
       Units: dimless
     q_exponent:
       Type: float
@@ -693,3 +693,16 @@ unified:
       Type: integer
       Description: "Frequency of printing the cost during the ice-flow optimization."
       Units: dimless
+vertical_velocity:
+  enabled:
+    Type: boolean
+    Units: dimless
+    Description: "Activate vertical velocity computation (W, wvelbase, wvelsurf) after the iceflow update. Required for 3D particle tracking and enthalpy vertical advection."
+  version:
+    Type: integer
+    Units: dimless
+    Description: "Version of the vertical_velocity method (1: original by GJ; 2: improved by CMS; 3: unified by TG)."
+  method:
+    Type: string
+    Units: dimless
+    Description: "Method to retrieve the vertical velocity: kinematic (layer-following) or incompressibility (divergence-free). Version 3 only supports incompressibility."

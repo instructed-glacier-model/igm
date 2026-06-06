@@ -1,0 +1,152 @@
+method:
+  Type: string
+  Units: dimless
+  Description: "Climate implementation to use: `simple`, `oggm`, `glacialindex`, or `station`."
+simple:
+  update_freq:
+    Type: float
+    Units: yr
+    Description: "Update climate fields every X years."
+  temp:
+    Type: float
+    Units: °C
+    Description: "Mean annual temperature at ref_elevation."
+  prec:
+    Type: float
+    Units: kg m^{-2} yr^{-1}
+    Description: "Mean annual precipitation at ref_elevation."
+  temp_std:
+    Type: float
+    Units: °C
+    Description: "Temperature standard deviation used for PDD computation."
+  ref_elevation:
+    Type: float
+    Units: m
+    Description: "Reference elevation for temperature and precipitation."
+  temp_lapse_rate:
+    Type: float
+    Units: °C m^{-1}
+    Description: "Vertical temperature lapse rate."
+  prec_lapse_rate:
+    Type: float
+    Units: m^{-1}
+    Description: "Fractional change in precipitation per metre of elevation."
+  cosine_yearly_cycle_temp:
+    Type: boolean
+    Units: dimless
+    Description: "Add a cosine seasonal cycle to temperature."
+  cosine_yearly_cycle_amplitude:
+    Type: float
+    Units: °C
+    Description: "Amplitude of the cosine seasonal temperature cycle."
+  southern_hemisphere_climate:
+    Type: boolean
+    Units: dimless
+    Description: "Shift the seasonal cycle by 6 months for southern-hemisphere glaciers."
+oggm:
+  update_freq:
+    Type: float
+    Units: yr
+    Description: "Update climate fields every X years."
+  file:
+    Type: string
+    Units: dimless
+    Description: "Path to the OGGM climate_historical.nc file."
+  clim_trend_array:
+    Type: list
+    Units: dimless
+    Description: "Time-dependent temperature and precipitation scaling table: rows of [time, delta_temp (°C), prec_scal (-)]."
+  ref_period:
+    Type: list
+    Units: yr
+    Description: "Reference period [start, end] for the OGGM climate baseline."
+  seed_par:
+    Type: integer
+    Units: dimless
+    Description: "Random seed for stochastic perturbations."
+glacialindex:
+  update_freq:
+    Type: float
+    Units: yr
+    Description: "Update climate fields every X years."
+  climate_0_file:
+    Type: string
+    Units: dimless
+    Description: "NetCDF file for the modern (warm) end-member climate."
+  climate_1_file:
+    Type: string
+    Units: dimless
+    Description: "NetCDF file for the glacial (cold) end-member climate."
+  signal_file:
+    Type: string
+    Units: dimless
+    Description: "File containing the glacial index signal (time, index) used to interpolate between end members."
+  vertical_lapse_rate_0:
+    Type: float
+    Units: °C (100 m)^{-1}
+    Description: "Vertical lapse rate applied to the modern end-member temperature field."
+  vertical_lapse_rate_1:
+    Type: float
+    Units: °C (100 m)^{-1}
+    Description: "Vertical lapse rate applied to the glacial end-member temperature field."
+  temporal_resampling:
+    Type: integer
+    Units: dimless
+    Description: "Number of sub-steps per model time step for temporal resampling of the glacial index signal."
+station:
+  update_freq:
+    Type: float
+    Units: yr
+    Description: "Update climate fields every X years."
+  zero_degree_isotherm:
+    Type: float
+    Units: m
+    Description: "Elevation at which mean annual temperature is 0 °C."
+  adiabatic_lapse_rate:
+    Type: float
+    Units: °C m^{-1}
+    Description: "Adiabatic lapse rate for air temperature."
+  air_temperature_stdev:
+    Type: float
+    Units: °C
+    Description: "Space-independent standard deviation of daily temperature variability."
+  precipitation_lapse_rate:
+    Type: float
+    Units: "% per 100 m"
+    Description: "Change in precipitation with altitude as a fraction of reference_precipitation."
+  reference_precipitation_elevation:
+    Type: float
+    Units: m
+    Description: "Elevation of the reference precipitation station."
+  reference_precipitation:
+    Type: float
+    Units: mm yr^{-1}
+    Description: "Mean cumulative annual precipitation at the reference station."
+  min_precipitation_allowed:
+    Type: float
+    Units: mm yr^{-1}
+    Description: "Minimum allowed precipitation to avoid unrealistically low values."
+  cosine_yearly_cycle_temp:
+    Type: boolean
+    Units: dimless
+    Description: "Add an idealised cosine seasonal temperature signal."
+  cosine_yearly_cycle_amplitude:
+    Type: float
+    Units: °C
+    Description: "Amplitude of the cosine seasonal temperature variation."
+  southern_hemisphere_climate:
+    Type: boolean
+    Units: dimless
+    Description: "Shift the seasonal cycle by 6 months for southern-hemisphere glaciers."
+  export_climate_ref:
+    Type: boolean
+    Units: dimless
+    Description: "Export a climate_ref.nc file for the original topography."
+  time_dependent_climate:
+    Type: boolean
+    Units: dimless
+    Description: "Allow climate to vary in time via climate_change_array."
+  climate_change_array:
+    Type: list
+    Units: dimless
+    Description: "Time-dependent offsets: rows of [time, temperature_offset (°C), precip_offset (mm yr^{-1})]."

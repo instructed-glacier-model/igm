@@ -6,8 +6,6 @@
 from omegaconf import DictConfig
 from typing import Any, Dict, Tuple
 import tensorflow as tf
-import tensorflow_probability as tfp
-
 from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy
 
@@ -118,6 +116,14 @@ def optimize_lbfgs(
         total_energy = tf.reduce_sum(energy_mean, axis=0)
 
         return total_energy
+
+    try:
+        import tensorflow_probability as tfp
+    except ImportError:
+        raise ImportError(
+            "The 'lbfgs' optimizer requires tensorflow-probability. "
+            "Install it with: pip install tensorflow-probability"
+        )
 
     cost_list = []
 

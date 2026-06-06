@@ -15,7 +15,7 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
     Basal-friction field: the legacy stack (emulated/solved/diagnostic
     + data_assimilation) uses `state.slidingco` initialised from
     `cfg.processes.iceflow.physics.sliding.slidingco`; the new stack
-    (unified + data_assimilation_SR + pretraining) uses `state.tau_ref`
+    (unified + field_inversion + pretraining) uses `state.tau_ref`
     initialised from `cfg.processes.iceflow.physics.sliding.tau_ref`.
     Cross-stack readers use `igm.common.fields.get_tau_ref(state)`.
     """

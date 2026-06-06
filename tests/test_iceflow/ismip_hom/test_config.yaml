@@ -4,13 +4,10 @@
 # Experiments to test
 experiments:
   - exp_a
-  - exp_b
   - exp_c
-  - exp_d
-  - exp_e_1
 
 # Length scales to test (in km)
-lengths: [20, 40, 80, 160]
+lengths: [20]
 
 # Methods to test
 methods:

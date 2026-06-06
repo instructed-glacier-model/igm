@@ -12,7 +12,7 @@ iceflow:
       exponent: 3.0            # was sliding.<law>.exponent
       u_ref: 1.0               # m/yr — set to 100.0 if law is mohr_coulomb
       N_ref: 1.0               # budd only
-      mu: 0.4                  # coulomb only
+      mu: 0.4                  # regu_coulomb only
       q_exponent: 1.0          # budd only (1.0=linear, 0.5=Tsai sublinear)
       # mohr_coulomb-specific keys (ignored by other laws):
       phi: 30.0      # uniform friction angle (deg); used unless both bed_min and bed_max are finite
@@ -75,6 +75,7 @@ iceflow:
     pertubate: false
     network:
       architecture: cnn
+      params: {}
       multiple_window_size: 0
       activation: LeakyReLU
       nb_layers: 16
@@ -226,3 +227,7 @@ iceflow:
     display:
       print_cost: false
       print_cost_freq: 1
+  vertical_velocity:
+    enabled: false
+    version: 2
+    method: kinematic

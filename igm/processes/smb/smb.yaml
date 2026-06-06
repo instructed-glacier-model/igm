@@ -1,0 +1,5 @@
+description: Unified surface mass balance module — dispatches to simple, oggm, or accpdd based on the `method` parameter
+category: atmosphere
+community: false
+needs: []
+updates: [smb]

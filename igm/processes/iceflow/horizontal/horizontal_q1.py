@@ -53,8 +53,16 @@ class Q1Discr(HorizontalDiscr):
         X_nw = X[..., 1:, :-1]
         X_ne = X[..., 1:, 1:]
 
+        # Per-sample cell spacing: [B, Ny-1, Nx-1]
+        dx_cell = dX[:, 1:, 1:]
+        dx_inv = 1.0 / dx_cell
+
+        # Broadcast over any extra axes between batch and space, e.g. Nz
+        extra_ndims = len(X_sw.shape) - len(dx_inv.shape)
+        for _ in range(extra_ndims):
+            dx_inv = dx_inv[:, tf.newaxis, ...]
+
         # Edge derivatives
-        dx_inv = 1.0 / dX[0, 1:, 1:]
         dXdx_s = (X_se - X_sw) * dx_inv
         dXdx_n = (X_ne - X_nw) * dx_inv
         dXdy_w = (X_nw - X_sw) * dx_inv

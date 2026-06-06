@@ -20,9 +20,9 @@ with open("README.md", "r") as f:
 setup(
     name="igm-model",
     version="3.1.1",
-    author="Guillaume Jouvet",
+    author="IGM authors",
     author_email="guillaume.jouvet@unil.ch",
-    url="https://github.com/jouvetg/igm",
+    url="https://igm-model.org/",
     license="gpl-3.0",
     packages=find_packages(include=["igm", "igm.*"]),
     include_package_data=True,
@@ -32,11 +32,10 @@ setup(
     long_description=readme,
     long_description_content_type="text/markdown",
     install_requires=[
-        "tensorflow[and-cuda]==2.15.1",
-        "tensorflow-probability==0.23.0",
+        "tensorflow[and-cuda]==2.19.1",
         "matplotlib",
         "scipy",
-        "netCDF4==1.6.0",
+        "netCDF4>=1.6.5",
         "xarray",
         "rasterio",
         "pyproj",
@@ -54,5 +53,6 @@ setup(
     ],
     extras_require={
         "optuna": ["optuna>=3.0"],
+        "dev": ["pytest"],
     },
 )

@@ -19,6 +19,7 @@ IMPORTS_TO_TEST = [
     # add more critical paths here
 ]
 
+
 def test_imports_from_installed_package():
     """
     Smoke test: remove local repo from sys.path to ensure we are importing from

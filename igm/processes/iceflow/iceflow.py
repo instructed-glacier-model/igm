@@ -24,6 +24,9 @@ from igm.processes.iceflow.unified.unified import (
     update_iceflow_unified,
 )
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
+from igm.processes.iceflow.vertical_velocity.vertical_velocity import (
+    update as update_vertical_velocity,
+)
 from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
@@ -62,7 +65,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
 
-    if "pretraining" in cfg.processes.keys():
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
         return
 
@@ -88,7 +91,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
-    if "pretraining" in cfg.processes.keys():
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         return
 
     # Logger
@@ -110,6 +113,9 @@ def update(cfg: DictConfig, state: State) -> None:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
     update_iceflow(cfg, state)
+
+    if cfg.processes.iceflow.vertical_velocity.enabled:
+        update_vertical_velocity(cfg, state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

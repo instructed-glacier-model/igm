@@ -1,0 +1,6 @@
+description: Positive degree-day SMB with snowpack tracking and separate melt factors for snow and ice
+category: atmosphere
+community: true
+authors: [Guillaume Jouvet]
+needs: [air_temp, precipitation]
+updates: [smb]

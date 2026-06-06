@@ -1,0 +1,4 @@
+dummy:
+  Type: string
+  Units: dimless
+  Description: "Placeholder parameter; the stress module is currently a stub."

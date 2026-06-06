@@ -12,6 +12,7 @@ from igm.common import (
     update_modules,
     finalize_modules,
     setup_igm_modules,
+    check_module_needs,
     print_gpu_info,
     add_logger,
     write_igm_version,
@@ -30,12 +31,44 @@ OmegaConf.register_new_resolver("get_cwd", lambda x: os.getcwd())
 from datetime import datetime
 
 
+def _configure_gpus(cfg: DictConfig) -> bool:
+    """Set memory growth and visible devices for all physical GPUs.
+
+    All three TF GPU-config calls must happen before TF initialises its GPU
+    context.  When IGM is invoked inside a shared process (e.g. a pytest run)
+    TF may already be initialised; in that case every call raises the same
+    RuntimeError.  We catch it once here and return False so callers know the
+    configuration was not applied.
+
+    Returns:
+        True  — GPU configuration was applied successfully.
+        False — TF was already initialised; configuration was skipped.
+    """
+    gpus = tf.config.list_physical_devices("GPU")
+    if not gpus:
+        return False
+
+    print([gpus[i] for i in cfg.core.hardware.visible_gpus])
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        selected = [gpus[i] for i in cfg.core.hardware.visible_gpus]
+        tf.config.set_visible_devices(selected, "GPU")
+        logical_gpus = tf.config.list_logical_devices("GPU")
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
+        return True
+    except RuntimeError as e:
+        print(e)
+        return False
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
     # Reject pre-step-2 parameter names before doing any work, so the user
     # sees a clear migration message rather than a downstream Hydra error.
     from igm.common.legacy import check_legacy_keys
+
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
@@ -45,7 +78,7 @@ def main(cfg: DictConfig) -> None:
     state.start_time = datetime.now()
 
     write_igm_version(Path(os.getcwd()))
-    
+
     if cfg.core.check_compat_params:
         check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
@@ -53,22 +86,7 @@ def main(cfg: DictConfig) -> None:
         # print([gpus[i] for i in cfg.core.hardware.visible_gpus])
         print_gpu_info()
 
-    gpus = tf.config.list_physical_devices("GPU")
-    for gpu_instance in gpus:
-        tf.config.experimental.set_memory_growth(gpu_instance, True)
-    if gpus:
-        print([gpus[i] for i in cfg.core.hardware.visible_gpus])
-
-        try:
-            selected_visible_gpus = [gpus[i] for i in cfg.core.hardware.visible_gpus]
-            tf.config.set_visible_devices(selected_visible_gpus, "GPU")
-            logical_gpus = tf.config.list_logical_devices("GPU")
-            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
-        except RuntimeError as e:
-            # Visible devices must be set before GPUs have been initialized
-            print(e)
-
-    if len(tf.config.list_logical_devices("GPU")) > 1:
+    if _configure_gpus(cfg) and len(tf.config.list_logical_devices("GPU")) > 1:
         raise NotImplementedError(
             "Strategies for multiple GPUs are not yet implemented. Please make only one GPU visible."
         )
@@ -82,7 +100,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.core.logging:
         add_logger(cfg=cfg, state=state)
         tf.get_logger().setLevel(cfg.core.tf_logging_level)
-    
+
     if cfg.core.print_params:
         print(OmegaConf.to_yaml(cfg))
 
@@ -113,6 +131,7 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(combined_modules, cfg, state)
+        check_module_needs(combined_modules, state, cfg)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
         finalize_modules(combined_modules, cfg, state)
 

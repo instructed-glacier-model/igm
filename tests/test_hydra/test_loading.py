@@ -84,7 +84,7 @@ def test_override_core_syntax():
         #         # "~modules/print_info",
         #     ],
         # )
-        
+
         correct = OmegaConf.create(overriden_defaults_list_expected)
         # correct_modules = OmegaConf.create(overriden_defaults_list_expected)
 
