@@ -84,9 +84,9 @@ def run(cfg, state):
     for var in nc.variables:
         if not var in ["z", "time"]:
             if var in ["x", "y"]:
-                vars(state)[var] = tf.constant(vars()[var].astype("float32"))
+                setattr(state, var, tf.constant(vars()[var].astype("float32")))
             else:
-                vars(state)[var] = tf.Variable(vars()[var].astype("float32"), trainable=False)
+                setattr(state, var, tf.Variable(vars()[var].astype("float32"), trainable=False))
 
     nc.close()
 

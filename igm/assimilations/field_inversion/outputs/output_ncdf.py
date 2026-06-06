@@ -106,7 +106,7 @@ def update_ncdf_optimize(cfg, state, it):
 
         for var in cfg.assimilations.field_inversion.output.vars_to_save:
             E = nc.createVariable(var, np.dtype("float32").char, ("iterations", "y", "x"))
-            E[0, :, :] = vars(state)[var].numpy()
+            E[0, :, :] = getattr(state, var).numpy()
 
         nc.close()
 
@@ -139,6 +139,6 @@ def update_ncdf_optimize(cfg, state, it):
         nc.variables["iterations"][d] = it
 
         for var in cfg.assimilations.field_inversion.output.vars_to_save:
-            nc.variables[var][d, :, :] = vars(state)[var].numpy()
+            nc.variables[var][d, :, :] = getattr(state, var).numpy()
 
         nc.close()

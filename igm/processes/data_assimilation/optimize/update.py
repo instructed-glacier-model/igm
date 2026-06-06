@@ -29,19 +29,19 @@ def optimize_update(cfg, state, cost, i):
 
     for f in cfg.processes.data_assimilation.control_list:
         if cfg.processes.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
-            vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
+            setattr(state, f + "_sc", tf.Variable(tf.sqrt(getattr(state, f) / sc[f])))
         else:
-            new_value = vars(state)[f] / sc[f]
+            new_value = getattr(state, f) / sc[f]
 
         # Reuse the same tf.Variable across iterations so the (Keras 3) Adam
         # optimizer keeps recognizing it. Recreating it each step yields a new
         # variable identity and Keras 3's apply_gradients rejects unknown vars.
         key = f + "_sc"
-        existing = vars(state).get(key)
+        existing = getattr(state, key, None)
         if isinstance(existing, tf.Variable) and existing.shape == new_value.shape:
             existing.assign(new_value)
         else:
-            vars(state)[key] = tf.Variable(new_value)
+            setattr(state, key, tf.Variable(new_value))
 
     with tf.GradientTape() as t:
 
@@ -56,15 +56,15 @@ def optimize_update(cfg, state, cost, i):
 
         # is necessary to remember all operation to derive the gradients w.r.t. control variables
         for f in cfg.processes.data_assimilation.control_list:
-            t.watch(vars(state)[f + "_sc"])
+            t.watch(getattr(state, f + "_sc"))
 
         for f in cfg.processes.data_assimilation.control_list:
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
                 f == state.da_friction
             ):
-                vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
+                setattr(state, f, (getattr(state, f + "_sc") ** 2) * sc[f])
             else:
-                vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
+                setattr(state, f, getattr(state, f + "_sc") * sc[f])
 
         iceflow_evaluate(cfg, state)
 
@@ -94,7 +94,7 @@ def optimize_update(cfg, state, cost, i):
 
         var_to_opti = []
         for f in cfg.processes.data_assimilation.control_list:
-            var_to_opti.append(vars(state)[f + "_sc"])
+            var_to_opti.append(getattr(state, f + "_sc"))
 
         # Compute gradient of COST w.r.t. X
         grads = tf.Variable(t.gradient(cost_total, var_to_opti))
@@ -123,9 +123,9 @@ def optimize_update(cfg, state, cost, i):
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
                 f == state.da_friction
             ):
-                vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
+                setattr(state, f, (getattr(state, f + "_sc") ** 2) * sc[f])
             else:
-                vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
+                setattr(state, f, getattr(state, f + "_sc") * sc[f])
 
         # add reprojection step to force obstacle constraints
         if (

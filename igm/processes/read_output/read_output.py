@@ -61,7 +61,7 @@ def update(cfg, state):
             data = state.ds[var].isel(time=state.it, x=state.crop["x"], y=state.crop["y"])
         else:
             data = state.ds[var].isel(time=state.it)
-        vars(state)[var] = tf.Variable(data.values.astype("float32"))
+        setattr(state, var, tf.Variable(data.values.astype("float32")))
 
     if (state.it >= state.time.shape[0] - 1):
         state.continue_run = False

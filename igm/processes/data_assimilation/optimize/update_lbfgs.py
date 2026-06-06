@@ -31,11 +31,11 @@ def optimize_update_lbfgs(cfg, state, cost, i):
     sc["arrhenius"] = cfg.processes.data_assimilation.scaling.arrhenius
 
     for f in cfg.processes.data_assimilation.control_list:
-        vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
+        setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
         if cfg.processes.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
-            vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
+            setattr(state, f + "_sc", tf.Variable(tf.sqrt(getattr(state, f) / sc[f])))
         else:
-            vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
+            setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
 
     Cost_Glen = []
 
@@ -44,15 +44,15 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         cost = {}
 
         for i, f in enumerate(cfg.processes.data_assimilation.control_list):
-            vars(state)[f + "_sc"] = controls[i]
+            setattr(state, f + "_sc", controls[i])
 
         for f in cfg.processes.data_assimilation.control_list:
             if cfg.processes.data_assimilation.fitting.log_slidingco & (
                 f == state.da_friction
             ):
-                vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
+                setattr(state, f, (getattr(state, f + "_sc") ** 2) * sc[f])
             else:
-                vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
+                setattr(state, f, getattr(state, f + "_sc") * sc[f])
 
         iceflow_evaluate(cfg, state)
 
@@ -72,7 +72,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         return cost, gradients
 
     controls = tf.stack(
-        [vars(state)[f + "_sc"] for f in cfg.processes.data_assimilation.control_list],
+        [getattr(state, f + "_sc") for f in cfg.processes.data_assimilation.control_list],
         axis=0,
     )
 
@@ -86,7 +86,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
     controls = optimizer.position
 
     for i, f in enumerate(cfg.processes.data_assimilation.control_list):
-        vars(state)[f + "_sc"] = controls[i]
+        setattr(state, f + "_sc", controls[i])
 
     state.divflux = compute_divflux(
         state.ubar,

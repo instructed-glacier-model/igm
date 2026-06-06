@@ -108,7 +108,7 @@ def fieldin_state_to_X(state, inputs) -> tf.Tensor:
     dual-name handling for the friction field is localized in
     `sliding.get_friction_field`, on the consumer side.
     """
-    return tf.stack([vars(state)[f] for f in inputs], axis=-1)
+    return tf.stack([getattr(state, f) for f in inputs], axis=-1)
 
 
 @tf.function(jit_compile=True)

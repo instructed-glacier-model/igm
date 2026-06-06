@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from igm.common import (
     State,
+    builtin_state_aliases,
     initialize_modules,
     update_modules,
     finalize_modules,
@@ -72,6 +73,7 @@ def main(cfg: DictConfig) -> None:
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
+    State.register_aliases(builtin_state_aliases)
 
     state.original_cwd = Path(get_original_cwd())
     state.saveresult = True
