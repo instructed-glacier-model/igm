@@ -11,7 +11,7 @@ from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,
 )
-from igm.processes.vert_flow.vert_flow_legendre import (
+from igm.processes.iceflow.vertical_velocity.vertical_velocity_legendre import (
     compute_vertical_velocity_legendre,
 )
 
@@ -20,7 +20,7 @@ def compute_vertical_velocity_v2(cfg, state):
     basis_vertical = cfg.processes.iceflow.numerics.basis_vertical.lower()
 
     if basis_vertical == "lagrange":
-        method = cfg.processes.vert_flow.method.lower()
+        method = cfg.processes.iceflow.vertical_velocity.method.lower()
         if method == "kinematic":
             return compute_vertical_velocity_kinematic_v2(cfg, state)
         elif method == "incompressibility":

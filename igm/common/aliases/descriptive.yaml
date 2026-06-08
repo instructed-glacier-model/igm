@@ -1,0 +1,54 @@
+# Descriptive English names → IGM canonical (implementation) names.
+#
+# These let code and configs use self-documenting names (left side) while
+# the actual tensor is stored under the short IGM name (right side).
+# Keep IGM canonical names on the right.
+
+bed_elevation: topg
+bedrock_elevation: topg
+surface_elevation: usurf
+ice_surface_elevation: usurf
+ice_thickness: thk
+ice_mask: icemask
+erosion_rate: dtopgdt
+
+grid_spacing_field: dX
+
+surface_mass_balance: smb
+
+avg_velocity_x: ubar
+avg_velocity_y: vbar
+depth_avg_speed: velbar_mag
+
+ice_vel_x: U
+ice_vel_y: V
+ice_vel_z: W
+
+surface_vel_x: uvelsurf
+surface_vel_y: vvelsurf
+surface_vel_z: wvelsurf
+basal_vel_x: uvelbase
+basal_vel_y: vvelbase
+basal_vel_z: wvelbase
+surface_speed: velsurf_mag
+basal_speed: velbase_mag
+
+flux_divergence: divflux
+
+flow_rate_factor: arrhenius
+basal_shear_stress: tau_ref
+sliding_coefficient: slidingco
+
+enthalpy: E
+temperature: T
+water_fraction: omega
+surface_temperature: T_s
+surface_enthalpy: E_s
+melting_point_temp: T_pmp
+melting_point_enthalpy: E_pmp
+pressure_adj_temp: T_pa
+basal_pressure_adj_temp: T_pa_b
+
+till_water_thickness: h_water_till
+
+air_temperature: air_temp

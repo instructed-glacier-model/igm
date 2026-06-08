@@ -21,7 +21,7 @@ def run(cfg, state):
 
             if hasattr(state, "profile_tif_file"):
                 with rasterio.open(file, mode="w", **state.profile_tif_file) as src:
-                    src.write(np.flipud(vars(state)[var]), 1)
+                    src.write(np.flipud(getattr(state, var)), 1)
             else:
                 xres = state.dx
                 yres = state.dx 
@@ -33,12 +33,12 @@ def run(cfg, state):
                     file,
                     mode="w",
                     driver="GTiff",
-                    height=vars(state)[var].shape[0],
-                    width=vars(state)[var].shape[1],
+                    height=getattr(state, var).shape[0],
+                    width=getattr(state, var).shape[1],
                     count=1,
                     dtype=np.float32,
                     transform=transform,
                 ) as src:
-                    src.write(vars(state)[var], 1)
+                    src.write(getattr(state, var), 1)
 
             del src

@@ -119,3 +119,54 @@ def test_raises_for_each_missing_enthalpy_var(tmp_path, missing):
     state = _state_with(*present)
     with pytest.raises(RuntimeError):
         check_module_needs([mod], state)
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_dispatcher_resolution_raises_for_missing_submodule_need(tmp_path):
+    """A dispatcher module with empty needs delegates to get_active_submodule(cfg);
+    the active sub-module's needs are checked instead."""
+    # Parent dispatcher: no needs, updates=[smb]
+    parent = _make_module(tmp_path, "smb", "needs: []\nupdates: [smb]\n")
+
+    # Sub-module yaml sits in a separate temp subdir
+    sub_dir = tmp_path / "simple"
+    sub_dir.mkdir()
+    (sub_dir / "simple.yaml").write_text("needs: [t, usurf]\n")
+    sub = types.ModuleType("igm.processes.smb.simple")
+    sub.__name__ = "igm.processes.smb.simple"
+    sub.__file__ = str(sub_dir / "simple.py")
+
+    parent.get_active_submodule = lambda cfg: sub  # dispatcher hook
+
+    # state has smb (bypass won't fire) but is missing usurf
+    state = _state_with("smb", "t")
+
+    class _Cfg:
+        pass
+
+    with pytest.raises(RuntimeError, match="smb"):
+        check_module_needs([parent], state, _Cfg())
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_dispatcher_resolution_passes_when_all_submodule_needs_present(tmp_path):
+    """Dispatcher resolution passes cleanly when the sub-module's needs are all on state."""
+    parent = _make_module(tmp_path, "smb", "needs: []\nupdates: [smb]\n")
+
+    sub_dir = tmp_path / "simple"
+    sub_dir.mkdir()
+    (sub_dir / "simple.yaml").write_text("needs: [t, usurf]\n")
+    sub = types.ModuleType("igm.processes.smb.simple")
+    sub.__name__ = "igm.processes.smb.simple"
+    sub.__file__ = str(sub_dir / "simple.py")
+
+    parent.get_active_submodule = lambda cfg: sub
+
+    state = _state_with("smb", "t", "usurf")
+
+    class _Cfg:
+        pass
+
+    check_module_needs([parent], state, _Cfg())  # no raise

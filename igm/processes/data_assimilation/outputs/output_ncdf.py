@@ -61,7 +61,7 @@ def update_ncdf_optimize(cfg, state, it):
             E = nc.createVariable(
                 var, np.dtype("float32").char, ("iterations", "y", "x")
             )
-            E[0, :, :] = vars(state)[var].numpy()
+            E[0, :, :] = getattr(state, var).numpy()
 
         nc.close()
 
@@ -73,7 +73,7 @@ def update_ncdf_optimize(cfg, state, it):
         nc.variables["iterations"][d] = it
 
         for var in cfg.processes.data_assimilation.output.vars_to_save:
-            nc.variables[var][d, :, :] = vars(state)[var].numpy()
+            nc.variables[var][d, :, :] = getattr(state, var).numpy()
 
         nc.close()
 
@@ -119,6 +119,6 @@ def output_ncdf_optimize_final(cfg, state):
         if hasattr(state, v):
             E = nc.createVariable(v, np.dtype("float32").char, ("y", "x"))
             E.standard_name = v
-            E[:] = vars(state)[v]
+            E[:] = getattr(state, v)
 
     nc.close()

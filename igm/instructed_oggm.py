@@ -15,7 +15,7 @@ from oggm import cfg, utils
 from oggm.cfg import G, SEC_IN_YEAR, SEC_IN_DAY
 
 import igm
-from igm.common import State, EmptyClass, load_yaml_as_cfg
+from igm.common import State, EmptyClass, load_yaml_as_cfg, builtin_state_aliases
 from oggm.core.sia2d import Model2D
 
 from igm.common import State
@@ -81,6 +81,7 @@ class IGM_Model2D(Model2D):
         """
 
         self.state = State()
+        State.register_aliases(builtin_state_aliases)
         self.cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
         # Parameter

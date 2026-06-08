@@ -32,7 +32,7 @@ def initialize_iceflow_solver(cfg: DictConfig, state: State) -> None:
         else:
             module_optimizer = tf.keras.optimizers.legacy
 
-        state.optimizer = module_optimizer.Adam(learning_rate=learning_rate)
+        state.optimizer = module_optimizer.Adam(learning_rate=cfg.processes.iceflow.solver.step_size)
     else:
         state.optimizer = None
 

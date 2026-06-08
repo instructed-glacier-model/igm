@@ -2,5 +2,5 @@ description: Compute surface mass balance from a user-defined elevation–SMB pr
 category: atmosphere
 community: true
 authors: [Guillaume Jouvet]
-needs: [t, usurf, icemask]
+needs: [t, usurf]
 updates: [smb]

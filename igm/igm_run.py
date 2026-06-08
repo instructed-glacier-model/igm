@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from igm.common import (
     State,
+    builtin_state_aliases,
     initialize_modules,
     update_modules,
     finalize_modules,
@@ -72,6 +73,7 @@ def main(cfg: DictConfig) -> None:
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
+    State.register_aliases(builtin_state_aliases)
 
     state.original_cwd = Path(get_original_cwd())
     state.saveresult = True
@@ -131,7 +133,7 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(combined_modules, cfg, state)
-        check_module_needs(combined_modules, state)
+        check_module_needs(combined_modules, state, cfg)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
         finalize_modules(combined_modules, cfg, state)
 

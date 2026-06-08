@@ -54,7 +54,7 @@ def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     cfg_unified = cfg.processes.iceflow.unified
 
-    inputs = [vars(state)[input] for input in cfg_unified.inputs]
+    inputs = [getattr(state, input) for input in cfg_unified.inputs]
 
     inputs = tf.stack(inputs, axis=-1)
     inputs = fieldin_to_X_2d(inputs)

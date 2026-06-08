@@ -35,7 +35,7 @@ setup(
         "tensorflow[and-cuda]==2.19.1",
         "matplotlib",
         "scipy",
-        "netCDF4==1.6.0",
+        "netCDF4>=1.6.5",
         "xarray",
         "rasterio",
         "pyproj",
@@ -53,5 +53,6 @@ setup(
     ],
     extras_require={
         "optuna": ["optuna>=3.0"],
+        "dev": ["pytest"],
     },
 )
