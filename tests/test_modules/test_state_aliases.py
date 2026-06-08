@@ -5,9 +5,9 @@ import tensorflow as tf
 
 from igm.common import State
 from igm.common.aliases import (
-    builtin_state_aliases,
     load_builtin_aliases,
     load_aliases_from_yaml,
+    load_aliases_from_core_cfg,
 )
 
 
@@ -111,12 +111,30 @@ def test_register_aliases_merges():
 # Loader utilities
 # ---------------------------------------------------------------------------
 
-def test_builtin_state_aliases_contains_expected_entries():
-    assert builtin_state_aliases["bed_elevation"] == "topg"
-    assert builtin_state_aliases["bedrock_elevation"] == "topg"
-    assert builtin_state_aliases["surface_elevation"] == "usurf"
-    assert builtin_state_aliases["ice_surface_elevation"] == "usurf"
-    assert builtin_state_aliases["ice_thickness"] == "thk"
+def test_builtin_aliases_contains_expected_entries():
+    aliases = load_builtin_aliases("descriptive", "pism")
+    assert aliases["bed_elevation"] == "topg"
+    assert aliases["bedrock_elevation"] == "topg"
+    assert aliases["surface_elevation"] == "usurf"
+    assert aliases["ice_surface_elevation"] == "usurf"
+    assert aliases["ice_thickness"] == "thk"
+
+
+def test_no_conflicts_between_builtin_alias_sets():
+    """Alias names shared across built-in YAML files must point to the same canonical."""
+    sets = {name: load_builtin_aliases(name) for name in ("descriptive", "pism")}
+    names = list(sets)
+    conflicts = {
+        alias: {a: sets[a][alias], b: sets[b][alias]}
+        for i, a in enumerate(names)
+        for b in names[i + 1:]
+        for alias in set(sets[a]) & set(sets[b])
+        if sets[a][alias] != sets[b][alias]
+    }
+    assert not conflicts, (
+        "Alias conflicts found between built-in sets:\n"
+        + "\n".join(f"  {alias!r}: {mapping}" for alias, mapping in conflicts.items())
+    )
 
 
 def test_load_builtin_aliases_descriptive():
@@ -146,3 +164,37 @@ def test_custom_yaml_aliases_work_end_to_end(tmp_path):
     s = State()
     s.topg = tf.constant(3.0)
     assert s.my_bed.numpy() == pytest.approx(3.0)
+
+
+# ---------------------------------------------------------------------------
+# load_aliases_from_core_cfg
+# ---------------------------------------------------------------------------
+
+def test_load_aliases_from_core_cfg_both_builtins():
+    from omegaconf import OmegaConf
+    cfg = OmegaConf.create({"builtin": ["descriptive", "pism"], "extra_files": []})
+    aliases = load_aliases_from_core_cfg(cfg)
+    assert "bed_elevation" in aliases   # descriptive set
+    assert "temp" in aliases            # pism set
+
+
+def test_load_aliases_from_core_cfg_empty():
+    from omegaconf import OmegaConf
+    cfg = OmegaConf.create({"builtin": [], "extra_files": []})
+    assert load_aliases_from_core_cfg(cfg) == {}
+
+
+def test_load_aliases_from_core_cfg_single_builtin():
+    from omegaconf import OmegaConf
+    cfg = OmegaConf.create({"builtin": ["descriptive"], "extra_files": []})
+    aliases = load_aliases_from_core_cfg(cfg)
+    assert "bed_elevation" in aliases
+    assert "temp" not in aliases  # pism set not loaded
+
+
+def test_load_aliases_from_core_cfg_custom_file(tmp_path):
+    from omegaconf import OmegaConf
+    yaml_file = tmp_path / "custom.yaml"
+    yaml_file.write_text("my_alias: topg\n")
+    cfg = OmegaConf.create({"builtin": [], "extra_files": [str(yaml_file)]})
+    assert load_aliases_from_core_cfg(cfg) == {"my_alias": "topg"}

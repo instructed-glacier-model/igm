@@ -14,8 +14,6 @@ Built-in sets
   descriptive  –  long English names (bed_elevation, surface_elevation, …)
   pism         –  PISM variable names (temp → T, climatic_mass_balance → smb, …)
 
-Both sets are loaded by default via builtin_state_aliases.
-
 Custom sets
 -----------
 Call load_aliases_from_yaml(path) with any YAML file that follows the same
@@ -48,5 +46,11 @@ def load_builtin_aliases(*names: str) -> dict[str, str]:
     return result
 
 
-# Loaded once at import time — no overhead on attribute access.
-builtin_state_aliases: dict[str, str] = load_builtin_aliases("descriptive", "pism")
+def load_aliases_from_core_cfg(aliases_cfg) -> dict[str, str]:
+    """Build the alias mapping from cfg.core.aliases (OmegaConf DictConfig or plain dict)."""
+    result: dict[str, str] = {}
+    for name in (aliases_cfg.builtin or []):
+        result.update(load_builtin_aliases(name))
+    for path in (aliases_cfg.extra_files or []):
+        result.update(load_aliases_from_yaml(path))
+    return result

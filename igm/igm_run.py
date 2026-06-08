@@ -8,7 +8,6 @@ import tensorflow as tf
 
 from igm.common import (
     State,
-    builtin_state_aliases,
     initialize_modules,
     update_modules,
     finalize_modules,
@@ -21,6 +20,7 @@ from igm.common import (
     print_comp,
     check_incompatilities_in_parameters_file,
 )
+from igm.common.aliases import load_aliases_from_core_cfg
 
 from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
@@ -73,7 +73,7 @@ def main(cfg: DictConfig) -> None:
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
-    State.register_aliases(builtin_state_aliases)
+    State.register_aliases(load_aliases_from_core_cfg(cfg.core.aliases))
 
     state.original_cwd = Path(get_original_cwd())
     state.saveresult = True
