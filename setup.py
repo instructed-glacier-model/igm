@@ -32,7 +32,7 @@ setup(
     long_description=readme,
     long_description_content_type="text/markdown",
     install_requires=[
-        "tensorflow[and-cuda]==2.19.1",
+        "tensorflow[and-cuda]==2.17.0",
         "matplotlib",
         "scipy",
         "netCDF4>=1.6.5",
@@ -50,9 +50,9 @@ setup(
         "nvtx",
         "typeguard",
         "rich",
+        "optuna>=3.0",
     ],
     extras_require={
-        "optuna": ["optuna>=3.0"],
         "dev": ["pytest"],
     },
 )
