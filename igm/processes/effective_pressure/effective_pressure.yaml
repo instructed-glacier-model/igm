@@ -1,5 +1,0 @@
-description: Compute basal effective pressure N = p_i - p_w for Budd and Coulomb sliding laws
-category: lithosphere
-community: false
-needs: [thk, topg, water_level, h_water_till]
-updates: [effective_pressure]
