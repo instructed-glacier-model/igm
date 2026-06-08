@@ -2,6 +2,6 @@ description: Compute basal effective pressure and (optionally) evolve the subgla
 category: lithosphere
 community: false
 authors: [Guillaume Jouvet, Thomas Gregov]
-needs: [thk, topg]
+needs: [thk]
 updates: [effective_pressure]
-diagnostics: [h_water_till]
+diagnostics: []
