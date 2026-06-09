@@ -25,8 +25,8 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     and state.basal_heat_flux (W m^-2).
 
     Till-related fields (state.h_water_till, state.effective_pressure) are
-    now the responsibility of the `effective_pressure` process module
-    (mode `vanpelt_bueler`); friction-related fields (state.phi, state.tauc)
+    now the responsibility of the `subglacial_hydrology` process module
+    (mode `till_storage`); friction-related fields (state.phi, state.tauc)
     were folded into the `mohr_coulomb` sliding law in iceflow.
     """
     cfg_thermal = cfg.processes.enthalpy.thermal

@@ -59,6 +59,15 @@ check_compat_params:
   Type: boolean
   Description: "Check that user-defined parameter names match known defaults, catching typos early."
   Units: dimless
+aliases:
+  builtin:
+    Type: list
+    Description: "Built-in alias sets to load ('descriptive', 'pism'). Empty by default — no aliases are active unless explicitly listed."
+    Units: dimless
+  extra_files:
+    Type: list
+    Description: "Paths to custom alias YAML files (alias_name: canonical_name pairs). Resolved relative to the working directory."
+    Units: dimless
 structure:
   root_foldername:
     Type: string
