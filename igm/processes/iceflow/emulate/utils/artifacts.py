@@ -7,8 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import importlib_resources
 import tensorflow as tf
 from omegaconf import DictConfig
+
+import igm.processes.iceflow.emulate.emulators as emulators
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -34,6 +37,8 @@ _console = Console(theme=_emulator_theme)
 
 def _resolve_emulator_path(path: str | Path) -> Path:
     path = Path(path)
+    if path.parent == Path("."):  # bare name: an emulator shipped with igm
+        path = Path(importlib_resources.files(emulators)) / path
     return path if path.suffix == ".keras" else path / EMULATOR_FILENAME
 
 
