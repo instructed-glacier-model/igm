@@ -56,7 +56,7 @@ def _initialize_inverted_fields(cfg, state, dtype) -> set[str]:
     state.usurf = tf.cast(state.usurf, dtype=dtype)
     state.dX = tf.cast(state.dX, dtype=dtype)
 
-    if "thk" in inverted:
+    if "thk" in inverted and not cfg.assimilations.field_inversion.use_existing_thk:
         thk0 = initial_thickness(
             s=state.usurf,
             u=state.uvelsurfobs,

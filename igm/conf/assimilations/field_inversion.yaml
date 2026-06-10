@@ -1,15 +1,16 @@
 field_inversion:
+  use_existing_thk: false  # if true, skip initial_thickness() and use the existing state.thk
   optimization:
-    minimizer_patience: 20
-    retrain_lr: 1e-5 # Learning rate for network retraining steps
-    retrain_iter: 10 # number of times we iterate between DA minimize and network retraining
-    nbitmax: 1000 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
-    retrain_anchor_weight: 0.0 # Weight that penalizes deviation of the retrained network from the original pretrained network (i.e. L2 distance between the weights of the two networks)
+    minimizer_patience: 10
+    retrain_lr: 2e-5 # Learning rate for network retraining steps
+    retrain_iter: 5 # number of times we iterate between DA minimize and network retraining
+    nbitmax: 500 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
+    retrain_anchor_weight: 0.1 # Weight that penalizes deviation of the retrained network from the original pretrained network (i.e. L2 distance between the weights of the two networks)
     retrain_replay_data_weight: 0.0 # Weight for replaying past training examples
     retrain_replay_phys_weight: 0.0 # Weight for physics-based replay loss (i.e. deviation of the network predictions from the physics constraints on past training examples)
     retrain_steps: 500
     retrain_log_freq: 100
-    replay_data_dir: /home/srosier/work2/tfrecords/varRes2/
+    replay_data_dir: ""
     replay_batch_size: 4
     replay_val_batches: 4
     replay_shuffle_buffer: 2048
@@ -17,7 +18,7 @@ field_inversion:
     replay_data_loss_type: huber
     replay_data_loss_huber_delta: 50.0
   output:
-    freq: 200 # Callback + NetCDF write cadence in iterations (iteration 0 is always written)
+    freq: 100 # Callback + NetCDF write cadence in iterations (iteration 0 is always written)
     vars_to_save: [usurf,thk,icemask,velbase_mag,velsurf_mag,velsurfobs_mag] # 2D fields saved each write; *_mag and sliding_ratio are computed in update_ncdf_optimize when requested
   variables:
   - { name: thk, transform: identity,  lower_bound: 0.0 , upper_bound: 1000.0 , mask: icemask}
@@ -25,4 +26,4 @@ field_inversion:
     misfit:
       - { name: velsurf, kind: gaussian, components: [uvelsurf, vvelsurf], obs: [uvelsurfobs, vvelsurfobs], std: 1.0 }
     regularization:
-      - { name: thk, penalty: biharmonic, lam: 100000.0 }
+      - { name: thk, penalty: biharmonic, lam: 1000000.0 }
