@@ -93,6 +93,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
+            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs (must match second loop)
             alpha_i = rho * self._dot(s_i, q)
             alpha_i = tf.cast(alpha_i, q.dtype)
             alpha_list = alpha_list.write(i, alpha_i)

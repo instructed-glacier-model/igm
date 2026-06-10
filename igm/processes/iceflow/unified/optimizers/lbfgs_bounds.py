@@ -40,18 +40,26 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         L, U = self.map.get_box_bounds_flat()
 
-        # Cauchy-point free set (LBFGS-B-ish)
-        theta_c, mask_c, _ = self._cauchy_point_approx(
-            theta_flat, grad_theta_flat, L, U, step_scale=tf.cast(1.0, theta_flat.dtype)
-        )
+        # Free set at the point the step actually starts from. (Using the free
+        # set of a further projected-gradient probe here is inconsistent with
+        # the mask used to build the direction and can zero valid components.)
+        mask = self._get_mask(theta_flat, grad_theta_flat, L, U)
+        p_flat = tf.where(mask, p_flat, tf.zeros_like(p_flat))
 
-        # Use mask at the Cauchy point
-        p_flat = tf.where(mask_c, p_flat, tf.zeros_like(p_flat))
+        # Zero components pointing out of the box at active bounds; otherwise a
+        # single such component makes alpha_max = 0 and kills the whole step.
+        tol = tf.constant(1e-7, theta_flat.dtype) if theta_flat.dtype == tf.float32 else tf.constant(1e-12, theta_flat.dtype)
+        outward = ((theta_flat <= L + tol) & (p_flat < 0.0)) | (
+            (theta_flat >= U - tol) & (p_flat > 0.0)
+        )
+        p_flat = tf.where(outward, tf.zeros_like(p_flat), p_flat)
+
         dot_gp = self._dot(grad_theta_flat, p_flat)
 
-        # Masked steepest descent fallback
-        p_sd = tf.where(mask_c, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
-        return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask_c
+        # Masked steepest descent fallback (inward-pointing by construction of
+        # _get_mask: components kept at a bound have a gradient pushing inward).
+        p_sd = tf.where(mask, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
+        return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask
 
     def _apply_step(
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
@@ -214,32 +222,29 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         input: tf.Tensor,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
-        Bounded subspace step:
-        1) compute Cauchy base point theta_c (feasible)
-        2) evaluate gradient at theta_c
-        3) define free-set mask at theta_c
+        Bounded subspace step (L-BFGS-B-ish active-set prediction).
+
+        The Cauchy probe is used ONLY to predict the free set: the step itself
+        starts from the current iterate. Moving the base point to an
+        unvalidated, unscaled projected-gradient point breaks monotonicity
+        (no decrease check exists there), breaks the secant pairing of the
+        curvature pairs, and costs an extra gradient evaluation per iteration.
         """
+        del input  # no extra evaluation needed for the prediction-only probe
+
         L, U = self.map.get_box_bounds_flat()
 
-        # 1) Cauchy point 
-        theta_c, _, _ = self._cauchy_point_approx(
+        # Free set predicted at the Cauchy probe point (gradient at the current
+        # iterate is reused — the cheap approximation already used inside
+        # _cauchy_point_approx).
+        _, mask_c, _ = self._cauchy_point_approx(
             theta_flat, grad_theta_flat, L, U, step_scale=tf.cast(1.0, theta_flat.dtype)
         )
 
-        # 2) Gradient at Cauchy point (one extra grad eval per iter)
-        theta_backup = self.map.copy_theta(self.map.get_theta())
-        self.map.set_theta(self.map.unflatten_theta(theta_c))
-        _, _, grad_c = self._get_grad(input)
-        grad_c_flat = self.map.flatten_theta(grad_c)
-        self.map.set_theta(theta_backup)
+        # Restrict the model gradient to the predicted free subspace.
+        grad_masked = tf.where(mask_c, grad_theta_flat, tf.zeros_like(grad_theta_flat))
 
-        # 3) Free set at Cauchy point
-        mask_c = self._get_mask(theta_c, grad_c_flat, L, U)
-
-        # Ensure the direction stays in the free subspace
-        grad_c_flat = tf.where(mask_c, grad_c_flat, tf.zeros_like(grad_c_flat))
-
-        return theta_c, grad_c_flat, mask_c
+        return theta_flat, grad_masked, mask_c
 
 
     def _mask_memory_for_subspace(
