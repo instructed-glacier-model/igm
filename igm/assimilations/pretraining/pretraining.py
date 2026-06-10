@@ -133,7 +133,7 @@ def initialize(cfg, state):
     dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
 
     if resume:
-        state.iceflow_model = load_emulator_artifact(artifact_dir=out_dir)
+        state.iceflow_model = load_emulator_artifact(artifact_dir=out_dir, cfg=cfg)
         mapping_args = mapping_args_for_model(cfg, state, state.iceflow_model)
         print("[resume] loaded emulator.keras; checkpoint will restore weights/optimizer state")
     else:
