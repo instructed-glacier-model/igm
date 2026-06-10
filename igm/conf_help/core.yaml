@@ -59,6 +59,10 @@ check_compat_params:
   Type: boolean
   Description: "Check that user-defined parameter names match known defaults, catching typos early."
   Units: dimless
+check_module_needs:
+  Type: boolean
+  Description: "Check, right after init, that every module's declared input variables exist on state. Set False to skip (e.g. when a needed variable is produced during update rather than at init)."
+  Units: dimless
 aliases:
   builtin:
     Type: list

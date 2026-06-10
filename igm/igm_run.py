@@ -133,7 +133,8 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(combined_modules, cfg, state)
-        check_module_needs(combined_modules, state, cfg)
+        if cfg.core.check_module_needs:
+            check_module_needs(combined_modules, state, cfg)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
         finalize_modules(combined_modules, cfg, state)
 
