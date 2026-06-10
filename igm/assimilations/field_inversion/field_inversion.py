@@ -46,26 +46,17 @@ def _require_supported_keras_version() -> None:
 def _build_halt(cfg) -> Halt:
     cfg_da = cfg.assimilations.field_inversion
 
-    log_burst_crit = Criteria["log_burst"](
+    patience_crit = Criteria["patience"](
         metric=Metrics["cost"](),
         dtype=cfg.processes.iceflow.numerics.precision,
         patience=cfg_da.optimization.minimizer_patience,
-        log_tol=1.0e-4,
-        burst_log_tol=9.53e-2,
-        patience_growth= 1.5,
-        max_patience= 5 * cfg_da.optimization.minimizer_patience,
-        min_iter= 0,
-        cost_floor=1.0e-6,
-    )
-
-    grad_crit = Criteria["abs_tol"](
-        metric=Metrics["grad_theta_norm"](),
-        tol=1.0e-4,
+        tol=0.0,
+        mode="min",
         ord="id",
     )
 
     return Halt(
-        crit_success=[log_burst_crit, grad_crit],
+        crit_success=[patience_crit],
         crit_failure=[],
         freq=1,
         dtype=cfg.processes.iceflow.numerics.precision,
