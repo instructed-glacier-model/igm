@@ -89,6 +89,16 @@ def data_assimilation_initialize(cfg, state) -> None:
 
     optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
     optimizer_args["halt"] = _build_halt(cfg)
+
+    # Noise model for emulator-based gradients and Sobolev gradient
+    # preconditioning (see OptimizerLBFGSBoundsDA docstring). .get() keeps
+    # older configs without these keys working.
+    cfg_opt = cfg_da.optimization
+    optimizer_args["cost_noise_rel"] = float(cfg_opt.get("cost_noise_rel", 1e-4))
+    optimizer_args["grad_noise_rel"] = float(cfg_opt.get("grad_noise_rel", 0.02))
+    optimizer_args["sobolev_length"] = float(cfg_opt.get("sobolev_length", 5.0))
+    optimizer_args["sobolev_iters"] = int(cfg_opt.get("sobolev_iters", 50))
+
     optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
 
     # optimizer_args = InterfaceSPG.get_optimizer_args(cfg, cost_fn, da_map)

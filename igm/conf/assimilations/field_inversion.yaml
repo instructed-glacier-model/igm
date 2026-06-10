@@ -2,6 +2,10 @@ field_inversion:
   use_existing_thk: false  # if true, skip initial_thickness() and use the existing state.thk
   optimization:
     minimizer_patience: 10
+    cost_noise_rel: 1.0e-4 # Estimated relative noise of one cost evaluation (emulator error); used as the Hager-Zhang approximate-Wolfe threshold and the line-search fallback acceptance band. Calibrate by evaluating the cost at fixed theta before/after a retraining round.
+    grad_noise_rel: 0.02 # Estimated relative gradient noise; curvature pairs with |y| below grad_noise_rel * max(|g_prev|, |g_new|) are rejected (they measure emulator noise, not curvature). 0 disables.
+    sobolev_length: 5.0 # Sobolev (H1) gradient-preconditioning length in grid cells; the L-BFGS initial inverse Hessian becomes gamma*(I - length^2 * Laplacian)^-1 per inverted field. 0 disables.
+    sobolev_iters: 50 # Jacobi sweeps used to approximate the Sobolev inverse (cheap grid stencils; more sweeps = closer to the requested smoothing length).
     retrain_lr: 2e-5 # Learning rate for network retraining steps
     retrain_iter: 5 # number of times we iterate between DA minimize and network retraining
     nbitmax: 500 # Max optimizer iterations (also used as the final iteration label in optimize.nc)

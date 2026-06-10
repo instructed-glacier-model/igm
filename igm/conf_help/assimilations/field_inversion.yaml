@@ -3,6 +3,22 @@ optimization:
     Type: integer
     Description: "Number of iterations without improvement before the inner data-assimilation minimizer stops early (0 = disabled)."
     Units: dimless
+  cost_noise_rel:
+    Type: float
+    Description: "Estimated relative noise of a single cost evaluation (dominated by emulator error). Used as the Hager-Zhang approximate-Wolfe threshold and as the acceptance band for line-search fallback steps. Calibrate by evaluating the cost at a fixed control field before and after a retraining round."
+    Units: dimless
+  grad_noise_rel:
+    Type: float
+    Description: "Estimated relative gradient noise. Curvature pairs whose gradient change |y| is below grad_noise_rel * max(|g_prev|, |g_new|) are rejected, since they measure emulator noise rather than curvature (0 = disabled)."
+    Units: dimless
+  sobolev_length:
+    Type: float
+    Description: "Sobolev (H1) gradient-preconditioning length. The L-BFGS initial inverse Hessian becomes gamma * (I - sobolev_length^2 * Laplacian)^-1, applied per inverted 2D field with zero-flux conditions at the mask boundary. Rebalances long/short wavelengths and filters pixel-scale gradient noise (0 = disabled)."
+    Units: grid cells
+  sobolev_iters:
+    Type: integer
+    Description: "Number of Jacobi sweeps used to approximate the Sobolev smoothing inverse. Cheap grid stencil operations; more sweeps bring the effective smoothing closer to the requested sobolev_length."
+    Units: dimless
   retrain_lr:
     Type: float
     Description: "Learning rate for the network retraining steps."

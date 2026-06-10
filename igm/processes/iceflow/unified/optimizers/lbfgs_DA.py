@@ -23,19 +23,44 @@ LineSearchResult = collections.namedtuple(
 
 class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     """
-    Bounded L-BFGS for data assimilation.
+    Bounded L-BFGS for data assimilation with noisy (emulator-based) gradients.
 
     Curvature pairs are accepted/used based on a relative (cosine-like) test
     `y·s > curv_eps_rel * |y| * |s|` instead of an absolute threshold (which
     rejects all pairs once steps get small) or an EMA-based rho cap (which is
     contaminated by spikes and systematically clamps legitimate pairs late in
     the optimization when y·s shrinks).
+
+    Noise handling (the emulator gradient/cost error is typically far above
+    machine precision):
+    - ``cost_noise_rel``: estimated RELATIVE noise of a cost evaluation. Used as
+      the Hager-Zhang approximate-Wolfe threshold (its epsilon exists precisely
+      to tolerate evaluation noise) and as the acceptance band for line-search
+      fallback steps. Calibrate it by evaluating the cost at a fixed θ before
+      and after a retraining round (or with jittered inputs) and measuring the
+      relative spread.
+    - ``grad_noise_rel``: estimated relative gradient noise. A curvature pair
+      is only stored if ``|y| >= grad_noise_rel * max(|g_prev|, |g_new|)`` —
+      once gradient differences fall to the noise floor they encode emulator
+      noise, not curvature, and would corrupt the inverse-Hessian model.
+
+    Sobolev (H1) gradient preconditioning:
+    - ``sobolev_length`` (> 0 enables): the initial inverse Hessian becomes
+      gamma * (I - lam*Δ)^{-1} with lam = sobolev_length² (grid cells), applied
+      per inverted field via the mapping. This rebalances the wavelength
+      spectrum of the updates (pixel-wise field inversions are otherwise
+      dominated by short-wavelength modes) and filters pixel-scale gradient
+      noise. ``sobolev_iters`` Jacobi sweeps approximate the inverse.
     """
 
     def __init__(
         self,
         *args,
         curv_eps_rel: float = 1e-8,
+        cost_noise_rel: float = 1e-4,
+        grad_noise_rel: float = 0.02,
+        sobolev_length: float = 5.0,
+        sobolev_iters: int = 50,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -48,6 +73,28 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
 
         # Relative curvature threshold for (s, y) pair acceptance and use.
         self.curv_eps_rel = tf.constant(curv_eps_rel, dtype=dtype)
+
+        # Noise model.
+        self.cost_noise_rel = tf.constant(max(0.0, cost_noise_rel), dtype=dtype)
+        self.grad_noise_rel = tf.constant(max(0.0, grad_noise_rel), dtype=dtype)
+
+        # Calibrate the Hager-Zhang approximate-Wolfe threshold to the cost
+        # noise (must happen before the line search's tf.functions are traced).
+        if cost_noise_rel > 0.0 and hasattr(
+            self.line_search, "threshold_use_approximate_wolfe_condition"
+        ):
+            self.line_search.threshold_use_approximate_wolfe_condition = float(
+                cost_noise_rel
+            )
+
+        # Sobolev H0 preconditioning (requires mapping support).
+        self.sobolev_lambda = tf.constant(max(0.0, sobolev_length) ** 2, dtype=dtype)
+        self.sobolev_iters = int(sobolev_iters)
+        self._sobolev_enabled = bool(
+            sobolev_length > 0.0
+            and sobolev_iters > 0
+            and hasattr(self.map, "sobolev_smooth_flat")
+        )
 
         # Cache this once to avoid repeated Python hasattr() checks in the hot path.
         self._line_search_supports_result = bool(hasattr(self.line_search, "search_result"))
@@ -124,6 +171,7 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         num_memory: tf.Tensor,
         s: tf.Tensor,
         y: tf.Tensor,
+        y_min: Optional[tf.Tensor] = None,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         dot_ys = self._dot(y, s)
         s_norm = tf.sqrt(self._dot(s, s))
@@ -136,6 +184,14 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         # would produce an untrustworthy, exploding rho.
         threshold = tf.cast(self.curv_eps_rel, dot_ys.dtype) * s_norm * y_norm
         accept = tf.math.is_finite(dot_ys) & (dot_ys > threshold)
+
+        # SNR filter for noisy (emulator) gradients: once the gradient change
+        # over a step falls to the gradient-noise floor, y measures emulator
+        # noise rather than curvature — keep the existing (clean) memory and
+        # skip the pair. y_min is provided by the caller as
+        # grad_noise_rel * max(|g_prev|, |g_new|).
+        if y_min is not None:
+            accept = accept & (y_norm >= tf.cast(y_min, y_norm.dtype))
 
         def update():
             slot = next_memory
@@ -151,6 +207,20 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             lambda: (s_flat_mem, y_flat_mem, next_memory, num_memory),
         )
 
+    def _smooth_subspace(self, v: tf.Tensor, mask: Optional[tf.Tensor]) -> tf.Tensor:
+        """
+        Apply the Sobolev H0 smoother, restricted to the free subspace so that
+        the two-loop recursion stays consistent with the masked memory (a
+        principal submatrix of an SPD operator is SPD on the subspace).
+        Identity when Sobolev preconditioning is disabled.
+        """
+        if not self._sobolev_enabled:
+            return v
+        out = self.map.sobolev_smooth_flat(v, self.sobolev_lambda, self.sobolev_iters)
+        if mask is not None:
+            out = tf.where(mask, out, tf.zeros_like(out))
+        return out
+
     @tf.function(reduce_retracing=True)
     def _compute_direction(
         self,
@@ -159,9 +229,10 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         y_list: tf.Tensor,
         num_elems: tf.Tensor,
         tau: tf.Tensor,
+        mask: Optional[tf.Tensor] = None,
     ) -> tf.Tensor:
         if tf.equal(num_elems, 0):
-            return -grad
+            return -self._smooth_subspace(grad, mask)
 
         one = tf.constant(1.0, grad.dtype)
         zero = tf.constant(0.0, grad.dtype)
@@ -195,16 +266,24 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         last_y = y_list[num_elems - 1]
         last_s = s_list[num_elems - 1]
         dot_ys_last = tf.cast(self._dot(last_y, last_s), grad.dtype)
-        dot_yy_last = tf.cast(self._dot(last_y, last_y), grad.dtype)
 
-        gamma = tf.math.divide_no_nan(dot_ys_last, dot_yy_last)
+        # Scalar scaling of H0. For H0 = gamma * S (Sobolev smoother S) the
+        # secant-matching scale is gamma = (s·y) / (y·S y); with S = I this
+        # reduces to the classical (s·y) / (y·y).
+        if self._sobolev_enabled:
+            Sy_last = self._smooth_subspace(last_y, mask)
+            denom_gamma = tf.cast(self._dot(last_y, Sy_last), grad.dtype)
+        else:
+            denom_gamma = tf.cast(self._dot(last_y, last_y), grad.dtype)
+
+        gamma = tf.math.divide_no_nan(dot_ys_last, denom_gamma)
         gamma_ok = tf.math.is_finite(gamma) & (gamma > zero)
         gamma = tf.where(gamma_ok, gamma, one)
         gamma = tf.clip_by_value(
             gamma, tf.cast(self.gamma_min, grad.dtype), tf.cast(self.gamma_max, grad.dtype)
         )
 
-        r = tau * gamma * q
+        r = tau * gamma * self._smooth_subspace(q, mask)
 
         for i in tf.range(num_elems):
             s_i = s_list[i]
@@ -266,14 +345,17 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         left_f = tf.cast(ls_result.left.f, dtype)
         right_f = tf.cast(ls_result.right.f, dtype)
 
-        # A fallback endpoint must not increase the cost relative to alpha = 0;
-        # without this guard a failed search happily accepts an uphill step
-        # (the left endpoint at x = 0 is never "usable", so the right endpoint
-        # used to win by default whatever its value).
+        # A fallback endpoint must not increase the cost relative to alpha = 0
+        # beyond the cost-evaluation noise band; without this guard a failed
+        # search happily accepts an uphill step (the left endpoint at x = 0 is
+        # never "usable", so the right endpoint used to win by default whatever
+        # its value). The noise band keeps the test meaningful when f itself is
+        # only accurate to ~cost_noise_rel (emulator error).
         if f0 is not None:
             f0_cast = tf.cast(f0, dtype)
-            left_valid = left_valid & (left_f <= f0_cast)
-            right_valid = right_valid & (right_f <= f0_cast)
+            f_acc = f0_cast + tf.cast(self.cost_noise_rel, dtype) * tf.abs(f0_cast)
+            left_valid = left_valid & (left_f <= f_acc)
+            right_valid = right_valid & (right_f <= f_acc)
 
         best_endpoint_alpha = tf.where(
             left_valid & right_valid,
@@ -445,13 +527,15 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             y_list = self._ordered_memory(y_flat_mem, next_memory, num_memory)
             s_list, y_list = self._mask_memory_for_subspace(s_list, y_list, mask_base)
 
-            # Search direction is built from the quasi-Newton model gradient.
+            # Search direction is built from the quasi-Newton model gradient
+            # (with Sobolev-preconditioned H0 in the free subspace if enabled).
             p_flat = self._compute_direction(
                 grad_search_prev,
                 s_list,
                 y_list,
                 num_memory,
                 tau,
+                mask_base,
             )
 
             # Force descent uses TRUE base gradient.
@@ -487,9 +571,16 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
                 s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat
             )
 
-            # Update memory (relative curvature test decides acceptance).
+            # Gradient-noise floor for the curvature pair SNR test.
+            gnorm_prev = tf.sqrt(self._dot(grad_prev_flat, grad_prev_flat))
+            gnorm_new = tf.sqrt(self._dot(grad_theta_flat, grad_theta_flat))
+            y_min = tf.cast(self.grad_noise_rel, gnorm_new.dtype) * tf.maximum(
+                gnorm_prev, gnorm_new
+            )
+
+            # Update memory (relative curvature + SNR tests decide acceptance).
             s_flat_mem, y_flat_mem, next_memory, num_memory = self._update_memory(
-                s_flat_mem, y_flat_mem, next_memory, num_memory, s, y
+                s_flat_mem, y_flat_mem, next_memory, num_memory, s, y, y_min
             )
 
             costs_hist.append(tf.identity(cost))

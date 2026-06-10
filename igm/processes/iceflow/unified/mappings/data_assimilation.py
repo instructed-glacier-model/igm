@@ -315,6 +315,74 @@ class MappingDataAssimilation(Mapping):
     def get_box_bounds_flat(self) -> Tuple[tf.Tensor, tf.Tensor]:
         return self._L_flat, self._U_flat
 
+    # ------- Sobolev (H1) gradient smoothing ----------------------------------
+
+    @staticmethod
+    def _neighbor_sum(x: tf.Tensor) -> tf.Tensor:
+        """Sum of the 4 grid neighbours, zero outside the domain."""
+        return (
+            tf.pad(x[:-1, :], [[1, 0], [0, 0]])
+            + tf.pad(x[1:, :], [[0, 1], [0, 0]])
+            + tf.pad(x[:, :-1], [[0, 0], [1, 0]])
+            + tf.pad(x[:, 1:], [[0, 0], [0, 1]])
+        )
+
+    @tf.function(reduce_retracing=True, jit_compile=False)
+    def sobolev_smooth_flat(
+        self, v_flat: tf.Tensor, lam: tf.Tensor, n_iters: int
+    ) -> tf.Tensor:
+        """
+        Approximately apply the Sobolev/H1 smoothing operator (I - lam * Δ)^{-1}
+        to a flat θ-space vector, field by field.
+
+        Each inverted variable is scattered onto its 2D grid (zero background),
+        smoothed with `n_iters` Jacobi sweeps of (I + lam * L) u = v — where L is
+        the graph Laplacian of the active-mask subgraph, i.e. zero-flux (Neumann)
+        conditions across the mask and domain boundaries — then gathered back to
+        the active subspace. Starting from u = 0, a fixed number of Jacobi sweeps
+        is a symmetric positive-definite linear operator, so it is a valid
+        inverse-Hessian seed (H0) for L-BFGS.
+
+        `lam` has units of grid cells squared (smoothing length ℓ cells →
+        lam ≈ ℓ²). Note the solve is intentionally partial: with few sweeps the
+        effective smoothing length saturates below sqrt(lam), which is fine for
+        preconditioning purposes. Fields that are not 2D pass through unchanged.
+        """
+        vals = self.unflatten_theta(v_flat)
+        out: List[tf.Tensor] = []
+
+        for idx in range(len(self.vars)):
+            v_active = tf.reshape(vals[idx], [-1])
+            full_shape = self._full_shapes[idx]
+
+            if len(full_shape) != 2 or full_shape.num_elements() is None:
+                out.append(tf.reshape(v_active, self._shapes[idx]))
+                continue
+
+            n_rows = int(full_shape[0])
+            n_cols = int(full_shape[1])
+            dtype = v_active.dtype
+            idx_flat = self._mask_flat_idx[idx]
+
+            v2d = tf.reshape(
+                tf.scatter_nd(idx_flat[:, None], v_active, [n_rows * n_cols]),
+                [n_rows, n_cols],
+            )
+            m = tf.cast(self._mask_bool[idx], dtype)
+            lam_c = tf.cast(lam, dtype)
+
+            nb_cnt = self._neighbor_sum(m)
+            denom = 1.0 + lam_c * nb_cnt
+
+            u = tf.zeros_like(v2d)
+            for _ in range(int(n_iters)):
+                u = m * (v2d + lam_c * self._neighbor_sum(u)) / denom
+
+            u_active = tf.gather(tf.reshape(u, [-1]), idx_flat)
+            out.append(tf.reshape(u_active, self._shapes[idx]))
+
+        return self.flatten_theta(out)
+
     # ------- Parameter plumbing ----------------------------------------------
 
     def get_theta(self) -> List[tf.Variable]:
