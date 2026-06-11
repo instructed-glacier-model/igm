@@ -26,4 +26,4 @@ field_inversion:
     misfit:
       - { name: velsurf, kind: gaussian, components: [uvelsurf, vvelsurf], obs: [uvelsurfobs, vvelsurfobs], std: 1.0 }
     regularization:
-      - { name: thk, penalty: biharmonic, lam: 1000000.0 }
+      - { name: thk, penalty: squared_laplacian, lam: 1000000.0 }
