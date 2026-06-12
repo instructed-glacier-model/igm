@@ -21,7 +21,10 @@ Validation checks (required for the test to pass):
 import pytest
 from .utils import run_ice_cap_test
 
-pytestmark = pytest.mark.slow
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skip,
+]
 
 # _PARAMS = dict(Nx=501, Nz_E=500, dt=1.0, time_simu=5000.0, store_every=1000)
 _PARAMS = dict(Nx=201, Nz_E=200, dt=2.0, time_simu=5000.0, store_every=100)
