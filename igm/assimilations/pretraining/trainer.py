@@ -66,6 +66,17 @@ class Trainer:
         self._LAM_MIN       = tf.constant(float(cfg_p.lambda_min),        tf.float32)
         self._LAM_MAX       = tf.constant(float(cfg_p.lambda_max),        tf.float32)
         self._MAX_CHANGE    = tf.constant(float(cfg_p.lambda_max_change), tf.float32)
+        self._RHO           = tf.constant(float(cfg_p.lambda_subordinacy), tf.float32)
+
+        # Which gradient statistic drives the lambda target:
+        #   "norm" -> global L2 norm ratio (data/phys gradients made equal magnitude)
+        #   "std"  -> per-parameter gradient standard deviation ratio (inverse-Dirichlet,
+        #             Maddu et al. 2022); more robust to heavy-tailed physics gradients.
+        self._WEIGHT_STAT = str(cfg_p.lambda_weight_stat).lower()
+        if self._WEIGHT_STAT not in ("norm", "std"):
+            raise ValueError(
+                f"lambda_weight_stat must be 'norm' or 'std', got {cfg_p.lambda_weight_stat!r}"
+            )
         self._EPS           = tf.constant(1e-6, tf.float32)
         self._UPDATE_EVERY  = tf.constant(int(cfg_p.lambda_update_every), tf.int64)
         self._WARMUP_STEPS  = tf.constant(int(cfg_p.warmup_steps),        tf.int64)
@@ -75,9 +86,22 @@ class Trainer:
         # ------------------------------------------------------------------
         # Optimizer / training state
         # ------------------------------------------------------------------
-        self.opt = tf.keras.optimizers.Adam(learning_rate=cfg_p.learning_rate)
+        # Architecture-agnostic safety net against physics-loss-driven blow-ups:
+        # a global-norm clip on the (post-accumulation) applied gradient bounds
+        # the per-step weight update without distorting gradient *direction*, so
+        # it protects unconstrained backbones (e.g. a vanilla CNN) while leaving
+        # well-behaved training untouched when the clip never binds. A value of
+        # <= 0 disables clipping. See _apply for the finite-guard that drops
+        # non-finite updates (clipnorm alone does not sanitise NaN/Inf).
+        self._GRAD_CLIP = float(cfg_p.grad_clip_norm)
+        clipnorm = self._GRAD_CLIP if self._GRAD_CLIP > 0.0 else None
+        self.opt = tf.keras.optimizers.Adam(
+            learning_rate=cfg_p.learning_rate, clipnorm=clipnorm
+        )
         self.step        = tf.Variable(0, trainable=False, dtype=tf.int64,   name="step")
         self.lambda_phys = tf.Variable(0.1, trainable=False, dtype=tf.float32, name="lambda_phys")
+        # Cumulative count of optimizer updates skipped due to non-finite grads.
+        self.skipped_updates = tf.Variable(0, trainable=False, dtype=tf.int64, name="skipped_updates")
 
         # ------------------------------------------------------------------
         # Gradient + loss accumulators
@@ -98,11 +122,13 @@ class Trainer:
         self.m_train_data  = tf.keras.metrics.Mean(name="train_data")
         self.m_train_phys  = tf.keras.metrics.Mean(name="train_phys")
         self.m_train_lam   = tf.keras.metrics.Mean(name="lambda_phys")
+        self.m_train_gnorm = tf.keras.metrics.Mean(name="train_gnorm")
         self.m_val_total   = tf.keras.metrics.Mean(name="val_total")
         self.m_val_data    = tf.keras.metrics.Mean(name="val_data")
         self.m_val_phys    = tf.keras.metrics.Mean(name="val_phys")
         self._metrics_all = [
             self.m_train_total, self.m_train_data, self.m_train_phys, self.m_train_lam,
+            self.m_train_gnorm,
             self.m_val_total,   self.m_val_data,   self.m_val_phys,
         ]
 
@@ -208,13 +234,26 @@ class Trainer:
         self._accum_phys_loss.assign(0.0)
         self._accum_count.assign(0)
 
-    def _compute_new_lambda(self):
-        """Magnitude-balanced lambda update, EMA-smoothed and clipped both ways."""
-        to_t = lambda buf: [tf.convert_to_tensor(v) for v in buf]
-        norm_data = tf.linalg.global_norm(to_t(self._accum_g))
-        norm_phys = tf.linalg.global_norm(to_t(self._accum_g_phys))
+    def _grad_stat(self, buf):
+        """Scalar gradient-size statistic for a list of accumulated grad buffers."""
+        if self._WEIGHT_STAT == "std":
+            # Inverse-Dirichlet: std of the flattened gradient vector over all params.
+            flat = tf.concat([tf.reshape(tf.convert_to_tensor(v), [-1]) for v in buf], axis=0)
+            return tf.math.reduce_std(flat)
+        return tf.linalg.global_norm([tf.convert_to_tensor(v) for v in buf])
 
-        lam_hat = norm_data / (norm_phys + self._EPS)
+    def _compute_new_lambda(self):
+        """Gradient-balanced lambda update, EMA-smoothed and clipped both ways.
+
+        Target: lambda * stat(g_phys) = rho * stat(g_data), i.e. the physics
+        gradient contribution is held at a fraction rho of the data gradient
+        (rho=1 -> equal magnitude; rho<1 -> physics subordinate). stat(.) is
+        either the L2 norm or the per-parameter std (see lambda_weight_stat).
+        """
+        stat_data = self._grad_stat(self._accum_g)
+        stat_phys = self._grad_stat(self._accum_g_phys)
+
+        lam_hat = self._RHO * stat_data / (stat_phys + self._EPS)
         lam_hat = tf.clip_by_value(
             lam_hat,
             self.lambda_phys / self._MAX_CHANGE,
@@ -222,6 +261,10 @@ class Trainer:
         )
         lam_new = self._EMA * self.lambda_phys + (1.0 - self._EMA) * tf.stop_gradient(lam_hat)
         lam_new = tf.clip_by_value(lam_new, self._LAM_MIN, self._LAM_MAX)
+        # Guard against a blown-up batch poisoning lambda: if the gradient norms
+        # are non-finite (e.g. an exploding physics loss), keep the previous
+        # value rather than latching NaN/Inf into lambda for the rest of training.
+        lam_new = tf.where(tf.math.is_finite(lam_new), lam_new, self.lambda_phys)
         self.lambda_phys.assign(lam_new)
         return lam_new
 
@@ -244,6 +287,8 @@ class Trainer:
         m_train_data  = self.m_train_data
         m_train_phys  = self.m_train_phys
         m_train_lam   = self.m_train_lam
+        m_train_gnorm = self.m_train_gnorm
+        skipped_updates = self.skipped_updates
 
         def _add_into(buffer, grads):
             for ag, g in zip(buffer, grads):
@@ -308,19 +353,42 @@ class Trainer:
                     (ag + lam_used * ap) / ACCUM_STEPS_F
                     for ag, ap in zip(accum_g, accum_g_phys)
                 ]
-                opt.apply_gradients([
-                    (tf.cast(g, v.dtype), v) for g, v in zip(grads_avg, vars_)
-                ])
+
+                # Pre-clip global norm: also our non-finite detector, since
+                # global_norm propagates NaN/Inf. The optimizer applies the
+                # actual clipnorm; here we only gate apply on finiteness so a
+                # blown-up batch cannot corrupt the weights in a single step.
+                gnorm = tf.linalg.global_norm(grads_avg)
+                all_finite = tf.math.is_finite(gnorm)
 
                 d_avg = accum_data_loss / ACCUM_STEPS_F
                 p_avg = accum_phys_loss / ACCUM_STEPS_F
                 t_avg = d_avg + lam_used * p_avg
-
                 w = tf.cast(ACCUM_STEPS, tf.float32)
-                m_train_data.update_state(d_avg, sample_weight=w)
-                m_train_phys.update_state(p_avg, sample_weight=w)
-                m_train_total.update_state(t_avg, sample_weight=w)
-                m_train_lam.update_state(lam_used, sample_weight=w)
+
+                def _do_apply():
+                    opt.apply_gradients([
+                        (tf.cast(g, v.dtype), v) for g, v in zip(grads_avg, vars_)
+                    ])
+                    m_train_gnorm.update_state(gnorm, sample_weight=w)
+                    return tf.constant(0)
+
+                def _skip_apply():
+                    skipped_updates.assign_add(1)
+                    return tf.constant(0)
+
+                tf.cond(all_finite, _do_apply, _skip_apply)
+
+                # Only record loss metrics for finite steps to keep epoch
+                # averages meaningful when a blow-up batch is dropped.
+                def _record_losses():
+                    m_train_data.update_state(d_avg, sample_weight=w)
+                    m_train_phys.update_state(p_avg, sample_weight=w)
+                    m_train_total.update_state(t_avg, sample_weight=w)
+                    m_train_lam.update_state(lam_used, sample_weight=w)
+                    return tf.constant(0)
+
+                tf.cond(all_finite, _record_losses, lambda: tf.constant(0))
 
                 step.assign_add(1)
                 zero_accumulators()
@@ -376,10 +444,13 @@ class Trainer:
             train_phys=tp,  val_phys=vp,
             lambda_phys=lam,
         )
+        gn = float(self.m_train_gnorm.result().numpy())
+        n_skip = int(self.skipped_updates.numpy())
         print(
             f"[epoch {epoch + 1}/{self.n_epochs}] "
             f"train_total={tt:.6e} train_data={td:.6e} train_phys={tp:.6e} "
-            f"lambda_phys={lam:.3e} val_total={vt:.6e}"
+            f"lambda_phys={lam:.3e} val_total={vt:.6e} "
+            f"grad_norm={gn:.3e} skipped={n_skip}"
         )
 
     def _maybe_plot(self, epoch: int) -> None:

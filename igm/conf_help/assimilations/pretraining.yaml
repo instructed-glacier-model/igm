@@ -34,6 +34,10 @@ learning_rate:
   Type: float
   Units: dimless
   Description: "Learning rate for the Adam optimizer."
+grad_clip_norm:
+  Type: float
+  Units: dimless
+  Description: "Global-norm clip applied to the accumulated gradient before each optimizer update (passed as Adam's clipnorm). Acts as an architecture-agnostic safety net against physics-loss-driven blow-ups: it bounds the per-step weight update without changing gradient direction, so it leaves healthy training untouched when it does not bind. Set <= 0 to disable. Monitor the logged grad_norm and raise this if the clip is active during well-behaved training. Independently of this clip, any update with a non-finite gradient is always skipped."
 split_seed:
   Type: integer
   Units: dimless
@@ -53,11 +57,19 @@ warmup_steps:
 lambda_update_every:
   Type: integer
   Units: dimless
-  Description: "After the warmup phase, the physics loss weight lambda is recomputed every this many optimizer steps by comparing data and physics gradient norms."
+  Description: "After the warmup phase, the physics loss weight lambda is recomputed every this many optimizer steps by comparing the data and physics gradient statistics."
+lambda_weight_stat:
+  Type: string
+  Units: dimless
+  Description: "Gradient statistic used to balance the data and physics terms when recomputing lambda. 'norm' uses the global L2 norm ratio, driving the physics gradient to equal magnitude with the data gradient. 'std' uses the per-parameter gradient standard deviation (inverse-Dirichlet weighting, Maddu et al. 2022), which is more robust to heavy-tailed physics gradients (e.g. exploding energy gradients in fast-flow / high-shear cells). Options: norm or std."
+lambda_subordinacy:
+  Type: float
+  Units: dimless
+  Description: "Target ratio rho for the physics gradient relative to the data gradient: lambda is driven so that stat(lambda * g_phys) = rho * stat(g_data). rho = 1.0 balances the two terms to equal magnitude (original behaviour); rho < 1 (e.g. 0.2) keeps physics subordinate to data, acting as a regulariser rather than a co-equal objective."
 lambda_ema:
   Type: float
   Units: dimless
-  Description: "Exponential moving average factor applied when updating lambda. Values close to 1 produce slow, stable adaptation; lower values respond faster but with more variance."
+  Description: "Exponential moving average factor applied when updating lambda. Values close to 1 produce slow, stable adaptation; lower values respond faster but with more variance. Note: very high values combined with a tight lambda_max_change prevent lambda from reaching its computed target, turning the adaptive scheme into a slow fixed ramp."
 lambda_min:
   Type: float
   Units: dimless
@@ -69,7 +81,7 @@ lambda_max:
 lambda_max_change:
   Type: float
   Units: dimless
-  Description: "Multiplicative clamp applied to each lambda update: the new value is restricted to [lambda / c, lambda * c] where c is this parameter. Prevents large sudden changes."
+  Description: "Multiplicative clamp applied to each lambda update: the new value is restricted to [lambda / c, lambda * c] where c is this parameter. Prevents large sudden changes. If set too close to 1 (together with a high lambda_ema), lambda cannot reach the gradient-balanced target and instead creeps monotonically; raise it (e.g. 3.0) to let lambda settle at the computed target."
 resume:
   Type: boolean
   Units: dimless
