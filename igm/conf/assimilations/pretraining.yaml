@@ -22,12 +22,12 @@ pretraining:
   # --- Adaptive physics weighting (lambda) ---
   warmup_steps: 100000        # physics loss disabled for this many optimizer updates
   lambda_update_every: 200    # recompute lambda every N optimizer steps post-warmup
-  lambda_weight_stat: "norm"  # gradient statistic balanced: "norm" (L2-norm ratio) or "std" (inverse-Dirichlet, per-param gradient std; more robust to heavy-tailed physics gradients)
-  lambda_subordinacy: 1.0     # rho: target physics gradient at this fraction of the data gradient (1.0 = equal magnitude; <1 keeps physics subordinate, e.g. 0.2)
-  lambda_ema: 0.99            # EMA factor when adopting the new lambda (lower = tracks the target faster, e.g. 0.9)
-  lambda_min: 0.001           # lower clip on lambda
-  lambda_max: 100.0           # upper clip on lambda
-  lambda_max_change: 1.2      # symmetric per-update multiplicative clamp [lambda/c, lambda*c]; raise (e.g. 3.0) to let lambda actually settle at the computed target rather than slowly ramping
+  lambda_weight_stat: "std"  # gradient statistic balanced: "norm" (L2-norm ratio) or "std" (inverse-Dirichlet, per-param gradient std; more robust to heavy-tailed physics gradients)
+  lambda_subordinacy: 0.2     # rho: target physics gradient at this fraction of the data gradient (1.0 = equal magnitude; <1 keeps physics subordinate, e.g. 0.2)
+  lambda_ema: 0.9            # EMA factor when adopting the new lambda (lower = tracks the target faster, e.g. 0.9)
+  lambda_min: 0.0001           # lower clip on lambda
+  lambda_max: 1000.0           # upper clip on lambda
+  lambda_max_change: 3.0      # symmetric per-update multiplicative clamp [lambda/c, lambda*c]; raise (e.g. 3.0) to let lambda actually settle at the computed target rather than slowly ramping
 
   # --- I/O ---
   resume: false
