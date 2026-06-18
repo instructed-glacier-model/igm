@@ -85,6 +85,14 @@ class IGM_Model2D(Model2D):
         self.cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
         State.register_aliases(load_aliases_from_core_cfg(self.cfg.core.aliases))
 
+        # `load_yaml_recursive` pulls in the whole conf tree, including
+        # `assimilations/pretraining`. iceflow.initialize/update would then see
+        # "pretraining" in cfg.assimilations and skip iceflow entirely. This
+        # standalone OGGM coupling only runs the forward iceflow, so drop the
+        # assimilations branch to keep iceflow active.
+        if self.cfg.get("assimilations") is not None:
+            self.cfg.assimilations = {}
+
         # Parameter
         self.cfl = 0.25
         self.max_dt = SEC_IN_YEAR
