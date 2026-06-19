@@ -234,7 +234,9 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
         state.iceflow_model = arch_cls(
             input_names=list(cfg_emulator.fieldin),
             Nz=int(cfg_numerics.Nz),
-            network_params=build_network_params(cfg, arch_cls),
+            network_params=build_network_params(
+                cfg_emulator.network, arch_cls, precision=cfg_numerics.precision
+            ),
         )
 
     if not state.iceflow_model.built:

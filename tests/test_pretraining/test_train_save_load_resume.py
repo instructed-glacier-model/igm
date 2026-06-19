@@ -181,7 +181,9 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
             "unified": {"inputs": list(_INPUT_NAMES)},
         }}
     })
-    loaded = load_emulator_artifact(artifact_dir, cfg=_load_cfg)
+    loaded = load_emulator_artifact(
+        artifact_dir, cfg=_load_cfg, expected_inputs=list(_INPUT_NAMES)
+    )
 
     assert isinstance(loaded, EmulatorArtifact), \
         f"Expected EmulatorArtifact, got {type(loaded)}"

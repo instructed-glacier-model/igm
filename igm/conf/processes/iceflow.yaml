@@ -75,13 +75,7 @@ iceflow:
     pertubate: false
     network:
       architecture: cnn
-      params:
-        backend: cnn
-        features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
-        nb_out_filter: 24
-        nb_layers: 6
-        conv_ker_size: 3
-        residual: true
+      params: {}    # emulated-mode (cnn) hyperparameters; cnn reads the flat fields below
       multiple_window_size: 0
       activation: LeakyReLU
       nb_layers: 16
@@ -179,6 +173,17 @@ iceflow:
       print_summary: false
       output_scale: 1.0
       architecture: dahunet
+      # Architecture hyperparameters for the from-scratch path (pretrained: false).
+      # Owned by the unified mode (no longer read from emulator.network).
+      # Keys depend on `architecture`; an empty dict uses the architecture's
+      # built-in defaults. These are the Optuna-tuned dahunet defaults.
+      params:
+        backend: cnn
+        features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+        nb_out_filter: 24
+        nb_layers: 6
+        conv_ker_size: 3
+        residual: true
     data_preparation:
       framesizemax: 99999
       patches_per_batch: 1
