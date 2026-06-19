@@ -23,15 +23,19 @@ LineSearchResult = collections.namedtuple(
 
 class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     """
-    Bounded L-BFGS for data assimilation with scale-aware rho spike clamping.
+    Bounded L-BFGS for data assimilation.
+
+    Curvature pairs are accepted/used based on a relative (cosine-like) test
+    `y·s > curv_eps_rel * |y| * |s|` instead of an absolute threshold (which
+    rejects all pairs once steps get small) or an EMA-based rho cap (which is
+    contaminated by spikes and systematically clamps legitimate pairs late in
+    the optimization when y·s shrinks).
     """
 
     def __init__(
         self,
         *args,
-        rho_spike_factor: float = 20.0,
-        rho_warmup: int = 5,
-        rho_ema_beta: float = 0.99,
+        curv_eps_rel: float = 1e-8,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -42,12 +46,8 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         self.last_data = tf.Variable(0.0, trainable=False, dtype=dtype)
         self.last_reg = tf.Variable(0.0, trainable=False, dtype=dtype)
 
-        self.rho_mean = tf.Variable(0.0, trainable=False, dtype=dtype)
-        self.rho_count = tf.Variable(0, trainable=False, dtype=tf.int64)
-
-        self.rho_spike_factor = tf.constant(rho_spike_factor, dtype=dtype)
-        self.rho_warmup = tf.constant(rho_warmup, dtype=tf.int64)
-        self.rho_ema_beta = tf.constant(rho_ema_beta, dtype=dtype)
+        # Relative curvature threshold for (s, y) pair acceptance and use.
+        self.curv_eps_rel = tf.constant(curv_eps_rel, dtype=dtype)
 
         # Cache this once to avoid repeated Python hasattr() checks in the hot path.
         self._line_search_supports_result = bool(hasattr(self.line_search, "search_result"))
@@ -64,13 +64,19 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         self.accepted_cost_reg_hist = empty
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
-        self.rho_mean.assign(tf.cast(0.0, self.rho_mean.dtype))
-        self.rho_count.assign(0)
         empty = tf.zeros([0], dtype=self.last_total.dtype)
         self.accepted_cost_total_hist = empty
         self.accepted_cost_data_hist = empty
         self.accepted_cost_reg_hist = empty
         return super().minimize(inputs)
+
+    @tf.function(reduce_retracing=True)
+    def _compute_tau(self, iter: tf.Tensor) -> tf.Tensor:
+        # No early-iteration damping of the initial Hessian scaling for
+        # full-batch deterministic DA: it only shrinks the trial step and makes
+        # the line search expand it back out at extra cost.
+        del iter
+        return tf.constant(1.0, dtype=self.precision)
 
     @staticmethod
     def _stack_history(values: Sequence[tf.Tensor], dtype: tf.DType) -> tf.Tensor:
@@ -94,16 +100,6 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         acc = tf.tensordot(tf.cast(a, tf.float64), tf.cast(b, tf.float64), axes=1)
         return tf.cast(acc, self.precision)
-
-    @tf.function(reduce_retracing=True)
-    def _rho_cap(self) -> tf.Tensor:
-        inf = tf.constant(float("inf"), dtype=self.rho_mean.dtype)
-
-        def cap():
-            mean = tf.maximum(self.rho_mean, tf.cast(self.eps, self.rho_mean.dtype))
-            return tf.cast(self.rho_spike_factor, mean.dtype) * mean
-
-        return tf.cond(self.rho_count >= self.rho_warmup, cap, lambda: inf)
 
     @tf.function(reduce_retracing=True)
     def _ordered_memory(
@@ -130,31 +126,16 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         y: tf.Tensor,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         dot_ys = self._dot(y, s)
-        finite = tf.math.is_finite(dot_ys)
-        accept = finite & (dot_ys > self.eps)
+        s_norm = tf.sqrt(self._dot(s, s))
+        y_norm = tf.sqrt(self._dot(y, y))
 
-        def _update_stats():
-            rho = 1.0 / (dot_ys + self.eps)
-            beta = tf.cast(self.rho_ema_beta, self.rho_mean.dtype)
-            rho_cast = tf.cast(rho, self.rho_mean.dtype)
-
-            def init():
-                self.rho_mean.assign(rho_cast)
-                self.rho_count.assign_add(1)
-                return 0
-
-            def ema():
-                self.rho_mean.assign(beta * self.rho_mean + (1.0 - beta) * rho_cast)
-                self.rho_count.assign_add(1)
-                return 0
-
-            return tf.cond(self.rho_count <= 0, init, ema)
-
-        tf.cond(
-            accept,
-            lambda: tf.cast(_update_stats(), tf.int32),
-            lambda: tf.constant(0, tf.int32),
-        )
+        # Relative (cosine-like) curvature test. An absolute threshold rejects
+        # all pairs once y·s becomes legitimately small (fine grids, small
+        # steps near convergence) and degrades the optimizer to plain gradient
+        # descent; this test instead rejects only near-orthogonal pairs that
+        # would produce an untrustworthy, exploding rho.
+        threshold = tf.cast(self.curv_eps_rel, dot_ys.dtype) * s_norm * y_norm
+        accept = tf.math.is_finite(dot_ys) & (dot_ys > threshold)
 
         def update():
             slot = next_memory
@@ -182,29 +163,46 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         if tf.equal(num_elems, 0):
             return -grad
 
-        rho_cap = tf.cast(self._rho_cap(), grad.dtype)
+        one = tf.constant(1.0, grad.dtype)
+        zero = tf.constant(0.0, grad.dtype)
+        eps_rel = tf.cast(self.curv_eps_rel, grad.dtype)
 
         q = grad
         alpha_list = tf.TensorArray(dtype=grad.dtype, size=num_elems, dynamic_size=False)
+        rho_list = tf.TensorArray(dtype=grad.dtype, size=num_elems, dynamic_size=False)
 
         for i in tf.range(num_elems - 1, -1, -1):
             s_i = s_list[i]
             y_i = y_list[i]
 
-            rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
+            # Subspace masking can degrade stored pairs: a pair that passed the
+            # curvature test when stored may have a tiny or negative y·s after
+            # masking. Skip such pairs (rho = 0 removes their contribution from
+            # both recursion loops) instead of clamping rho, which would break
+            # the secant relation for otherwise-healthy pairs.
+            dot_ys = tf.cast(self._dot(y_i, s_i), grad.dtype)
+            norm_prod = tf.sqrt(tf.cast(self._dot(s_i, s_i), grad.dtype)) * tf.sqrt(
+                tf.cast(self._dot(y_i, y_i), grad.dtype)
+            )
+            valid = tf.math.is_finite(dot_ys) & (dot_ys > eps_rel * norm_prod)
+            rho = tf.where(valid, tf.math.divide_no_nan(one, dot_ys), zero)
 
-            alpha_i = rho * self._dot(s_i, q)
-            alpha_list = alpha_list.write(i, tf.cast(alpha_i, q.dtype))
-            q = q - tf.cast(alpha_i, q.dtype) * y_i
+            alpha_i = rho * tf.cast(self._dot(s_i, q), grad.dtype)
+            alpha_list = alpha_list.write(i, alpha_i)
+            rho_list = rho_list.write(i, rho)
+            q = q - alpha_i * y_i
 
         last_y = y_list[num_elems - 1]
         last_s = s_list[num_elems - 1]
-        gamma = self._dot(last_y, last_s) / (self._dot(last_y, last_y) + self.eps)
+        dot_ys_last = tf.cast(self._dot(last_y, last_s), grad.dtype)
+        dot_yy_last = tf.cast(self._dot(last_y, last_y), grad.dtype)
 
-        gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
-        gamma = tf.clip_by_value(gamma, self.gamma_min, self.gamma_max)
-        gamma = tf.cast(gamma, q.dtype)
+        gamma = tf.math.divide_no_nan(dot_ys_last, dot_yy_last)
+        gamma_ok = tf.math.is_finite(gamma) & (gamma > zero)
+        gamma = tf.where(gamma_ok, gamma, one)
+        gamma = tf.clip_by_value(
+            gamma, tf.cast(self.gamma_min, grad.dtype), tf.cast(self.gamma_max, grad.dtype)
+        )
 
         r = tau * gamma * q
 
@@ -212,12 +210,10 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             s_i = s_list[i]
             y_i = y_list[i]
 
-            rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
-
-            beta = rho * self._dot(y_i, r)
+            rho = rho_list.read(i)
+            beta = rho * tf.cast(self._dot(y_i, r), grad.dtype)
             alpha_i = alpha_list.read(i)
-            r = r + s_i * (tf.cast(alpha_i, r.dtype) - tf.cast(beta, r.dtype))
+            r = r + s_i * (alpha_i - beta)
 
         return -r
 
@@ -253,7 +249,9 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         )
 
     @tf.function(reduce_retracing=True)
-    def _select_line_search_alpha(self, ls_result) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _select_line_search_alpha(
+        self, ls_result, f0: Optional[tf.Tensor] = None
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         dtype = ls_result.alpha.dtype
         zero = tf.constant(0.0, dtype=dtype)
 
@@ -267,6 +265,15 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         right_x = tf.cast(ls_result.right.x, dtype)
         left_f = tf.cast(ls_result.left.f, dtype)
         right_f = tf.cast(ls_result.right.f, dtype)
+
+        # A fallback endpoint must not increase the cost relative to alpha = 0;
+        # without this guard a failed search happily accepts an uphill step
+        # (the left endpoint at x = 0 is never "usable", so the right endpoint
+        # used to win by default whatever its value).
+        if f0 is not None:
+            f0_cast = tf.cast(f0, dtype)
+            left_valid = left_valid & (left_f <= f0_cast)
+            right_valid = right_valid & (right_f <= f0_cast)
 
         best_endpoint_alpha = tf.where(
             left_valid & right_valid,
@@ -304,6 +311,8 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         theta_flat: tf.Tensor,
         p_flat: tf.Tensor,
         input: tf.Tensor,
+        f0: Optional[tf.Tensor] = None,
+        grad0_flat: Optional[tf.Tensor] = None,
     ) -> LineSearchResult:
         L, U = self.map.get_box_bounds_flat()
         amax = self._alpha_max(theta_flat, p_flat, L, U)
@@ -326,8 +335,24 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             self.map.set_theta(theta_backup)
             return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
 
+        # Value/slope at alpha = 0 are already known to the caller (cost and
+        # gradient at the current iterate); hand them to the line search to
+        # avoid one full re-evaluation per line search.
+        if f0 is not None and grad0_flat is not None:
+            dtype = theta_flat.dtype
+            mask0 = self._get_mask(theta_flat, grad0_flat, L, U)
+            p_masked0 = tf.where(mask0, p_flat, tf.zeros_like(p_flat))
+            df0 = self._dot(grad0_flat, p_masked0)
+            val_0 = ValueAndGradient(
+                x=tf.constant(0.0, dtype=dtype),
+                f=tf.cast(f0, dtype),
+                df=tf.cast(df0, dtype),
+            )
+        else:
+            val_0 = None
+
         if self._line_search_supports_result:
-            return self.line_search.search_result(theta_flat, p_flat, eval_fn)
+            return self.line_search.search_result(theta_flat, p_flat, eval_fn, val_0=val_0)
 
         alpha = self.line_search.search(theta_flat, p_flat, eval_fn)
         alpha_valid = tf.math.is_finite(alpha) & (alpha >= tf.zeros_like(alpha))
@@ -350,9 +375,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         theta_flat: tf.Tensor,
         p_flat: tf.Tensor,
         input: tf.Tensor,
+        f0: Optional[tf.Tensor] = None,
+        grad0_flat: Optional[tf.Tensor] = None,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
-        ls_result = self._line_search_result(theta_flat, p_flat, input)
-        alpha, used_fallback = self._select_line_search_alpha(ls_result)
+        ls_result = self._line_search_result(theta_flat, p_flat, input, f0, grad0_flat)
+        alpha, used_fallback = self._select_line_search_alpha(ls_result, f0)
         return tf.cast(alpha, theta_flat.dtype), used_fallback
 
     @tf.function(reduce_retracing=True, jit_compile=False)
@@ -364,8 +391,14 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         # inputs: [N, H, W, C] — used as a single full batch (LBFGS is full-batch)
         input = inputs
 
-        # State variables
+        # Project the initial iterate into the box (the bounded parent's
+        # minimize_impl is bypassed by this override, so do it explicitly).
+        lb_flat, ub_flat = self.map.get_box_bounds_flat()
         theta_flat = self.map.flatten_theta(self.map.get_theta())
+        theta_flat = self._project(theta_flat, lb_flat, ub_flat)
+        self.map.set_theta(self.map.unflatten_theta(theta_flat))
+
+        # State variables
         cost, grad_u, grad_theta = self._get_grad(input)
         grad_theta_flat = self.map.flatten_theta(grad_theta)
         U, V = self.map.get_UV(input)
@@ -393,11 +426,13 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             input = inputs
 
             theta_prev = theta_flat
+            grad_prev_flat = grad_theta_flat
 
-            # Tempering
+            # Tempering (identity for DA, see _compute_tau)
             tau = self._compute_tau(iter)
 
-            # choose base point / gradient for the step (bounded subclass overrides this)
+            # Predict the free set via the Cauchy probe; the step itself starts
+            # from the current iterate (theta_base == theta_flat).
             theta_base, grad_base_flat, mask_base = self._step_base_point(
                 theta_flat, grad_theta_flat, input
             )
@@ -422,8 +457,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             # Force descent uses TRUE base gradient.
             p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
 
-            # Line search uses TRUE gradients internally.
-            alpha, ls_used_fallback = self._line_search_with_fallback(theta_base, p_flat, input)
+            # Line search uses TRUE gradients internally; cost/gradient at
+            # alpha = 0 are the ones at the current iterate, so pass them in.
+            alpha, ls_used_fallback = self._line_search_with_fallback(
+                theta_base, p_flat, input, cost, grad_theta_flat
+            )
             alpha = tf.cond(
                 ls_used_fallback,
                 lambda: tf.maximum(alpha, tf.zeros_like(alpha)),
@@ -438,20 +476,18 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             cost, grad_u, grad_theta = self._get_grad(input)
             grad_theta_flat = self.map.flatten_theta(grad_theta)
 
-            # Curvature pair is built from the same search-gradient representation.
-            _, grad_base_new, mask_base_new = self._step_base_point(
-                theta_flat, grad_theta_flat, input
-            )
-            grad_search_new = self._search_grad(grad_base_new, mask_base_new)
-
+            # Secant-consistent curvature pair: differences of the actual
+            # iterates and of the true gradients evaluated at those same two
+            # points. _constrain_pair filters components that crossed or sit on
+            # a bound.
             s = theta_flat - theta_prev
-            y = grad_search_new - grad_search_prev
+            y = grad_theta_flat - grad_prev_flat
 
             s, y = self._constrain_pair(
                 s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat
             )
 
-            # Update memory (DA override handles rho spike clamping etc.).
+            # Update memory (relative curvature test decides acceptance).
             s_flat_mem, y_flat_mem, next_memory, num_memory = self._update_memory(
                 s_flat_mem, y_flat_mem, next_memory, num_memory, s, y
             )

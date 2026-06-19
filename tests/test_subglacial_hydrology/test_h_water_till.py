@@ -3,12 +3,12 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-"""Unit tests for till water layer evolution (h_water_till module)."""
+"""Unit tests for till water layer evolution (subglacial_hydrology module, till_storage mode)."""
 
 import numpy as np
 import tensorflow as tf
 
-from igm.processes.h_water_till.h_water_till import update_h_water_till_tf
+from igm.processes.subglacial_hydrology.till_storage import update_h_water_till_tf
 
 # Data type
 dtype = tf.float32

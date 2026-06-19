@@ -8,7 +8,7 @@
 import numpy as np
 import tensorflow as tf
 
-from igm.processes.effective_pressure.till_storage import compute_N_MPa_tf
+from igm.processes.subglacial_hydrology.till_storage import compute_N_MPa_tf
 
 # Data type
 dtype = tf.float32

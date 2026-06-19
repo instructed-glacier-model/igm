@@ -7,8 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import importlib_resources
 import tensorflow as tf
 from omegaconf import DictConfig
+
+import igm.processes.iceflow.emulate.emulators as emulators
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -34,6 +37,8 @@ _console = Console(theme=_emulator_theme)
 
 def _resolve_emulator_path(path: str | Path) -> Path:
     path = Path(path)
+    if path.parent == Path("."):  # bare name: an emulator shipped with igm
+        path = Path(importlib_resources.files(emulators)) / path
     return path if path.suffix == ".keras" else path / EMULATOR_FILENAME
 
 
@@ -192,14 +197,22 @@ def save_emulator_artifact(
     return artifact_path
 
 
-def validate_emulator_artifact(model: EmulatorArtifact, cfg: "DictConfig") -> None:
-    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels, discretization)."""
+def validate_emulator_artifact(
+    model: EmulatorArtifact, cfg: "DictConfig", expected_inputs
+) -> None:
+    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels, discretization).
+
+    *expected_inputs* is the caller's own input-channel list (e.g.
+    ``cfg.processes.iceflow.unified.inputs`` for the unified mode). It is passed
+    in explicitly so this emulator helper never reaches into another mode's
+    config subtree.
+    """
     cfg_Nz = int(cfg.processes.iceflow.numerics.Nz)
     if model.Nz != cfg_Nz:
         raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
 
     model_inputs = list(model.input_names)
-    cfg_inputs = list(cfg.processes.iceflow.unified.inputs)
+    cfg_inputs = list(expected_inputs)
     if model_inputs != cfg_inputs:
         raise ValueError(
             f"Input channel mismatch: emulator={model_inputs}, config={cfg_inputs}"
@@ -218,8 +231,13 @@ def validate_emulator_artifact(model: EmulatorArtifact, cfg: "DictConfig") -> No
 def load_emulator_artifact(
     artifact_dir: str | Path,
     cfg: "DictConfig | None" = None,
+    expected_inputs=None,
 ) -> EmulatorArtifact:
-    """Load a Keras emulator artifact. If *cfg* is given, validates Nz and input channels."""
+    """Load a Keras emulator artifact. If *cfg* is given, validates Nz and input channels.
+
+    *expected_inputs* is the caller's input-channel list, forwarded to
+    :func:`validate_emulator_artifact`.
+    """
     artifact_path = _resolve_emulator_path(artifact_dir)
     if not artifact_path.exists():
         raise FileNotFoundError(
@@ -235,7 +253,7 @@ def load_emulator_artifact(
             f"got {type(model)}"
         )
     
-    validate_emulator_artifact(model, cfg)
+    validate_emulator_artifact(model, cfg, expected_inputs)
 
     _print_loaded_banner(artifact_path, model)
 

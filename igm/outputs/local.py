@@ -85,7 +85,7 @@ def write_tif(cfg, state):
         if not hasattr(state, var):
             continue
 
-        var_data = vars(state)[var].numpy()
+        var_data = getattr(state, var).numpy()
         file_name = (
             f"{var}-{str(getattr(state, 't', tf.constant(0)).numpy()).zfill(6)}.tif"
         )
@@ -115,7 +115,7 @@ def update_netcdf_ex(cfg, state):
         for var in var_list:
             if not hasattr(state, var):
                 continue
-            arr = vars(state)[var].numpy()
+            arr = getattr(state, var).numpy()
             dims = ("y", "x") if arr.ndim == 2 else ("z", "y", "x")
             data = xr.DataArray(arr, dims=dims)
             data = data.expand_dims(time=[getattr(state, "t", tf.constant(0)).numpy()])

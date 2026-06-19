@@ -1,7 +1,7 @@
 mode:
   Type: string
   Units: dimless
-  Description: "Closure used to compute `state.effective_pressure` (MPa). One of: `constant_one` (N = 1 MPa everywhere), `percentage` (N = (1 - percentage) * rho_ice * g * h), `ocean_connected` (N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0); requires `state.water_level`), `from_input` (leave `state.effective_pressure` as already loaded from the input data), or `till_storage` (Tulaczyk parameterisation driven by `state.h_water_till`; requires the `h_water_till` process module)."
+  Description: "Closure used to compute `state.effective_pressure` (MPa). One of: `constant_one` (N = 1 MPa everywhere), `percentage` (N = (1 - percentage) * rho_ice * g * h), `ocean_connected` (N = rho_ice*g*h - rho_water*g*max(water_level - topg, 0); requires `state.water_level`), `from_input` (leave `state.effective_pressure` as already loaded from the input data), or `till_storage` (evolves `state.h_water_till` each time step via the Tulaczyk (2000) ODE, then derives N from saturation; requires `enthalpy` to run before `subglacial_hydrology`)."
 percentage:
   Type: float
   Units: dimless
@@ -10,6 +10,18 @@ N_min:
   Type: float
   Units: MPa
   Description: "Lower floor applied to N after the chosen formula (default 1.0e-3 MPa = 1 kPa) to avoid the singularity in the Budd / Coulomb sliding cost."
+till_storage.h_water_till_max:
+  Type: float
+  Units: m
+  Description: "Maximum till water layer thickness (capacity). Till saturation s = h_water_till / h_water_till_max drives the Tulaczyk effective-pressure parameterisation."
+till_storage.drainage_rate:
+  Type: float
+  Units: m/yr
+  Description: "Constant basal drainage rate to the groundwater system, subtracted at every time step. Set to 0 to disable drainage."
+till_storage.water_density:
+  Type: float
+  Units: kg m^-3
+  Description: "Density of liquid water used to convert basal melt rate (m ice/yr) to a water-equivalent volume flux."
 till_storage.N_ref:
   Type: float
   Units: MPa

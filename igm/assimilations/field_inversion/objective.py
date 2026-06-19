@@ -98,6 +98,7 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
                     std=float(d["std"]),
                     mask=None if d.get("mask") is None else str(d["mask"]),
                     eps=float(d.get("eps", 1e-12)),
+                    delta=float(d.get("delta", 1.0)),
                 )
             )
         )

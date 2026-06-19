@@ -609,6 +609,10 @@ unified:
       Type: string
       Description: "Type of network."
       Units: dimless
+    params:
+      Type: dict
+      Description: "Architecture hyperparameters for the from-scratch path (pretrained: false), owned by the unified mode (no longer read from emulator.network). Keys depend on `architecture`; an empty dict uses the architecture's built-in defaults."
+      Units: dimless
   data_preparation:
     framesizemax:
       Type: integer

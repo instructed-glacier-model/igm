@@ -62,7 +62,7 @@ def run(cfg, state):
     # transform from numpy to tensorflow
     for file in files:
         var = os.path.split(file)[-1].split(".")[0]
-        vars(state)[var] = tf.Variable(vars()[var].astype("float32"), trainable=False)
+        setattr(state, var, tf.Variable(vars()[var].astype("float32"), trainable=False))
 
     state.x = tf.constant(x.astype("float32"))
     state.y = tf.constant(y.astype("float32"))

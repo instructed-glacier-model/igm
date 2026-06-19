@@ -123,16 +123,17 @@ def run(cfg, state):
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
-                    if vars(state)[var].numpy().ndim == 2:
+                    val = getattr(state, var)
+                    if val.numpy().ndim == 2:
                         E = nc.createVariable(
                             var, np.dtype("float32").char, ("time", "y", "x")
                         )
-                        E[0, :, :] = vars(state)[var].numpy()
-                    elif vars(state)[var].numpy().ndim == 3:
+                        E[0, :, :] = val.numpy()
+                    elif val.numpy().ndim == 3:
                         E = nc.createVariable(
                             var, np.dtype("float32").char, ("time", "z", "y", "x")
                         )
-                        E[0, :, :, :] = vars(state)[var].numpy()
+                        E[0, :, :, :] = val.numpy()
                     if var in state.var_info_ncdf_ex.keys():
                         E.long_name = state.var_info_ncdf_ex[var][0]
                         E.units = state.var_info_ncdf_ex[var][1]
@@ -151,9 +152,10 @@ def run(cfg, state):
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
-                    if vars(state)[var].numpy().ndim == 2:
-                        nc.variables[var][d, :, :] = vars(state)[var].numpy()
-                    elif vars(state)[var].numpy().ndim == 3:
-                        nc.variables[var][d, :, :, :] = vars(state)[var].numpy()
+                    val = getattr(state, var)
+                    if val.numpy().ndim == 2:
+                        nc.variables[var][d, :, :] = val.numpy()
+                    elif val.numpy().ndim == 3:
+                        nc.variables[var][d, :, :, :] = val.numpy()
 
             nc.close()

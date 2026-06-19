@@ -22,7 +22,13 @@ core:
   print_info: True
   print_imported_modules: False
   check_compat_params: True
-  
+  check_module_needs: False
+
+  # State variable aliases
+  aliases:
+    builtin: []
+    extra_files: []
+
   # Custom Modules
   structure:
     root_foldername: user

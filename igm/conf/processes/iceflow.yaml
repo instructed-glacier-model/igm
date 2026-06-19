@@ -1,5 +1,5 @@
 iceflow:
-  method: emulated
+  method: unified
   force_max_velbar: 0.0
   physics:
     energy_components: [viscosity, gravity, sliding]
@@ -40,7 +40,7 @@ iceflow:
     precision: single
     ord_grad_u: l2_weighted
     ord_grad_theta: l2_weighted
-    Nz: 10
+    Nz: 4
     vert_spacing: 4.0
     basis_horizontal: central
     basis_vertical: Lagrange
@@ -75,7 +75,7 @@ iceflow:
     pertubate: false
     network:
       architecture: cnn
-      params: {}
+      params: {}    # emulated-mode (cnn) hyperparameters; cnn reads the flat fields below
       multiple_window_size: 0
       activation: LeakyReLU
       nb_layers: 16
@@ -102,16 +102,16 @@ iceflow:
         top: 0.0
         bottom: 0.0
     optimizer: adam
-    nbit: 1
-    nbit_init: 1
+    nbit: 5
+    nbit_init: 300
     nbit_warmup: -1
-    retrain_freq: 10
+    retrain_freq: 5
     retrain_threshold: 1.0e+10 # for now it corresponds to a z-score (1.0e+10 is default as its quite high and will default to the retrain_freq most likely)
     newton:
       damping: 1e-6
     adam:
-      lr: 2.0e-05
-      lr_init: 0.0001
+      lr: 5.0e-04
+      lr_init: 2.0e-03
       lr_decay: 1.0
       lr_decay_steps: 1000
       optimizer_clipnorm: 1.0
@@ -168,11 +168,22 @@ iceflow:
     network:
       debug_mode: false
       debug_freq: 100
-      pretrained: true
+      pretrained: false
       pretrained_path: ""
       print_summary: false
       output_scale: 1.0
-      architecture: CNN
+      architecture: dahunet
+      # Architecture hyperparameters for the from-scratch path (pretrained: false).
+      # Owned by the unified mode (no longer read from emulator.network).
+      # Keys depend on `architecture`; an empty dict uses the architecture's
+      # built-in defaults. These are the Optuna-tuned dahunet defaults.
+      params:
+        backend: cnn
+        features: [dsdx, dsdy, grad_s, u_sia, u_weertman]
+        nb_out_filter: 24
+        nb_layers: 6
+        conv_ker_size: 3
+        residual: true
     adaptive_time:
       # Temporal lever (B) — decides WHEN to retrain. Mirror of adaptive_patching (C).
       # Additive: never moves top-level retrain_freq / retrain_threshold, only dispatches.
@@ -201,7 +212,7 @@ iceflow:
       rng_seed: null                 # null → fresh randomness per call 
       rescore_freq: 10               # Caching: steps 1+2 recomputed every rescore_freq
     data_preparation:
-      framesizemax: 1000
+      framesizemax: 99999
       patches_per_batch: 1
     halt:
       freq: 1

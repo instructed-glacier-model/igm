@@ -30,38 +30,38 @@ _INPUTS = ["thk", "usurf", "arrhenius", "tau_ref", "dX"]
 
 @pytest.mark.unit
 def test_valid_passes():
-    validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, _INPUTS))
+    validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, _INPUTS), _INPUTS)
 
 
 @pytest.mark.unit
 def test_nz_mismatch_raises():
     with pytest.raises(ValueError, match=r"Nz"):
-        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(10, _INPUTS))
+        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(10, _INPUTS), _INPUTS)
 
 
 @pytest.mark.unit
 def test_channel_order_mismatch_raises():
     wrong_order = ["thk", "usurf", "tau_ref", "arrhenius", "dX"]
     with pytest.raises(ValueError, match=r"channel"):
-        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, wrong_order))
+        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, wrong_order), wrong_order)
 
 
 @pytest.mark.unit
 def test_channel_set_mismatch_raises():
     wrong_set = ["thk", "usurf", "arrhenius", "slidingco", "dX"]
     with pytest.raises(ValueError, match=r"channel"):
-        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, wrong_set))
+        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, wrong_set), wrong_set)
 
 
 @pytest.mark.unit
 def test_basis_vertical_mismatch_raises():
     model = _artifact(2, _INPUTS, basis_vertical="molho", basis_horizontal="q1")
     with pytest.raises(ValueError, match=r"basis_vertical"):
-        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_vertical="uniform"))
+        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_vertical="uniform"), _INPUTS)
 
 
 @pytest.mark.unit
 def test_basis_horizontal_mismatch_raises():
     model = _artifact(2, _INPUTS, basis_vertical="molho", basis_horizontal="q1")
     with pytest.raises(ValueError, match=r"basis_horizontal"):
-        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_horizontal="q2"))
+        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_horizontal="q2"), _INPUTS)

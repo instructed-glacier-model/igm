@@ -15,33 +15,46 @@ behaviour changes between releases.
 from typing import List, Tuple
 from omegaconf import OmegaConf, DictConfig
 
-
 # (old dotted path, new dotted path or human-readable target)
 _LEGACY_KEYS: List[Tuple[str, str]] = [
     # init_<x> moved into sliding: / viscosity:
-    ("processes.iceflow.physics.init_slidingco",
-     "processes.iceflow.physics.sliding.slidingco"),
-    ("processes.iceflow.physics.init_tau_ref",
-     "processes.iceflow.physics.sliding.tau_ref"),
-    ("processes.iceflow.physics.init_arrhenius",
-     "processes.iceflow.physics.viscosity.arrhenius"),
-    ("processes.iceflow.physics.enhancement_factor",
-     "processes.iceflow.physics.viscosity.enhancement_factor"),
-    ("processes.iceflow.physics.exp_glen",
-     "processes.iceflow.physics.viscosity.exponent"),
-    ("processes.iceflow.physics.regu_glen",
-     "processes.iceflow.physics.viscosity.regularization"),
+    (
+        "processes.iceflow.physics.init_slidingco",
+        "processes.iceflow.physics.sliding.slidingco",
+    ),
+    (
+        "processes.iceflow.physics.init_tau_ref",
+        "processes.iceflow.physics.sliding.tau_ref",
+    ),
+    (
+        "processes.iceflow.physics.init_arrhenius",
+        "processes.iceflow.physics.viscosity.arrhenius",
+    ),
+    (
+        "processes.iceflow.physics.enhancement_factor",
+        "processes.iceflow.physics.viscosity.enhancement_factor",
+    ),
+    (
+        "processes.iceflow.physics.exp_glen",
+        "processes.iceflow.physics.viscosity.exponent",
+    ),
+    (
+        "processes.iceflow.physics.regu_glen",
+        "processes.iceflow.physics.viscosity.regularization",
+    ),
 ]
 
 # Per-law sliding sub-blocks were flattened; presence of any of these
 # indicates the user is still on the pre-step-2 yaml shape.
 _SLIDING_LAWS = ("weertman", "regu_coulomb", "budd", "mohr_coulomb")
 for _law in _SLIDING_LAWS:
-    _LEGACY_KEYS.append((
-        f"processes.iceflow.physics.sliding.{_law}",
-        "processes.iceflow.physics.sliding (flat keys: regularization, "
-        "exponent, u_ref, plus law-specific mu/N_ref/q_exponent/phi/...)",
-    ))
+    _LEGACY_KEYS.append(
+        (
+            f"processes.iceflow.physics.sliding.{_law}",
+            "processes.iceflow.physics.sliding (flat keys: regularization, "
+            "exponent, u_ref, plus law-specific mu/N_ref/q_exponent/phi/...)",
+        )
+    )
 
 
 def check_legacy_keys(cfg: DictConfig) -> None:
@@ -51,7 +64,8 @@ def check_legacy_keys(cfg: DictConfig) -> None:
     user sees the message before anything else runs.
     """
     found = [
-        (old, new) for old, new in _LEGACY_KEYS
+        (old, new)
+        for old, new in _LEGACY_KEYS
         if OmegaConf.select(cfg, old, default=None) is not None
     ]
     if not found:

@@ -1,6 +1,0 @@
-description: Evolve the subglacial till water layer thickness driven by basal melt and drainage
-category: lithosphere
-community: false
-authors: [Guillaume Jouvet, Thomas Gregov]
-needs: [h_water_till, basal_melt_rate, thk, dt]
-updates: [h_water_till]

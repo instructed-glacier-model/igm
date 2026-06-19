@@ -5,8 +5,7 @@ from . import (
     enthalpy,
     arrhenius,
     stress,
-    h_water_till,
-    effective_pressure,
+    subglacial_hydrology,
 )
 from . import smb_accpdd, smb_oggm, smb_simple
 from . import smb, climate

@@ -236,7 +236,19 @@ def _bracket(
 
     def _loop_body(curr: _IntermediateResult):
         new_right = value_and_gradients_function(expansion_param * curr.right.x)
-        left = tf.cond(curr.stopped, lambda: curr.left, lambda: curr.right)
+
+        # If the evaluation is clamped (e.g. a box-bounded eval_fn that caps the
+        # step at alpha_max), the right endpoint cannot advance and expansion
+        # would spin until max_iterations doing one full evaluation per round.
+        # Collapse the interval onto the clamped point and stop; the degenerate
+        # interval is treated as converged-at-the-boundary downstream.
+        clamped = tf.logical_not(curr.stopped) & (new_right.x <= curr.right.x)
+
+        left = tf.cond(
+            curr.stopped,
+            lambda: curr.left,
+            lambda: tf.cond(clamped, lambda: new_right, lambda: curr.right),
+        )
         right = tf.cond(curr.stopped, lambda: curr.right, lambda: new_right)
 
         failed = curr.failed | _bad_nan(right)
@@ -247,7 +259,7 @@ def _bracket(
         return (
             _IntermediateResult(
                 iteration=curr.iteration + tf.cast(tf.logical_not(curr.stopped), tf.int32),
-                stopped=curr.stopped | failed | finished | bracketed | needs_bisect,
+                stopped=curr.stopped | failed | finished | bracketed | needs_bisect | clamped,
                 failed=failed,
                 num_evals=curr.num_evals + tf.constant(1, dtype=curr.num_evals.dtype),
                 left=left,
@@ -265,7 +277,17 @@ def _bracket(
     finished = _is_negative_inf(bracket_result.right.f)
     bracketed = _is_rising(bracket_result.right)
     needs_bisect = _needs_bisect(bracket_result.right, f_lim)
-    stopped = already_stopped | bracket_result.failed | finished | bracketed
+    # A degenerate interval (left == right, e.g. after a clamped expansion) has
+    # nothing left to bisect — running _bisect on it just burns an evaluation
+    # and flags a spurious failure.
+    degenerate = tf.equal(bracket_result.left.x, bracket_result.right.x)
+    stopped = (
+        already_stopped
+        | bracket_result.failed
+        | finished
+        | bracketed
+        | (degenerate & tf.logical_not(needs_bisect))
+    )
 
     left = tf.cond(
         finished,
@@ -587,14 +609,23 @@ def _prepare_args(
     value_and_gradients_function: Callable[[tf.Tensor], ValueAndGradient],
     initial_step_size: tf.Tensor,
     approximate_wolfe_threshold: tf.Tensor,
+    val_0: ValueAndGradient | None = None,
 ) -> tuple[ValueAndGradient, ValueAndGradient, tf.Tensor, tf.Tensor]:
     val_initial = value_and_gradients_function(initial_step_size)
-    val_0 = value_and_gradients_function(tf.zeros_like(val_initial.x))
+
+    # The value/slope at alpha=0 are usually already known by the caller
+    # (current cost and directional derivative); accept them to avoid a full
+    # re-evaluation per line search.
+    if val_0 is None:
+        val_0 = value_and_gradients_function(tf.zeros_like(val_initial.x))
+        num_evals = tf.constant(2, dtype=tf.int32)
+    else:
+        num_evals = tf.constant(1, dtype=tf.int32)
 
     # Same threshold used by TFP.
     f_lim = val_0.f + approximate_wolfe_threshold * tf.math.abs(val_0.f)
 
-    return val_0, val_initial, f_lim, tf.constant(2, dtype=tf.int32)
+    return val_0, val_initial, f_lim, num_evals
 
 
 def _select_output_alpha(result: HagerZhangLineSearchResult, dtype: tf.dtypes.DType) -> tf.Tensor:
@@ -642,6 +673,7 @@ class LineSearchHagerZhang(LineSearch):
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
+        val_0: ValueAndGradient | None = None,
     ) -> LineSearchResult:
         del p  # unused by the scalar line-search routine itself
 
@@ -661,6 +693,7 @@ class LineSearchHagerZhang(LineSearch):
             value_and_grad_fn,
             initial_step_size,
             threshold_use_approximate_wolfe_condition,
+            val_0=val_0,
         )
 
         valid_inputs = (
@@ -670,12 +703,25 @@ class LineSearchHagerZhang(LineSearch):
             & (val_initial.x > tf.zeros_like(val_initial.x))
         )
 
+        # A bounded eval_fn may clamp the requested step (returned x smaller
+        # than asked). If the clamped point still has negative slope and an
+        # acceptable value, the constrained minimizer along this direction is
+        # the clamp boundary itself: accept it immediately instead of letting
+        # bracketing/bisection spin against the bound.
+        clamped_initial = (
+            valid_inputs
+            & _is_finite(val_initial)
+            & (val_initial.x < initial_step_size)
+            & (val_initial.df < tf.zeros_like(val_initial.df))
+            & (val_initial.f <= f_lim)
+        )
+
         init_interval = HagerZhangLineSearchResult(
-            converged=tf.constant(False),
+            converged=clamped_initial,
             failed=tf.logical_not(valid_inputs),
             func_evals=prepare_evals,
             iterations=tf.constant(0, dtype=tf.int32),
-            left=val_0,
+            left=tf.cond(clamped_initial, lambda: val_initial, lambda: val_0),
             right=val_initial,
         )
 
@@ -709,7 +755,7 @@ class LineSearchHagerZhang(LineSearch):
             return _line_search_after_bracketing(
                 value_and_grad_fn,
                 line_search_args,
-                init_interval.left,
+                val_0,
                 f_lim,
                 max_iterations,
                 sufficient_decrease_param,
@@ -739,5 +785,6 @@ class LineSearchHagerZhang(LineSearch):
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
+        val_0: ValueAndGradient | None = None,
     ) -> tf.Tensor:
-        return self.search_result(w, p, value_and_grad_fn).alpha
+        return self.search_result(w, p, value_and_grad_fn, val_0=val_0).alpha

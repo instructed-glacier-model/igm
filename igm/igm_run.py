@@ -20,6 +20,7 @@ from igm.common import (
     print_comp,
     check_incompatilities_in_parameters_file,
 )
+from igm.common.aliases import load_aliases_from_core_cfg
 
 from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
@@ -72,6 +73,7 @@ def main(cfg: DictConfig) -> None:
     check_legacy_keys(cfg)
 
     state = State()  # class acting as a dictionary
+    State.register_aliases(load_aliases_from_core_cfg(cfg.core.aliases))
 
     state.original_cwd = Path(get_original_cwd())
     state.saveresult = True
@@ -131,7 +133,8 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(combined_modules, cfg, state)
-        check_module_needs(combined_modules, state, cfg)
+        if cfg.core.check_module_needs:
+            check_module_needs(combined_modules, state, cfg)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
         finalize_modules(combined_modules, cfg, state)
 

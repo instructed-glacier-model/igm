@@ -59,6 +59,7 @@ class InterfaceNetwork(InterfaceMapping):
                 iceflow_model = load_emulator_artifact(
                     cfg_unified.network.pretrained_path,
                     cfg=cfg,
+                    expected_inputs=cfg_unified.inputs,
                 )
             else:
                 warnings.warn(
@@ -85,7 +86,9 @@ class InterfaceNetwork(InterfaceMapping):
             iceflow_model = arch_cls(
                 input_names=list(cfg_unified.inputs),
                 Nz=int(cfg_numerics.Nz),
-                network_params=build_network_params(cfg, arch_cls),
+                network_params=build_network_params(
+                    cfg_unified.network, arch_cls, precision=cfg_numerics.precision
+                ),
             )
 
             # Attach the input normalizer. During pretraining the trainer

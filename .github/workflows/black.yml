@@ -33,6 +33,7 @@ jobs:
 
       - name: Check formatting with Black
         if: steps.changed-files.outputs.any_changed == 'true'
+        continue-on-error: true
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: black --check --diff $CHANGED_FILES

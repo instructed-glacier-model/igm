@@ -56,7 +56,7 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
                 f"Current inputs: {unified_inputs}. "
                 "Add 'effective_pressure' to that list. The field can be "
                 "loaded from the input NetCDF, computed by the "
-                "'effective_pressure' process module, or set by another "
+                "'subglacial_hydrology' process module, or set by another "
                 "module such as enthalpy."
             )
 

@@ -71,7 +71,7 @@ def run(cfg, state):
 
             if hasattr(state, var): 
 
-                varfl = vars(state)[var][mask].numpy()
+                varfl = getattr(state, var)[mask].numpy()
 
                 ftt = os.path.join(
                     directory,
