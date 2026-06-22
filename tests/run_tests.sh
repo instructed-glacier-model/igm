@@ -2,18 +2,23 @@
 # Run IGM tests with different profiles
 #
 # Usage: ./run_tests.sh [PROFILE] [PYTEST_ARGS...]
-#   PROFILE: fast, slow, all, unit, integration (default: fast)
+#   PROFILE: fast, slow, all, unit, integration (default: all)
 #   PYTEST_ARGS: any additional pytest arguments (e.g., -v, -k test_name, --pdb)
 #
 # Examples:
-#   ./run_tests.sh              # Run fast tests
-#   ./run_tests.sh fast -v      # Run fast tests with verbose output
+#   ./run_tests.sh              # Run all tests
+#   ./run_tests.sh fast -v      # Run fast tests (exclude slow) with verbose output
 #   ./run_tests.sh slow         # Run slow tests only
 #   ./run_tests.sh all          # Run all tests
 #   ./run_tests.sh fast -k adam # Run fast tests matching 'adam'
 
+# Always run from the repository root so package and distribution paths are
+# checked consistently, regardless of where this script is launched from.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}/.." || exit 1
+
 # Default profile
-PROFILE="${1:-fast}"
+PROFILE="${1:-all}"
 
 # Common pytest options
 # -W ignore warnings, -p no:cacheprovider to not create pycache (important for pypi deployment)
@@ -54,9 +59,9 @@ case "$PROFILE" in
         echo "Usage: $0 [PROFILE] [PYTEST_ARGS...]"
         echo ""
         echo "Profiles:"
-        echo "  fast        - Run only fast tests (excludes slow) [DEFAULT]"
+        echo "  fast        - Run only fast tests (excludes slow)"
         echo "  slow        - Run only slow tests"
-        echo "  all         - Run all tests"
+        echo "  all         - Run all tests [DEFAULT]"
         echo "  unit        - Run only unit tests"
         echo "  integration - Run only integration tests"
         echo ""
@@ -64,7 +69,7 @@ case "$PROFILE" in
         echo "  $0                    # Run fast tests"
         echo "  $0 fast -v            # Run fast tests verbosely"
         echo "  $0 slow               # Run slow tests"
-        echo "  $0 all                # Run all tests (previous default behavior)"
+        echo "  $0 all                # Run all tests"
         echo "  $0 all -k optimizer   # Run all tests matching 'optimizer'"
         echo "  $0 fast --durations=10 # Show 10 slowest fast tests"
         exit 1

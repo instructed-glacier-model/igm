@@ -29,16 +29,28 @@ jobs:
       - name: Install igm-model from PyPI
         run: pip install igm-model
       - name: Clone igm-examples
-        run: git clone --depth 1 https://github.com/instructed-glacier-model/igm-examples igm-examples
-      - name: Aletsch basic forward run
-        working-directory: igm-examples/aletsch-basic/experiment
-        run: igm_run +experiment=params processes.time.end=1902
-      - name: Aletsch forward run with particle tracking
-        working-directory: igm-examples/aletsch-basic/experiment
-        run: igm_run +experiment=params_id_adam processes.time.end=1902
-      - name: Aletsch realistic climate run
-        working-directory: igm-examples/aletsch-1880-2100/experiment
-        run: igm_run +experiment=params processes.time.end=1882
+        run: git clone --depth 1 --branch dev https://github.com/instructed-glacier-model/igm-examples igm-examples
+      - name: Aletsch step 0 - offline emulator
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step0 processes.time.end=1902
+      - name: Aletsch step 1 - simple SMB
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step1 processes.time.end=1902 outputs.live_dashboard.headless=true
+      - name: Aletsch step 2 - custom SMB module
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step2 processes.time.end=1902 outputs.live_dashboard.headless=true
+      - name: Aletsch step 3 - accumulation/melt SMB
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step3 processes.time.end=1882 outputs.live_dashboard.headless=true
+      - name: Aletsch step 4 - particle tracking
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step4 processes.time.end=1882
+      - name: Aletsch step 5 - parameter optimization (single run)
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step5 processes.time.end=1882
+      - name: Aletsch step 6 - realistic climate run
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step6 processes.time.end=1882
 
   smoke-source:
     runs-on: ubuntu-latest
@@ -58,13 +70,25 @@ jobs:
       - name: Install igm-model from source
         run: pip install -e .
       - name: Clone igm-examples
-        run: git clone --depth 1 https://github.com/instructed-glacier-model/igm-examples igm-examples
-      - name: Aletsch basic forward run
-        working-directory: igm-examples/aletsch-basic/experiment
-        run: igm_run +experiment=params processes.time.end=1902
-      - name: Aletsch forward run with particle tracking
-        working-directory: igm-examples/aletsch-basic/experiment
-        run: igm_run +experiment=params_id_adam processes.time.end=1902
-      - name: Aletsch realistic climate run
-        working-directory: igm-examples/aletsch-1880-2100/experiment
-        run: igm_run +experiment=params processes.time.end=1882
+        run: git clone --depth 1 --branch dev https://github.com/instructed-glacier-model/igm-examples igm-examples
+      - name: Aletsch step 0 - offline emulator
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step0 processes.time.end=1902
+      - name: Aletsch step 1 - simple SMB
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step1 processes.time.end=1902 outputs.live_dashboard.headless=true
+      - name: Aletsch step 2 - custom SMB module
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step2 processes.time.end=1902 outputs.live_dashboard.headless=true
+      - name: Aletsch step 3 - accumulation/melt SMB
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step3 processes.time.end=1882 outputs.live_dashboard.headless=true
+      - name: Aletsch step 4 - particle tracking
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step4 processes.time.end=1882
+      - name: Aletsch step 5 - parameter optimization (single run)
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step5 processes.time.end=1882
+      - name: Aletsch step 6 - realistic climate run
+        working-directory: igm-examples/aletsch
+        run: igm_run +experiment=params_step6 processes.time.end=1882

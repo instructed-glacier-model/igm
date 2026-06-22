@@ -111,12 +111,12 @@ class EmulatorArtifact(tf.keras.Model):
         self.basis_horizontal = basis_horizontal
 
         if core_model is None:
-            if self.architecture_name not in Architectures:
+            if self.architecture_name.lower() not in Architectures:
                 raise ValueError(
                     f"Unknown architecture {self.architecture_name!r}. "
                     f"Available: {list(Architectures.keys())}"
                 )
-            self.core = Architectures[self.architecture_name](**self.architecture_params)
+            self.core = Architectures[self.architecture_name.lower()](**self.architecture_params)
         else:
             self.core = core_model
 

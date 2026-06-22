@@ -50,4 +50,4 @@ jobs:
       - name: Download test data
         run: python tests/get_data.py
       - name: Run tests
-        run: python -m pytest -W ignore::DeprecationWarning -W ignore::RuntimeWarning -p no:cacheprovider
+        run: bash tests/run_tests.sh

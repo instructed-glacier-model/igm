@@ -4,8 +4,8 @@ from .nos import FNO
 from .dahunet import DahuNet
 
 Architectures = {
-    "CNN":     CNN,
-    "MLP":     MLP,
-    "FNO":     FNO,
+    "cnn":     CNN,
+    "mlp":     MLP,
+    "fno":     FNO,
     "dahunet": DahuNet,
 }
