@@ -19,7 +19,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="igm-model",
-    version="3.1.1",
+    version="3.1.2",
     author="Guillaume Jouvet",
     author_email="guillaume.jouvet@unil.ch",
     url="https://github.com/jouvetg/igm",
