@@ -10,6 +10,8 @@ iceflow module goes through the two helpers below so that the rest of the
 data_assimilation code is iceflow-method-agnostic.
 """
 
+import tensorflow as tf
+
 
 def _get_method(cfg):
     return cfg.processes.iceflow.method.lower()
@@ -62,7 +64,11 @@ def iceflow_retrain(cfg, state):
 
         solve_iceflow(cfg, state)
         evaluate_iceflow(cfg, state)
-        return state.cost[-1] if hasattr(state, "cost") and len(state.cost) > 0 else 0.0
+        # Return a tensor in all cases (a frozen / offline emulator does no
+        # retraining, so state.cost may be empty): keep cost["glen"] the same
+        # type as the other cost terms so the cost printers (which call
+        # .numpy()) work for both the on-line and off-line iceflow.
+        return state.cost[-1] if hasattr(state, "cost") and len(state.cost) > 0 else tf.constant(0.0)
 
     else:
         raise ValueError(

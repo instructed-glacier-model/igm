@@ -29,7 +29,9 @@ def print_costs(cfg, state, cost, i):
     #       + [f"{bound(cost[key].numpy()):>12.4f}" for key in keys]
     #     print("   ".join(L))
 
-    print("   ".join([f"{bound(cost[key].numpy()):>12.4f}" for key in keys]),file=f)
+    # bound() does float(), which accepts a TF scalar tensor or a python float,
+    # so this tolerates non-tensor cost terms (e.g. glen=0.0 for a frozen emulator).
+    print("   ".join([f"{bound(cost[key]):>12.4f}" for key in keys]),file=f)
 
 
 def print_info_data_assimilation(cfg, state, cost, i):
@@ -52,8 +54,8 @@ def print_info_data_assimilation(cfg, state, cost, i):
             "Vol": f"{vol:06.2f}",
         }
         for key in cost:
-            value = cost[key].numpy()
-            dic_postfix[key] = f"{min(float(value), 9999999):06.3f}"
+            value = float(cost[key])   # accepts a TF scalar tensor or a python float
+            dic_postfix[key] = f"{min(value, 9999999):06.3f}"
         
         state.pbar_costs.set_postfix(dic_postfix)
         state.pbar_costs.update(1)
