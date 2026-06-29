@@ -25,7 +25,7 @@ def resolve_friction_name(cfg, state=None) -> str:
          iceflow + thk-only DA).
       3. Else default to 'slidingco' (legacy).
     """
-    controls = list(cfg.processes.data_assimilation.control_list)
+    controls = list(cfg.assimilations.data_assimilation.control_list)
     has_sc = "slidingco" in controls
     has_tr = "tau_ref" in controls
     if has_sc and has_tr:
@@ -240,7 +240,7 @@ def apply_relaxation(cfg, state):
 
     print("-------------- Relaxation steps -----------------")
 
-    for ll in range(cfg.processes.data_assimilation.optimization.nb_relaxation_steps):
+    for ll in range(cfg.assimilations.data_assimilation.optimization.nb_relaxation_steps):
 
         # time += state.dt.numpy()
 

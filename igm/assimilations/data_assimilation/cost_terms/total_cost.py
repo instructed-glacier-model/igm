@@ -14,65 +14,65 @@ from .regu_arrhenius import regu_arrhenius
 def total_cost(cfg, state, cost, i):
 
     # misfit between surface velocity
-    if "velsurf" in cfg.processes.data_assimilation.cost_list:
+    if "velsurf" in cfg.assimilations.data_assimilation.cost_list:
         cost["velsurf"] = misfit_velsurf(cfg,state)
 
     # misfit between ice thickness profiles
-    if "thk" in cfg.processes.data_assimilation.cost_list:
+    if "thk" in cfg.assimilations.data_assimilation.cost_list:
         cost["thk"] = misfit_thk(cfg, state)
 
     # misfit between divergence of flux
-    if ("divfluxfcz" in cfg.processes.data_assimilation.cost_list):
+    if ("divfluxfcz" in cfg.assimilations.data_assimilation.cost_list):
         cost["divflux"] = cost_divfluxfcz(cfg, state, i)
-    elif ("divfluxobs" in cfg.processes.data_assimilation.cost_list):
+    elif ("divfluxobs" in cfg.assimilations.data_assimilation.cost_list):
         cost["divflux"] = cost_divfluxobs(cfg, state, i)
 
     # misfit between top ice surfaces
-    if "usurf" in cfg.processes.data_assimilation.cost_list:
+    if "usurf" in cfg.assimilations.data_assimilation.cost_list:
         cost["usurf"] = misfit_usurf(cfg, state) 
  
-    if "volume_init" in cfg.processes.data_assimilation.cost_list:
+    if "volume_init" in cfg.assimilations.data_assimilation.cost_list:
         cost["volume"] = misfit_vol(cfg, state)
 
     # add penalty terms to force obstacle constraints
-    if "penalty" in cfg.processes.data_assimilation.optimization.obstacle_constraint:
+    if "penalty" in cfg.assimilations.data_assimilation.optimization.obstacle_constraint:
 
         # force zero thikness outisde the mask
-        if "icemask" in cfg.processes.data_assimilation.cost_list:
+        if "icemask" in cfg.assimilations.data_assimilation.cost_list:
             cost["icemask"] = 10**10 * tf.math.reduce_mean( tf.where(state.icemaskobs > 0.5, 0.0, state.thk**2) )
 
         # Here one enforces non-negative ice thickness
-        if "thk" in cfg.processes.data_assimilation.control_list:
+        if "thk" in cfg.assimilations.data_assimilation.control_list:
             cost["thk_positive"] = \
             10**10 * tf.math.reduce_mean( tf.where(state.thk >= 0, 0.0, state.thk**2) )
 
         # Here one enforces non-negative friction control (slidingco or tau_ref)
         fric = state.da_friction
-        if (fric in cfg.processes.data_assimilation.control_list) & \
-            (not cfg.processes.data_assimilation.fitting.log_slidingco):
+        if (fric in cfg.assimilations.data_assimilation.control_list) & \
+            (not cfg.assimilations.data_assimilation.fitting.log_slidingco):
             fric_field = getattr(state, fric)
             cost[f"{fric}_positive"] = \
             10**10 * tf.math.reduce_mean( tf.where(fric_field >= 0, 0.0, fric_field**2) )
 
         # Here one enforces non-negative arrhenius
-        if ("arrhenius" in cfg.processes.data_assimilation.control_list):
+        if ("arrhenius" in cfg.assimilations.data_assimilation.control_list):
             cost["arrhenius_positive"] =  \
             10**10 * tf.math.reduce_mean( tf.where(state.arrhenius >= 1, 0.0, state.arrhenius**2) ) 
         
-    if cfg.processes.data_assimilation.cook.infer_params:
+    if cfg.assimilations.data_assimilation.cook.infer_params:
         cost["volume"] = cost_vol(cfg, state)
 
     # Here one adds a regularization terms for the bed toporgraphy to the cost function
-    if "thk" in cfg.processes.data_assimilation.control_list:
+    if "thk" in cfg.assimilations.data_assimilation.control_list:
         cost["thk_regu"] = regu_thk(cfg, state)
 
     # Here one adds a regularization terms for the friction control
     # (slidingco or tau_ref) to the cost function
-    if state.da_friction in cfg.processes.data_assimilation.control_list:
+    if state.da_friction in cfg.assimilations.data_assimilation.control_list:
         cost["slid_regu"] = regu_slidingco(cfg, state)
 
     # Here one adds a regularization terms for arrhenius to the cost function
-    if "arrhenius" in cfg.processes.data_assimilation.control_list:
+    if "arrhenius" in cfg.assimilations.data_assimilation.control_list:
         cost["arrh_regu"] = regu_arrhenius(cfg, state) 
 
     return tf.reduce_sum(tf.convert_to_tensor(list(cost.values())))

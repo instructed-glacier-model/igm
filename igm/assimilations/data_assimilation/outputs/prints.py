@@ -24,7 +24,7 @@ def print_costs(cfg, state, cost, i):
         # print("Costs:     " + "   ".join(L))
         print("   ".join([f"{key:>12}" for key in keys]),file=f)
 
-    # if i % cfg.processes.data_assimilation.output.freq == 0:
+    # if i % cfg.assimilations.data_assimilation.output.freq == 0:
     #     L = [datetime.datetime.now().strftime("%H:%M:%S"),f"{i:0>{8}}",f"{vol:>8.4f}"] \
     #       + [f"{bound(cost[key].numpy()):>12.4f}" for key in keys]
     #     print("   ".join(L))
@@ -39,7 +39,7 @@ def print_info_data_assimilation(cfg, state, cost, i):
     vol = (np.sum(state.thk) * (state.dx**2) / 1e9).numpy()
 
     # Initialize tqdm bar if needed
-    if i % cfg.processes.data_assimilation.output.freq == 0:
+    if i % cfg.assimilations.data_assimilation.output.freq == 0:
         if hasattr(state, "pbar_costs"):
             state.pbar_costs.close()
         state.pbar_costs = tqdm(

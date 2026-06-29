@@ -12,7 +12,7 @@ def misfit_usurf(cfg,state):
     return 0.5 * tf.reduce_mean(
         (
             (state.usurf[ACT] - state.usurfobs[ACT])
-            / cfg.processes.data_assimilation.fitting.usurfobs_std
+            / cfg.assimilations.data_assimilation.fitting.usurfobs_std
         )
         ** 2
     )

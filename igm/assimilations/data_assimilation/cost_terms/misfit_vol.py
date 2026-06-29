@@ -11,4 +11,4 @@ def misfit_vol(cfg,state):
 
     volmod = tf.reduce_sum(state.thk)
  
-    return 0.5 * ( ( voltar - volmod ) / (voltar * cfg.processes.data_assimilation.fitting.volobsprop_std ) )** 2
+    return 0.5 * ( ( voltar - volmod ) / (voltar * cfg.assimilations.data_assimilation.fitting.volobsprop_std ) )** 2

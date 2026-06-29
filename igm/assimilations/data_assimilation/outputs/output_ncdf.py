@@ -17,16 +17,16 @@ def update_ncdf_optimize(cfg, state, it):
     if hasattr(state, "logger"):
         state.logger.info("Initialize  and write NCDF output Files")
         
-    if "velbase_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+    if "velbase_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
         state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
 
-    if "velsurf_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+    if "velsurf_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
         state.velsurf_mag = getmag(state.uvelsurf, state.vvelsurf)
 
-    if "velsurfobs_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+    if "velsurfobs_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
         state.velsurfobs_mag = getmag(state.uvelsurfobs, state.vvelsurfobs)
     
-    if "sliding_ratio" in cfg.processes.data_assimilation.output.vars_to_save:
+    if "sliding_ratio" in cfg.assimilations.data_assimilation.output.vars_to_save:
         state.sliding_ratio = tf.where(state.velsurf_mag > 10, state.velbase_mag / state.velsurf_mag, np.nan)
 
     if it == 0:
@@ -57,7 +57,7 @@ def update_ncdf_optimize(cfg, state, it):
         E.axis = "X"
         E[:] = state.x.numpy()
 
-        for var in cfg.processes.data_assimilation.output.vars_to_save:
+        for var in cfg.assimilations.data_assimilation.output.vars_to_save:
             E = nc.createVariable(
                 var, np.dtype("float32").char, ("iterations", "y", "x")
             )
@@ -72,7 +72,7 @@ def update_ncdf_optimize(cfg, state, it):
 
         nc.variables["iterations"][d] = it
 
-        for var in cfg.processes.data_assimilation.output.vars_to_save:
+        for var in cfg.assimilations.data_assimilation.output.vars_to_save:
             nc.variables[var][d, :, :] = getattr(state, var).numpy()
 
         nc.close()
@@ -82,21 +82,21 @@ def output_ncdf_optimize_final(cfg, state):
     """
     Write final geology after optimizing
     """
-    if cfg.processes.data_assimilation.output.save_iterat_in_ncdf==False:
-        if "velbase_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+    if cfg.assimilations.data_assimilation.output.save_iterat_in_ncdf==False:
+        if "velbase_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
             state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
 
-        if "velsurf_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+        if "velsurf_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
             state.velsurf_mag = getmag(state.uvelsurf, state.vvelsurf)
 
-        if "velsurfobs_mag" in cfg.processes.data_assimilation.output.vars_to_save:
+        if "velsurfobs_mag" in cfg.assimilations.data_assimilation.output.vars_to_save:
             state.velsurfobs_mag = getmag(state.uvelsurfobs, state.vvelsurfobs)
         
-        if "sliding_ratio" in cfg.processes.data_assimilation.output.vars_to_save:
+        if "sliding_ratio" in cfg.assimilations.data_assimilation.output.vars_to_save:
             state.sliding_ratio = tf.where(state.velsurf_mag > 10, state.velbase_mag / state.velsurf_mag, np.nan)
 
     nc = Dataset(
-        cfg.processes.data_assimilation.output.save_result_in_ncdf,
+        cfg.assimilations.data_assimilation.output.save_result_in_ncdf,
         "w",
         format="NETCDF4",
     )
@@ -115,7 +115,7 @@ def output_ncdf_optimize_final(cfg, state):
     E.axis = "X"
     E[:] = state.x.numpy()
 
-    for v in cfg.processes.data_assimilation.output.vars_to_save:
+    for v in cfg.assimilations.data_assimilation.output.vars_to_save:
         if hasattr(state, v):
             E = nc.createVariable(v, np.dtype("float32").char, ("y", "x"))
             E.standard_name = v

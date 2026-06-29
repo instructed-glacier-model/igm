@@ -10,7 +10,7 @@ from igm.utils.grad.compute_divflux import compute_divflux
 def cost_divfluxfcz(cfg,state,i):
 
     divflux = compute_divflux(
-        state.ubar, state.vbar, state.thk, state.dx, state.dx, method=cfg.processes.data_assimilation.divflux.method
+        state.ubar, state.vbar, state.thk, state.dx, state.dx, method=cfg.assimilations.data_assimilation.divflux.method
     )
  
     ACT = state.icemaskobs > 0.5
@@ -28,12 +28,12 @@ def cost_divfluxfcz(cfg,state,i):
     
     ACT = state.icemaskobs > 0.5
     COST_D = 0.5 * tf.reduce_mean(
-        ((divfluxtar[ACT] - divflux[ACT]) / cfg.processes.data_assimilation.fitting.divfluxobs_std) ** 2
+        ((divfluxtar[ACT] - divflux[ACT]) / cfg.assimilations.data_assimilation.fitting.divfluxobs_std) ** 2
     )
 
-    if cfg.processes.data_assimilation.divflux.force_zero_sum:
+    if cfg.assimilations.data_assimilation.divflux.force_zero_sum:
             ACT = state.icemaskobs > 0.5
-            COST_D += 0.5 * 1000 * tf.reduce_mean(divflux[ACT] / cfg.processes.data_assimilation.fitting.divfluxobs_std) ** 2
+            COST_D += 0.5 * 1000 * tf.reduce_mean(divflux[ACT] / cfg.assimilations.data_assimilation.fitting.divfluxobs_std) ** 2
 
     return COST_D
  

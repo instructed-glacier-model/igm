@@ -25,14 +25,14 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         )
 
     sc = {}
-    sc["thk"] = cfg.processes.data_assimilation.scaling.thk
-    sc["usurf"] = cfg.processes.data_assimilation.scaling.usurf
-    sc[state.da_friction] = cfg.processes.data_assimilation.scaling[state.da_friction]
-    sc["arrhenius"] = cfg.processes.data_assimilation.scaling.arrhenius
+    sc["thk"] = cfg.assimilations.data_assimilation.scaling.thk
+    sc["usurf"] = cfg.assimilations.data_assimilation.scaling.usurf
+    sc[state.da_friction] = cfg.assimilations.data_assimilation.scaling[state.da_friction]
+    sc["arrhenius"] = cfg.assimilations.data_assimilation.scaling.arrhenius
 
-    for f in cfg.processes.data_assimilation.control_list:
+    for f in cfg.assimilations.data_assimilation.control_list:
         setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
-        if cfg.processes.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
+        if cfg.assimilations.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
             setattr(state, f + "_sc", tf.Variable(tf.sqrt(getattr(state, f) / sc[f])))
         else:
             setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
@@ -43,11 +43,11 @@ def optimize_update_lbfgs(cfg, state, cost, i):
 
         cost = {}
 
-        for i, f in enumerate(cfg.processes.data_assimilation.control_list):
+        for i, f in enumerate(cfg.assimilations.data_assimilation.control_list):
             setattr(state, f + "_sc", controls[i])
 
-        for f in cfg.processes.data_assimilation.control_list:
-            if cfg.processes.data_assimilation.fitting.log_slidingco & (
+        for f in cfg.assimilations.data_assimilation.control_list:
+            if cfg.assimilations.data_assimilation.fitting.log_slidingco & (
                 f == state.da_friction
             ):
                 setattr(state, f, (getattr(state, f + "_sc") ** 2) * sc[f])
@@ -57,7 +57,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         iceflow_evaluate(cfg, state)
 
         if (
-            not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
+            not cfg.assimilations.data_assimilation.regularization.smooth_anisotropy_factor
             == 1
         ):
             compute_flow_direction_for_anisotropic_smoothing_vel(state)
@@ -72,7 +72,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         return cost, gradients
 
     controls = tf.stack(
-        [getattr(state, f + "_sc") for f in cfg.processes.data_assimilation.control_list],
+        [getattr(state, f + "_sc") for f in cfg.assimilations.data_assimilation.control_list],
         axis=0,
     )
 
@@ -85,7 +85,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
 
     controls = optimizer.position
 
-    for i, f in enumerate(cfg.processes.data_assimilation.control_list):
+    for i, f in enumerate(cfg.assimilations.data_assimilation.control_list):
         setattr(state, f + "_sc", controls[i])
 
     state.divflux = compute_divflux(
@@ -94,5 +94,5 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         state.thk,
         state.dx,
         state.dx,
-        method=cfg.processes.data_assimilation.divflux.method,
+        method=cfg.assimilations.data_assimilation.divflux.method,
     )

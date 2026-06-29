@@ -63,7 +63,7 @@ def update_plot_inversion(cfg, state, i):
     #########################################################
 
     if i == 0:
-        if cfg.processes.data_assimilation.output.editor_plot2d == "vs":
+        if cfg.assimilations.data_assimilation.output.editor_plot2d == "vs":
             plt.ion()  # enable interactive mode
 
         # state.fig = plt.figure()
@@ -104,7 +104,7 @@ def update_plot_inversion(cfg, state, i):
 
     from matplotlib import colors
 
-    if "arrhenius" in cfg.processes.data_assimilation.control_list:
+    if "arrhenius" in cfg.assimilations.data_assimilation.control_list:
 
         im1 = ax2.imshow(
             np.ma.masked_where(state.thk == 0, state.arrhenius),
@@ -222,8 +222,8 @@ def update_plot_inversion(cfg, state, i):
 
     #########################################################
 
-    if cfg.processes.data_assimilation.output.plot2d_live:
-        if cfg.processes.data_assimilation.output.editor_plot2d == "vs":
+    if cfg.assimilations.data_assimilation.output.plot2d_live:
+        if cfg.assimilations.data_assimilation.output.editor_plot2d == "vs":
             state.fig.canvas.draw()  # re-drawing the figure
             state.fig.canvas.flush_events()  # to flush the GUI events
         else:
@@ -253,7 +253,7 @@ def update_plot_inversion_simple(cfg, state, i):
     #########################################################
 
     if i == 0:
-        if cfg.processes.data_assimilation.output.editor_plot2d == "vs":
+        if cfg.assimilations.data_assimilation.output.editor_plot2d == "vs":
             plt.ion()  # enable interactive mode
 
         # state.fig = plt.figure()
@@ -317,8 +317,8 @@ def update_plot_inversion_simple(cfg, state, i):
 
     #########################################################
 
-    if cfg.processes.data_assimilation.output.plot2d_live:
-        if cfg.processes.data_assimilation.output.editor_plot2d == "vs":
+    if cfg.assimilations.data_assimilation.output.plot2d_live:
+        if cfg.assimilations.data_assimilation.output.editor_plot2d == "vs":
             state.fig.canvas.draw()  # re-drawing the figure
             state.fig.canvas.flush_events()  # to flush the GUI events
         else:

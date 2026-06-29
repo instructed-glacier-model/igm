@@ -15,16 +15,16 @@ def optimize_initialize(cfg, state):
     # state.usurfobs = tf.Variable(gaussian_filter(state.usurfobs.numpy(), 3, mode="reflect"))
     # state.usurf    = tf.Variable(gaussian_filter(state.usurf.numpy(), 3, mode="reflect"))
 
-    assert ("usurf" in cfg.processes.data_assimilation.cost_list) == ("usurf" in cfg.processes.data_assimilation.control_list)
+    assert ("usurf" in cfg.assimilations.data_assimilation.cost_list) == ("usurf" in cfg.assimilations.data_assimilation.control_list)
 
     # make sure that there are least some profiles in thkobs
     if tf.reduce_all(tf.math.is_nan(state.thkobs)):
-        if "thk" in cfg.processes.data_assimilation.cost_list:
-            cfg.processes.data_assimilation.cost_list.remove("thk")
+        if "thk" in cfg.assimilations.data_assimilation.cost_list:
+            cfg.assimilations.data_assimilation.cost_list.remove("thk")
 
     ###### PREPARE DATA PRIOR OPTIMIZATIONS
  
-    if "divfluxobs" in cfg.processes.data_assimilation.cost_list:
+    if "divfluxobs" in cfg.assimilations.data_assimilation.cost_list:
         if not hasattr(state, "divfluxobs"):
             state.divfluxobs = state.smb - state.dhdt
 
@@ -33,11 +33,11 @@ def optimize_initialize(cfg, state):
     else:
         state.thk = tf.zeros_like(state.thk)
 
-    if cfg.processes.data_assimilation.optimization.init_zero_thk:
+    if cfg.assimilations.data_assimilation.optimization.init_zero_thk:
         state.thk = state.thk*0.0
         
     # this is a density matrix that will be used to weight the cost function
-    if cfg.processes.data_assimilation.fitting.uniformize_thkobs:
+    if cfg.assimilations.data_assimilation.fitting.uniformize_thkobs:
         state.dens_thkobs = create_density_matrix(state.thkobs, kernel_size=5)
         state.dens_thkobs = tf.where(state.dens_thkobs>0, 1.0/state.dens_thkobs, 0.0)
         state.dens_thkobs = tf.where(tf.math.is_nan(state.thkobs),0.0,state.dens_thkobs)
@@ -50,7 +50,7 @@ def optimize_initialize(cfg, state):
     setattr(state, fric, tf.where(state.icemaskobs == 2, 0.0, getattr(state, fric)))
     
     # this will infer values for slidingco and convexity weight based on the ice velocity and an empirical relationship from test glaciers with thickness profiles
-    if cfg.processes.data_assimilation.cook.infer_params:
+    if cfg.assimilations.data_assimilation.cook.infer_params:
         #Because OGGM will index icemask from 0
         dummy = infer_params_cook(state, cfg)
         if tf.reduce_max(state.icemask).numpy() < 1:
@@ -58,13 +58,13 @@ def optimize_initialize(cfg, state):
     
     if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
         state.optimizer = tf.keras.optimizers.Adam(
-            learning_rate=cfg.processes.data_assimilation.optimization.step_size,
-            epsilon=cfg.processes.data_assimilation.optimization.optimizer_epsilon,
-            clipnorm=cfg.processes.data_assimilation.optimization.optimizer_clipnorm
+            learning_rate=cfg.assimilations.data_assimilation.optimization.step_size,
+            epsilon=cfg.assimilations.data_assimilation.optimization.optimizer_epsilon,
+            clipnorm=cfg.assimilations.data_assimilation.optimization.optimizer_clipnorm
             )
     else:
         state.optimizer = tf.keras.optimizers.legacy.Adam(
-            learning_rate=cfg.processes.data_assimilation.optimization.step_size,
-            epsilon=cfg.processes.data_assimilation.optimization.optimizer_epsilon,
-            clipnorm=cfg.processes.data_assimilation.optimization.optimizer_clipnorm
+            learning_rate=cfg.assimilations.data_assimilation.optimization.step_size,
+            epsilon=cfg.assimilations.data_assimilation.optimization.optimizer_epsilon,
+            clipnorm=cfg.assimilations.data_assimilation.optimization.optimizer_clipnorm
         )

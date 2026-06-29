@@ -11,6 +11,6 @@ def misfit_thk(cfg,state):
     ACT = ~tf.math.is_nan(state.thkobs)
 
     return 0.5 * tf.reduce_mean( state.dens_thkobs[ACT] * 
-        ((state.thkobs[ACT] - state.thk[ACT]) / cfg.processes.data_assimilation.fitting.thkobs_std) ** 2
+        ((state.thkobs[ACT] - state.thk[ACT]) / cfg.assimilations.data_assimilation.fitting.thkobs_std) ** 2
     )
 

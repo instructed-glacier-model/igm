@@ -22,7 +22,7 @@ def infer_params_cook(state, cfg):
     state.convexity_weights = tf.experimental.numpy.copy(state.icemaskobs)
     state.volumes = tf.experimental.numpy.copy(state.icemaskobs)
     state.volume_weights = tf.experimental.numpy.copy(state.icemaskobs)
-    state.volume_weights = tf.where(state.icemaskobs > 0, cfg.processes.data_assimilation.opti_vol_std, 0.0)
+    state.volume_weights = tf.where(state.icemaskobs > 0, cfg.assimilations.data_assimilation.opti_vol_std, 0.0)
     
     
     #Get some initial information
@@ -97,7 +97,7 @@ def infer_params_cook(state, cfg):
         AvgSlope = np.round(tf.reduce_max(state.slopes[state.icemaskobs==i]).numpy(), decimals=1)
         #print("Average Slope is: ", AvgSlope)
         
-        Tidewater = cfg.processes.data_assimilation.opti_tidewater_glacier
+        Tidewater = cfg.assimilations.data_assimilation.opti_tidewater_glacier
         
         #Do regressions
         if hasattr(state, "tidewatermask"):
