@@ -177,6 +177,7 @@ def test_train_save_load_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     # Mirror the cfg used during training (iceflow.yaml defaults + params.yaml overrides).
     _load_cfg = OmegaConf.create({
         "processes": {"iceflow": {
+            "physics": {"sliding": {"u_ref": 100.0}},
             "numerics": {"Nz": _NZ, "basis_vertical": "Lagrange", "basis_horizontal": "central"},
             "unified": {"inputs": list(_INPUT_NAMES)},
         }}

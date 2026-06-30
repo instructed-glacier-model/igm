@@ -110,7 +110,7 @@ class EmulatorArtifact(tf.keras.Model):
         self.architecture_params = dict(architecture_params)
         self.basis_vertical = basis_vertical
         self.basis_horizontal = basis_horizontal
-        self.u_ref = float(u_ref)
+        self.u_ref = float(u_ref) if u_ref is not None else None
 
         if core_model is None:
             if self.architecture_name.lower() not in Architectures:
