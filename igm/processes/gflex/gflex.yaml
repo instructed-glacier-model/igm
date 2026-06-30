@@ -1,6 +1,6 @@
 description: Compute isostatic bedrock adjustment to ice load via thin-plate flexure
 category: lithosphere
-community: true
+type: community #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Jürgen Mey]
 needs: [thk, topg]
 updates: [topg, usurf]

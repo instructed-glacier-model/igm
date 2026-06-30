@@ -1,6 +1,6 @@
 description: Advance the simulation clock with an adaptive CFL time step
 category: time
-community: false
+type: core #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet]
 needs: [ubar, vbar]
 updates: [t, dt]

@@ -1,6 +1,6 @@
 description: Temperature-index SMB calibrated against geodetic mass balance data via OGGM
 category: atmosphere
-community: true
+type: deprecated #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet, Fabien Maussion]
 needs: [air_temp, precipitation]
 updates: [smb]

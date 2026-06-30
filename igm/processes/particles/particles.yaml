@@ -1,6 +1,6 @@
 description: Advect Lagrangian particles to trace flow paths and estimate ice age
 category: misc
-community: false
+type: core #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet, Claire-Mathile Stücki, Brandon Finley]
 needs: [U, V, W, thk]
 updates: [particle]

@@ -1,6 +1,6 @@
 description: Invert for ice thickness and flow parameters from observed surface velocities
 category: assimilations
-community: false
+type: core #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet, Samuel Cook]
 needs: [usurf, thk, topg, ubar, vbar]
 updates: [tau_ref]

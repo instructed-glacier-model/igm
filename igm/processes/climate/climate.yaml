@@ -1,5 +1,0 @@
-description: Unified climate module — dispatches to simple, oggm, glacialindex, or station based on the `method` parameter
-category: atmosphere
-community: false
-needs: [t, usurf]
-updates: [air_temp, air_temp_sd, precipitation]

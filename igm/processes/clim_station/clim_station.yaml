@@ -1,5 +1,5 @@
 description: Generate temperature and precipitation fields from station-type forcing with elevation lapse rate
 category: atmosphere
-community: true
+type: deprecated #  `core`, `community`, `experimental`, or `deprecated`
 needs: [t, usurf]
 updates: [air_temp, air_temp_sd, precipitation]

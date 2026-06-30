@@ -1,6 +1,6 @@
 description: Solve the 3D enthalpy equation for temperature, water content, and basal melt
 category: cryosphere
-community: false
+type: core #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet, Thomas Gregov, Lucie Bacchin]
 needs: [thk, U, V, W, arrhenius]
 updates: [E, basal_melt_rate]

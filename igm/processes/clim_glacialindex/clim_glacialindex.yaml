@@ -1,6 +1,6 @@
 description: Interpolate two climate snapshots using a glacial index for palaeo-glacier modelling
 category: atmosphere
-community: true
+type: deprecated #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet]
 needs: [t, usurf]
 updates: [air_temp, air_temp_sd, precipitation]
