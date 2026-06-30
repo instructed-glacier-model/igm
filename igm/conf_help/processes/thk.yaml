@@ -1,7 +1,7 @@
 slope_type:
   Type: string
   Units: dimless
-  Description: "Type of slope limiter for the ice thickness equation (godunov or superbee). Used in stock mode (`calving_front: false`)."
+  Description: "Type of slope limiter for the ice thickness equation (godunov or superbee)."
 ratio_density:
   Type: float
   Units: dimless
