@@ -13,6 +13,7 @@ import igm
 from igm.common import State
 from igm.common.runner.configuration.loader import load_yaml_recursive
 from igm.processes.enthalpy import enthalpy, compute_variables_enthalpy_state
+from igm.processes import subglacial_hydrology
 
 
 def _load_config():
@@ -32,17 +33,20 @@ def _init_state(Ny, Nx, H, dt, T_air):
     state.dx = tf.Variable(1000.0, trainable=False)
     state.dX = tf.Variable(1000.0 * tf.ones((Ny, Nx)), trainable=False)
     state.h_water_till = tf.zeros((Ny, Nx))
+    state.tau_ref = tf.zeros((Ny, Nx))
     return state
 
 
 def _configure_enthalpy_solver(cfg, drain=False, refreezing=True, correct_w=False):
     """Configure common enthalpy solver settings."""
     cfg.processes.enthalpy.thermal.K_ratio = 1e-5
-    cfg.processes.enthalpy.till.hydro.h_water_till_max = 200.0
-    cfg.processes.enthalpy.till.hydro.drainage_rate = 0.0
     cfg.processes.enthalpy.drainage.drain_ice_column = drain
     cfg.processes.enthalpy.solver.allow_basal_refreezing = refreezing
     cfg.processes.enthalpy.solver.correct_w_for_melt = correct_w
+    # Till storage: large cap and no drainage to match the Kleiner benchmark setup
+    cfg.processes.subglacial_hydrology.mode = "till_storage"
+    cfg.processes.subglacial_hydrology.till_storage.h_water_till_max = 200.0
+    cfg.processes.subglacial_hydrology.till_storage.drainage_rate = 0.0
 
 
 def setup_experiment_a(dt: float = 200.0, Nz_E: int = 50):
@@ -77,8 +81,6 @@ def setup_experiment_a(dt: float = 200.0, Nz_E: int = 50):
     T_ref = cfg.processes.enthalpy.thermal.T_ref
     T_init = 243.15 * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
-    state.T = T_init
-    state.omega = tf.zeros_like(state.E)
 
     return cfg, state
 
@@ -127,8 +129,6 @@ def setup_experiment_b(Nz_E: int = 500):
     T_ref = cfg.processes.enthalpy.thermal.T_ref
     T_init = (273.15 - 1.5) * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
-    state.T = T_init
-    state.omega = tf.zeros_like(state.E)
     state.arrhenius = tf.constant(A * 1e18 * spy, dtype=tf.float32) * tf.ones((Ny, Nx))
     enthalpy.initialize(cfg, state)
 
@@ -148,6 +148,7 @@ def run_simulation_a(cfg, state, dt: float):
         state.air_temp.assign(T_surface * tf.ones((1, 2, 2)))
 
         enthalpy.update(cfg, state)
+        subglacial_hydrology.update(cfg, state)
         compute_variables_enthalpy_state(cfg, state)
 
         results["time"].append(t)
@@ -174,6 +175,7 @@ def run_simulation_b(cfg, state, max_iter: int = 1500, tol: float = 1e-3):
         state.t.assign(it * dt)
         state.arrhenius = (A * 1e18 * spy) * tf.ones_like(state.arrhenius)
         enthalpy.update(cfg, state)
+        subglacial_hydrology.update(cfg, state)
 
         if it % 10 == 0 and it > 0:
             max_change = np.max(np.abs(state.E.numpy() - prev_E))

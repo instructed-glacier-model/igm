@@ -51,29 +51,50 @@ def check_incompatilities_in_parameters_file(cfg, path):
 
         return dict(recurse(d, parent_key))
 
-    def compare_configs(cfg, cfgo, path="", excluded_keys=["cwd", "config"]):
+    def compare_configs(
+        cfg,
+        cfgo,
+        path="",
+        excluded_keys=("cwd", "config"),
+        open_dict_paths=("processes.iceflow.emulator.network.params",),
+    ):
         for key in cfg:
             full_path = f"{path}.{key}" if path else key
-            if key not in excluded_keys:
-                if key not in cfgo:
-                    # Get possible matches for the missing key
-                    posskeys = flatten_dict(
-                        OmegaConf.to_container(cfgo, resolve=False)
-                    ).keys()
-                    suggestions = get_close_matches(key, posskeys, n=5, cutoff=0.2)
-                    suggestions = [path + "." + s for s in suggestions]
-                    suggestion_msg = (
-                        f" Did you mean '{suggestions}'?" if suggestions else ""
-                    )
+
+            if key in excluded_keys:
+                continue
+
+            if key not in cfgo:
+                posskeys = flatten_dict(
+                    OmegaConf.to_container(cfgo, resolve=False)
+                ).keys()
+                suggestions = get_close_matches(key, posskeys, n=5, cutoff=0.2)
+                suggestions = [path + "." + s for s in suggestions]
+                suggestion_msg = (
+                    f" Did you mean '{suggestions}'?" if suggestions else ""
+                )
+                raise ValueError(
+                    f"Parameter '{full_path}' does not exist.\n {suggestion_msg}"
+                )
+
+            # This subtree is intentionally open / architecture-specific.
+            # We validate that the parent key exists, but we do not validate
+            # the child keys against the global schema.
+            if full_path in open_dict_paths:
+                continue
+
+            if OmegaConf.is_dict(cfg[key]):
+                if not OmegaConf.is_dict(cfgo[key]):
                     raise ValueError(
-                        f"Parameter '{full_path}' does not exist.\n {suggestion_msg}"
+                        f"Configuration mismatch at '{full_path}': expected a dictionary-like config."
                     )
-                if OmegaConf.is_dict(cfg[key]):
-                    if not OmegaConf.is_dict(cfgo[key]):
-                        raise ValueError(
-                            f"Configuration mismatch at '{full_path}': expected a dictionary-like config."
-                        )
-                    compare_configs(cfg[key], cfgo[key], full_path)
+                compare_configs(
+                    cfg[key],
+                    cfgo[key],
+                    full_path,
+                    excluded_keys=excluded_keys,
+                    open_dict_paths=open_dict_paths,
+                )
 
     ############################
 

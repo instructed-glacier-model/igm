@@ -3,7 +3,8 @@ import zipfile
 import pytest
 
 ROOT_PACKAGE = "igm"  # top-level package
-DIST_DIR = "dist"      # where the wheel is built
+DIST_DIR = "dist"  # where the wheel is built
+
 
 def get_all_subpackages(root_dir):
     """Recursively find all subdirectories containing .py files"""
@@ -14,6 +15,7 @@ def get_all_subpackages(root_dir):
             subpackages.append(rel_path.replace(os.sep, "."))
     return subpackages
 
+
 def test_all_subpackages_have_init():
     """Ensure every subpackage directory has __init__.py"""
     missing = []
@@ -21,6 +23,7 @@ def test_all_subpackages_have_init():
         if any(f.endswith(".py") for f in filenames) and "__init__.py" not in filenames:
             missing.append(dirpath)
     assert not missing, f"Missing __init__.py in: {missing}"
+
 
 @pytest.mark.parametrize("subpkg", get_all_subpackages(ROOT_PACKAGE))
 def test_subpackages_in_wheel(subpkg):
@@ -36,5 +39,7 @@ def test_subpackages_in_wheel(subpkg):
 
     # Construct expected path
     # e.g., igm/processes/iceflow/emulate/__init__.py
-    pkg_path = os.path.join(ROOT_PACKAGE, *subpkg.split("."), "__init__.py").replace(os.sep, "/")
+    pkg_path = os.path.join(ROOT_PACKAGE, *subpkg.split("."), "__init__.py").replace(
+        os.sep, "/"
+    )
     assert pkg_path in whl_files, f"Package {subpkg} missing from wheel"

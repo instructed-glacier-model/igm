@@ -1,0 +1,6 @@
+description: Estimate glacial erosion rates and update bedrock topography from basal sliding velocities
+category: lithosphere
+type: community #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet]
+needs: [U, V, thk]
+updates: [topg, usurf]

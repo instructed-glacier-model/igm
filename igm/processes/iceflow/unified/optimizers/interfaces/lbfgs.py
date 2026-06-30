@@ -27,7 +27,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         cfg_numerics = cfg.processes.iceflow.numerics
 
         if isinstance(map, MappingDataAssimilation):
-            nbit = cfg.processes.data_assimilation_SR.optimization.nbitmax
+            nbit = cfg.assimilations.field_inversion.optimization.nbitmax
         else:
             nbit = cfg_unified.nbit
 

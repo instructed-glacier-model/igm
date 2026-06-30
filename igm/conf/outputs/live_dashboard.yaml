@@ -6,4 +6,5 @@ live_dashboard:
   vel_max: 500.0          # velocity colorbar max (m/a)
   thk_max: 800.0          # thickness colorbar max (m)
   save_frames: false      # also save PNG frames
+  headless: false         # use non-interactive Agg backend (for CI / no-display environments)
   window_size: [1200, 800] # 3d mode window size

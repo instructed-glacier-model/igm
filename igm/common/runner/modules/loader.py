@@ -17,10 +17,11 @@ from .validator import validate_module
 
 def load_modules(
     cfg, state
-) -> Tuple[List[ModuleType], List[ModuleType], List[ModuleType]]:
+) -> Tuple[List[ModuleType], List[ModuleType], List[ModuleType], List[ModuleType]]:
     """Returns a list of actionable modules to then apply the update, initialize, finalize functions on for IGM."""
     imported_input_modules = []
     imported_modules = []
+    imported_assimilation_modules = []
     imported_output_modules = []
 
     root_foldername = (
@@ -30,11 +31,13 @@ def load_modules(
     # Add custom modules folder to sys.path
     user_input_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.input_modules_foldername}"
     user_process_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.process_modules_foldername}"
+    user_assimilation_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.assimilation_modules_foldername}"
     user_output_modules_folder = f"{root_foldername}/{cfg.core.structure.code_foldername}/{cfg.core.structure.output_modules_foldername}"
 
     custom_modules_folders = [
         user_input_modules_folder,
         user_process_modules_folder,
+        user_assimilation_modules_folder,
         user_output_modules_folder,
     ]
 
@@ -74,6 +77,22 @@ def load_modules(
             module_type="processes",
         )
 
+    if "assimilations" in cfg:
+        load_user_modules(
+            cfg=cfg,
+            state=state,
+            modules_list=cfg.assimilations,
+            imported_modules_list=imported_assimilation_modules,
+            module_folder=user_assimilation_modules_folder,
+        )
+        load_modules_igm(
+            cfg=cfg,
+            state=state,
+            modules_list=cfg.assimilations,
+            imported_modules_list=imported_assimilation_modules,
+            module_type="assimilations",
+        )
+
     if "outputs" in cfg:
         load_user_modules(
             cfg=cfg,
@@ -91,7 +110,7 @@ def load_modules(
         )
 
     # Reorder modules
-    input_order, module_order, output_order = get_orders()
+    input_order, module_order, assimilation_order, output_order = get_orders()
 
     input_order_dict = {name: index for index, name in enumerate(input_order)}
     imported_input_modules = sorted(
@@ -102,6 +121,14 @@ def load_modules(
     modules_order_dict = {name: index for index, name in enumerate(module_order)}
     imported_modules = sorted(
         imported_modules, key=lambda module: modules_order_dict[get_module_name(module)]
+    )
+
+    assimilation_order_dict = {
+        name: index for index, name in enumerate(assimilation_order)
+    }
+    imported_assimilation_modules = sorted(
+        imported_assimilation_modules,
+        key=lambda module: assimilation_order_dict[get_module_name(module)],
     )
 
     output_order_dict = {name: index for index, name in enumerate(output_order)}
@@ -118,12 +145,20 @@ def load_modules(
         print(f"{'PROCESSES Modules':-^100}")
         for i, module in enumerate(imported_modules):
             print(f" {i}: {module}")
+        print(f"{'ASSIMILATIONS Modules':-^100}")
+        for i, assimilation_module in enumerate(imported_assimilation_modules):
+            print(f" {i}: {assimilation_module}")
         print(f"{'OUTPUTS Modules':-^100}")
         for i, output_module in enumerate(imported_output_modules):
             print(f" {i}: {output_module}")
         print(f"{'':-^100}")
 
-    return imported_input_modules, imported_modules, imported_output_modules
+    return (
+        imported_input_modules,
+        imported_modules,
+        imported_assimilation_modules,
+        imported_output_modules,
+    )
 
 
 def load_user_modules(
@@ -177,6 +212,6 @@ def load_modules_igm(
 
         module_path = f"igm.{module_type}.{module_name}"
         module = importlib.import_module(module_path)
-        if module_type == "processes":
+        if module_type in ("processes", "assimilations"):
             validate_module(module)
         imported_modules_list.append(module)

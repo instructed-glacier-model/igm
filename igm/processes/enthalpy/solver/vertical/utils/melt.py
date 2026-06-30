@@ -51,8 +51,8 @@ def compute_basal_melt_rate(
     ICE_COLD = E[1] < E_pmp[1]
     IS_DRY = h_water_till <= 0.0
 
-    # Water fraction at the base (zero for cold ice)
-    omega_basal = tf.maximum(0.0, (E[0] - E_pmp[0]) / L_ice)
+    # Water fraction at the base (clipped to [0, 0.99] to keep 1/(1-omega) finite)
+    omega_basal = tf.clip_by_value((E[0] - E_pmp[0]) / L_ice, 0.0, 0.99)
 
     # Conductive flux into ice (positive = upward, away from bed)
     q_ice = tf.where(

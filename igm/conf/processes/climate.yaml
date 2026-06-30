@@ -1,0 +1,77 @@
+climate:
+  # Choose the climate implementation: simple | oggm | glacialindex | station
+  method: simple
+
+  # ------------------------------------------------------------------
+  # simple — constant temperature and precipitation at a reference
+  # elevation, adjusted to state.usurf via vertical lapse rates.
+  # Produces 12-month fields for compatibility with SMB modules.
+  # ------------------------------------------------------------------
+  simple:
+    update_freq: 1.0
+    temp: 0.0                          # mean annual temperature at ref_elevation [°C]
+    prec: 1000.0                       # mean annual precipitation at ref_elevation [kg m-2 yr-1]
+    temp_std: 5.0                      # temperature std deviation [°C]
+    ref_elevation: 0.0                 # reference elevation [m a.s.l.]
+    temp_lapse_rate: -0.0065           # temperature lapse rate [°C per m]
+    prec_lapse_rate: 0.0               # precipitation lapse rate [fraction per m]
+    cosine_yearly_cycle_temp: False    # add a cosine seasonal cycle to temperature
+    cosine_yearly_cycle_amplitude: 5.0 # amplitude of the cosine cycle [°C]
+    southern_hemisphere_climate: False # shift the cosine cycle by 6 months
+
+  # ------------------------------------------------------------------
+  # oggm — historical monthly temperature & precipitation from an OGGM
+  # climate_historical.nc (per-RGI). Mirrors the legacy `clim_oggm`.
+  # ------------------------------------------------------------------
+  oggm:
+    update_freq: 1.0
+    file: file.txt
+    clim_trend_array:
+      - ["time", "delta_temp", "prec_scal"]
+      - [1900, 0.0, 1.0]
+      - [2020, 0.0, 1.0]
+    ref_period: [1960, 1990]
+    seed_par: 123
+
+  # ------------------------------------------------------------------
+  # glacialindex — two-end-member climate interpolated by a transient
+  # signal. Mirrors the legacy `clim_glacialindex`.
+  # ------------------------------------------------------------------
+  glacialindex:
+    update_freq: 100.0
+    climate_0_file: data/climate.nc
+    climate_1_file: data/climate1.nc
+    signal_file: data/GI.dat
+    vertical_lapse_rate_0: 6.0
+    vertical_lapse_rate_1: 5.74
+    temporal_resampling: 12
+
+  # ------------------------------------------------------------------
+  # station — synthetic climate built from a reference precipitation
+  # station + adiabatic lapse rate + optional time-series of offsets.
+  # Mirrors the legacy `clim_station`.
+  # ------------------------------------------------------------------
+  station:
+    update_freq: 1.0
+    zero_degree_isotherm: 2500.0
+    adiabatic_lapse_rate: 0.0058
+    air_temperature_stdev: 2.0
+    precipitation_lapse_rate: 3.0
+    reference_precipitation_elevation: 1000.0
+    reference_precipitation: 800.0
+    min_precipitation_allowed: 1.0
+    cosine_yearly_cycle_temp: True
+    cosine_yearly_cycle_amplitude: 5.0
+    southern_hemisphere_climate: False
+    export_climate_ref: True
+    time_dependent_climate: True
+    climate_change_array:
+      - ["time", "temperature_offset", "precip_offset"]
+      - [1750, 0.0, 100]
+      - [1800, 0.0, 100]
+      - [1850, 0.0, 100]
+      - [1900, 0.0, 100]
+      - [1950, 0.0, 100]
+      - [2000, 0.5, 100]
+      - [2050, 1.5, 100]
+      - [2100, 2.0, 100]

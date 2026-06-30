@@ -103,7 +103,9 @@ class ExperimentAAnalytical:
         is_valid = error < tolerance
         return is_valid, melt_steady, error
 
-    def validate_phase_iii(self, t, melt_rate, T_pmp, tolerance=0.15, melt_threshold=1e-4):
+    def validate_phase_iii(
+        self, t, melt_rate, T_pmp, tolerance=0.15, melt_threshold=1e-4
+    ):
         """
         Validate Phase III: Transient cooling should match analytical solution.
 
@@ -131,9 +133,9 @@ class ExperimentAAnalytical:
             # Find the last index where melt is still active
             last_active_idx = np.where(active_melt_mask)[0][-1]
             # Only validate up to this point
-            t_valid = t[:last_active_idx + 1]
-            melt_rate_valid = melt_rate[:last_active_idx + 1]
-            melt_analytical_valid = melt_analytical[:last_active_idx + 1]
+            t_valid = t[: last_active_idx + 1]
+            melt_rate_valid = melt_rate[: last_active_idx + 1]
+            melt_analytical_valid = melt_analytical[: last_active_idx + 1]
 
             # Compare where both are non-zero
             valid_mask = (melt_analytical_valid > 1e-6) & (melt_rate_valid > 1e-6)

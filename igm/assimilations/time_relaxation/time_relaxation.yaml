@@ -1,0 +1,6 @@
+description: Data assimilation by forward time relaxation — nudge control fields (SMB, sliding coefficient, thickness, topography) toward observations within an inner forward loop
+category: assimilations
+type: core #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet]
+needs: [thk, topg, usurf, icemask]
+updates: [thk, topg, usurf]

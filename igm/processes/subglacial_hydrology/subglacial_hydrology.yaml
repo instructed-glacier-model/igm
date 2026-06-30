@@ -1,0 +1,7 @@
+description: Compute basal effective pressure and (optionally) evolve the subglacial till water layer
+category: lithosphere
+type: core #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet, Thomas Gregov]
+needs: [thk]
+updates: [effective_pressure]
+diagnostics: []

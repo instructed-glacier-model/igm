@@ -71,8 +71,9 @@ def extract_property(ds, key, vmin_clamp=None, vmax_clamp=None):
             arr, lbl = raw, "velocity (m a\u207b\u00b9)"
     elif key == "smb" and "smb" in ds:
         arr, lbl = np.array(ds.smb), "SMB (m a\u207b\u00b9)"
-    elif key == "sliding" and "slidingco" in ds:
-        arr, lbl = np.array(ds.slidingco), "sliding coeff. (units)"
+    elif key == "sliding" and ("slidingco" in ds or "tau_ref" in ds):
+        field = "slidingco" if "slidingco" in ds else "tau_ref"
+        arr, lbl = np.array(ds[field]), "sliding coeff. (units)"
     else:
         arr, lbl, key = np.array(ds.thk), "thickness (m)", "thickness"
 
@@ -287,9 +288,11 @@ def make_frame(
     show_ocean,
     show_calving,
 ):
+    rho_i_over_rhow = 918.0 / 1028.0
     thk = thk_arr[i]
     surf = np.where(thk < 1, np.nan, surf_arr[i])
-    bottom = np.where(thk < 1, np.nan, bedrock)
+    bottom = np.where(thk < 1, np.nan, np.maximum(bedrock, -rho_i_over_rhow * thk))
+    # bottom = np.where(thk < 1, np.nan, bedrock)
 
     traces = [bedrock_trace(bedrock, x, y)]
     if show_ocean:

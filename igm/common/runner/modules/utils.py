@@ -16,7 +16,7 @@ def get_orders():
         original_experiment_config = yaml.safe_load(file)
 
     defaults = original_experiment_config["defaults"]
-    input_order = modules_order = output_order = []
+    input_order = modules_order = assimilations_order = output_order = []
     for default in defaults:
 
         key = list(default.keys())[0]  # ? Cleaner / more robust way to do this?
@@ -24,10 +24,12 @@ def get_orders():
             input_order = default[key]
         elif key == "override /processes":
             modules_order = default[key]
+        elif key == "override /assimilations":
+            assimilations_order = default[key]
         elif key == "override /outputs":
             output_order = default[key]
 
-    return input_order, modules_order, output_order
+    return input_order, modules_order, assimilations_order, output_order
 
 
 def get_module_name(module):

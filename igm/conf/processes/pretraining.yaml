@@ -1,9 +1,0 @@
-pretraining:
-  data_dir: "/path/to/tfrecords/"
-  batch_size: 1
-  epochs: 1000
-  experiment_name: "name_of_model"
-  loss_type: "huber"
-  learning_rate: 0.0001
-  out_dir: "/path/to/save/models/"
-  resume: false

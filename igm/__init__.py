@@ -3,6 +3,7 @@
 # os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 from . import processes
+from . import assimilations
 from . import inputs, outputs
 from . import common
 try:

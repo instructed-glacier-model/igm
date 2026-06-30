@@ -1,0 +1,47 @@
+forward_model:
+  Type: string
+  Description: "Name of the forward-dynamics process module (any igm.processes.<name> exposing initialize/update)."
+  Units: dimless
+pre_processes:
+  Type: list
+  Description: "Process modules called before the forward model each iteration (e.g. effective_pressure, smb_simple). Produce fields the forward model consumes."
+  Units: dimless
+post_processes:
+  Type: list
+  Description: "Process modules called after the inversion steps each iteration (e.g. thk for mass conservation). Consume the just-written controls and the save-aligned state.dt."
+  Units: dimless
+time:
+  start:
+    Type: float
+    Description: "Start time of the inner relaxation loop."
+    Units: y
+  end:
+    Type: float
+    Description: "End time of the inner relaxation loop."
+    Units: y
+  step:
+    Type: float
+    Description: "Maximum time step; CFL-limited when any step writes a geometry control (thk, topg, or usurf)."
+    Units: y
+  save:
+    Type: float
+    Description: "Interval between output snapshots (NetCDF, time-series, misfit CSV)."
+    Units: y
+  cfl:
+    Type: float
+    Description: "CFL number used to limit the time step when geometry controls are active."
+    Units: dimless
+steps:
+  Type: list
+  Description: "List of inversion steps. Each step is an independent (residual, update, control) triple with optional modifiers (mask, cadence, smoother, bounds, geometry_policy). An empty list runs a pure forward simulation."
+  Units: dimless
+outputs:
+  misfits:
+    path:
+      Type: string
+      Description: "File path for the misfit CSV log. Empty string disables logging."
+      Units: dimless
+    track:
+      Type: list
+      Description: "Entries specifying which steps to track and with which norm (rmse or mae)."
+      Units: dimless

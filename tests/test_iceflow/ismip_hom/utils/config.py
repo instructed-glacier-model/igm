@@ -9,8 +9,9 @@ import yaml
 
 
 def load_test_config() -> Dict[str, Any]:
-    """Load test_config.yaml."""
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "test_config.yaml")
+    """Load test config. Override with IGM_TEST_CONFIG env var (e.g. test_config_full.yaml)."""
+    config_name = os.environ.get("IGM_TEST_CONFIG", "test_config.yaml")
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), config_name)
     with open(config_path) as f:
         return yaml.safe_load(f)
 

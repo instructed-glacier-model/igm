@@ -1,0 +1,32 @@
+A_cold:
+  Type: float
+  Units: Pa^{-n} s^{-1}
+  Description: "Pre-exponential factor in the Arrhenius law for cold ice (T_pa < T_threshold)."
+A_warm:
+  Type: float
+  Units: Pa^{-n} s^{-1}
+  Description: "Pre-exponential factor in the Arrhenius law for warm ice (T_pa >= T_threshold)."
+Q_cold:
+  Type: float
+  Units: J mol^{-1}
+  Description: "Activation energy for cold ice in the Arrhenius law."
+Q_warm:
+  Type: float
+  Units: J mol^{-1}
+  Description: "Activation energy for warm ice in the Arrhenius law."
+T_threshold:
+  Type: float
+  Units: K
+  Description: "Pressure-adjusted temperature threshold separating cold and warm ice regimes."
+omega_coef:
+  Type: float
+  Units: dimless
+  Description: "Water-content enhancement coefficient: omega_factor = 1 + omega_coef * min(omega, omega_max)."
+omega_max:
+  Type: float
+  Units: dimless
+  Description: "Cap on water content used in the enhancement factor to avoid unphysical softening."
+R:
+  Type: float
+  Units: J mol^{-1} K^{-1}
+  Description: "Universal gas constant used in the Arrhenius exponential."

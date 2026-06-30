@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ...mappings import Mapping, MappingDataAssimilation
 from ...halt import Halt, InterfaceHalt
 
 
@@ -25,11 +25,8 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
-        if isinstance(map, MappingDataAssimilation) or isinstance(
-            map, MappingCombinedDataAssimilation
-        ):
-            lr = cfg.processes.data_assimilation_SR.optimization.learning_rate
-
+        if isinstance(map, MappingDataAssimilation):
+            lr = cfg.assimilations.field_inversion.optimization.learning_rate
         else:
             lr = cfg_unified.adam.lr
 

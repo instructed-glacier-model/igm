@@ -59,6 +59,19 @@ check_compat_params:
   Type: boolean
   Description: "Check that user-defined parameter names match known defaults, catching typos early."
   Units: dimless
+check_module_needs:
+  Type: boolean
+  Description: "Check, right after init, that every module's declared input variables exist on state. Set False to skip (e.g. when a needed variable is produced during update rather than at init)."
+  Units: dimless
+aliases:
+  builtin:
+    Type: list
+    Description: "Built-in alias sets to load ('descriptive', 'pism'). Empty by default — no aliases are active unless explicitly listed."
+    Units: dimless
+  extra_files:
+    Type: list
+    Description: "Paths to custom alias YAML files (alias_name: canonical_name pairs). Resolved relative to the working directory."
+    Units: dimless
 structure:
   root_foldername:
     Type: string
@@ -79,6 +92,10 @@ structure:
   process_modules_foldername:
     Type: string
     Description: "Sub-folder name for custom process modules."
+    Units: dimless
+  assimilation_modules_foldername:
+    Type: string
+    Description: "Sub-folder name for custom assimilation modules."
     Units: dimless
   output_modules_foldername:
     Type: string

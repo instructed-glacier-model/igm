@@ -1,14 +1,25 @@
-from .laws import Budd, BuddParams, Coulomb, CoulombParams, Weertman, WeertmanParams
+from .laws import (
+    Budd,
+    BuddParams,
+    ReguCoulomb,
+    ReguCoulombParams,
+    MohrCoulomb,
+    MohrCoulombParams,
+    Weertman,
+    WeertmanParams,
+)
 from .sliding import get_sliding_params_args
 
 SlidingComponents = {
     "budd": Budd,
-    "coulomb": Coulomb,
+    "regu_coulomb": ReguCoulomb,
+    "mohr_coulomb": MohrCoulomb,
     "weertman": Weertman,
 }
 
 SlidingParams = {
     "budd": BuddParams,
-    "coulomb": CoulombParams,
+    "regu_coulomb": ReguCoulombParams,
+    "mohr_coulomb": MohrCoulombParams,
     "weertman": WeertmanParams,
 }

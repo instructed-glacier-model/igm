@@ -24,6 +24,9 @@ from igm.processes.iceflow.unified.unified import (
     update_iceflow_unified,
 )
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
+from igm.processes.iceflow.vertical_velocity.vertical_velocity import (
+    update as update_vertical_velocity,
+)
 from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
@@ -62,7 +65,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
 
-    if "pretraining" in cfg.processes.keys():
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
         return
 
@@ -83,12 +86,37 @@ def initialize(cfg: DictConfig, state: State) -> None:
     else:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
+    # Legacy stack (emulated/solved/diagnostic) uses `slidingco` directly as the
+    # reference basal shear stress at u_ref = 1; u_ref is only a knob for the
+    # unified method. Refuse to run rather than silently rescale friction by
+    # u_ref^(-1/m). This guard lives with the legacy dispatch (not in the shared
+    # sliding kernel) so it disappears automatically when the legacy stack is
+    # removed.
+    if iceflow_method != "unified":
+        u_ref = float(cfg.processes.iceflow.physics.sliding.u_ref)
+        if u_ref != 1.0:
+            raise ValueError(
+                f"❌ iceflow.method='{iceflow_method}' requires "
+                f"processes.iceflow.physics.sliding.u_ref = 1.0 (got {u_ref}).\n"
+                "u_ref is only active in the 'unified' method; the "
+                "emulated/solved/diagnostic stack uses `slidingco` directly as "
+                "the reference basal shear stress at u_ref = 1.\n\n"
+                "Set u_ref = 1.0 in your experiment yaml:\n"
+                "    processes:\n"
+                "      iceflow:\n"
+                "        physics:\n"
+                "          sliding:\n"
+                "            u_ref: 1.0\n\n"
+                "or as a command-line override:\n"
+                "    igm_run processes.iceflow.physics.sliding.u_ref=1.0"
+            )
+
     initialize_iceflow(cfg, state)
 
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
-    if "pretraining" in cfg.processes.keys():
+    if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
         return
 
     # Logger
@@ -110,6 +138,9 @@ def update(cfg: DictConfig, state: State) -> None:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
     update_iceflow(cfg, state)
+
+    if cfg.processes.iceflow.vertical_velocity.enabled:
+        update_vertical_velocity(cfg, state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

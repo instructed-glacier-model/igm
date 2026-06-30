@@ -36,18 +36,27 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
                 "must be present as a 2D variable in the input NetCDF."
             )
 
-    # The Budd and Coulomb sliding laws read `effective_pressure` from
-    # fieldin. Weertman does not.
-    if "sliding" in cfg_physics.energy_components:
+    # The Budd, regularized Coulomb and Mohr-Coulomb sliding laws read
+    # `effective_pressure` from fieldin. Weertman does not.
+    # This check applies to the `unified` / `solved` paths (which build
+    # `fieldin` from `cfg.processes.iceflow.unified.inputs`); the
+    # `emulated` path uses a CNN with checkpoint-fixed inputs and is
+    # exempt from this requirement.
+    method = cfg.processes.iceflow.method
+    if method in ("unified", "solved") and "sliding" in cfg_physics.energy_components:
         law = cfg_physics.sliding.law
-        if law in ("budd", "coulomb") and "effective_pressure" not in unified_inputs:
+        if (
+            law in ("budd", "regu_coulomb", "mohr_coulomb")
+            and "effective_pressure" not in unified_inputs
+        ):
             raise ValueError(
-                f"❌ The '{law}' sliding law requires 'effective_pressure' in "
+                f"❌ The '{law}' sliding law (with iceflow.method={method!r}) "
+                "requires 'effective_pressure' in "
                 "cfg.processes.iceflow.unified.inputs. "
                 f"Current inputs: {unified_inputs}. "
                 "Add 'effective_pressure' to that list. The field can be "
                 "loaded from the input NetCDF, computed by the "
-                "'effective_pressure' process module, or set by another "
+                "'subglacial_hydrology' process module, or set by another "
                 "module such as enthalpy."
             )
 

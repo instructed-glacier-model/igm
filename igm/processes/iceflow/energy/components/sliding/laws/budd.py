@@ -23,7 +23,7 @@ from ._power_law import power_law_cost
 class BuddParams(tf.experimental.ExtensionType):
     """Parameters for Budd sliding law."""
 
-    regu: float
+    regularization: float
     exponent: float
     u_ref: float  # (m/yr)
     N_ref: float
@@ -69,7 +69,9 @@ def cost_budd(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"]
+    from ..sliding import get_friction_field
+
+    tau_ref = get_friction_field(fieldin)
     N = fieldin["effective_pressure"]
     dx = fieldin["dX"]
 
@@ -77,7 +79,7 @@ def cost_budd(
 
     dtype = U.dtype
     m = tf.cast(budd_params.exponent, dtype)
-    u_regu = tf.cast(budd_params.regu, dtype)
+    u_regu = tf.cast(budd_params.regularization, dtype)
     u_ref = tf.cast(budd_params.u_ref, dtype)
     N_ref = tf.cast(budd_params.N_ref, dtype)
     q = tf.cast(budd_params.q_exponent, dtype)
@@ -89,6 +91,20 @@ def cost_budd(
     N = tf.where(N < tf.cast(1e-3, dtype), tf.cast(1e-3, dtype), N)
 
     return power_law_cost(
-        U, V, h, s, tau_ref, N, dx, m, u_regu, u_ref, N_ref, q,
-        rho_ratio, use_mask_gr, discr_h, V_b,
+        U,
+        V,
+        h,
+        s,
+        tau_ref,
+        N,
+        dx,
+        m,
+        u_regu,
+        u_ref,
+        N_ref,
+        q,
+        rho_ratio,
+        use_mask_gr,
+        discr_h,
+        V_b,
     )

@@ -19,7 +19,7 @@ from igm.processes.iceflow.vertical.vertical_molho import MOLHODiscr
 def cfg() -> DictConfig:
     cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
     cfg.processes.iceflow.numerics.Nz = 2
-    cfg.processes.iceflow.physics.exp_glen = 3.0
+    cfg.processes.iceflow.physics.viscosity.exponent = 3.0
     return cfg
 
 
@@ -65,7 +65,7 @@ def test_matrices_properties(cfg: DictConfig) -> None:
 
 
 def test_matrices_example(cfg: DictConfig) -> None:
-    cfg.processes.iceflow.physics.exp_glen = 0.0
+    cfg.processes.iceflow.physics.viscosity.exponent = 0.0
     discr = MOLHODiscr(cfg)
 
     w_computed = discr.w.numpy()

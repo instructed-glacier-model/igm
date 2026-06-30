@@ -81,21 +81,13 @@ def test_matrices_example(cfg: DictConfig) -> None:
     V_b_expected = np.array([1.0, 0.0, 0.0])
     V_s_expected = np.array([0.0, 0.0, 1.0])
     V_bar_expected = np.array([0.25, 0.5, 0.25])
-    V_int_expected = np.array([
-        [0.0, 0.0, 0.0],
-        [0.25, 0.25, 0.0],
-        [0.25, 0.5, 0.25]
-    ])
-    V_corr_b_expected = np.array([
-        [0.0, 0.0, 0.0],
-        [-0.75, 0.75, 0.0],
-        [-0.75, 0.5, 0.25]
-    ])
-    V_corr_s_expected = np.array([
-        [0.0, 0.0, 0.0],
-        [-0.25, 0.25, 0.0],
-        [-0.25, -0.5, 0.75]
-    ])
+    V_int_expected = np.array([[0.0, 0.0, 0.0], [0.25, 0.25, 0.0], [0.25, 0.5, 0.25]])
+    V_corr_b_expected = np.array(
+        [[0.0, 0.0, 0.0], [-0.75, 0.75, 0.0], [-0.75, 0.5, 0.25]]
+    )
+    V_corr_s_expected = np.array(
+        [[0.0, 0.0, 0.0], [-0.25, 0.25, 0.0], [-0.25, -0.5, 0.75]]
+    )
     V_const_expected = np.array([1.0, 1.0, 1.0])
 
     np.testing.assert_allclose(w_computed, w_expected)

@@ -50,12 +50,14 @@ class Halt:
         crit_failure: Optional[List[Criterion]] = None,
         freq: int = 1,
         dtype: str = "float32",
+        success_mode: str = "any",
     ):
         """Initialize halting manager."""
         self.crit_success = crit_success or []
         self.crit_failure = crit_failure or []
         self.freq = freq
         self.dtype = normalize_precision(dtype)
+        self.success_mode = success_mode
         self.criterion_names = self._build_criterion_names()
 
     def _build_criterion_names(self) -> List[str]:
@@ -90,12 +92,15 @@ class Halt:
                 failure = tf.logical_or(failure, is_sat)
 
             # Success criteria (checked and returned for display)
-            success = tf.constant(False)
+            success = tf.constant(self.success_mode == "all" and len(self.crit_success) > 0)
             for crit in self.crit_success:
                 is_sat, val = crit.check(step_state)
                 success_values.append(val)
                 success_satisfied.append(is_sat)
-                success = tf.logical_or(success, is_sat)
+                if self.success_mode == "all":
+                    success = tf.logical_and(success, is_sat)
+                else:
+                    success = tf.logical_or(success, is_sat)
 
             # Determine status
             if failure:

@@ -1,0 +1,87 @@
+optimization:
+  minimizer_patience:
+    Type: integer
+    Description: "Number of iterations without improvement before the inner data-assimilation minimizer stops early (0 = disabled)."
+    Units: dimless
+  retrain_lr:
+    Type: float
+    Description: "Learning rate for the network retraining steps."
+    Units: dimless
+  retrain_iter:
+    Type: integer
+    Description: "Number of times the procedure alternates between data-assimilation minimization and network retraining."
+    Units: dimless
+  nbitmax:
+    Type: integer
+    Description: "Maximum optimizer iterations."
+    Units: dimless
+  retrain_anchor_weight:
+    Type: float
+    Description: "Weight penalizing deviation of the retrained network from the original pretrained network (L2 distance between the two networks' weights)."
+    Units: dimless
+  retrain_replay_data_weight:
+    Type: float
+    Description: "Weight for the data-replay loss (replaying past training examples during retraining)."
+    Units: dimless
+  retrain_replay_phys_weight:
+    Type: float
+    Description: "Weight for the physics-based replay loss (deviation of network predictions from the physics constraints on past training examples)."
+    Units: dimless
+  retrain_steps:
+    Type: integer
+    Description: "Number of network retraining gradient steps performed per retrain iteration."
+    Units: dimless
+  retrain_log_freq:
+    Type: integer
+    Description: "Frequency (in retraining steps) at which retraining progress is logged."
+    Units: dimless
+  replay_data_dir:
+    Type: string
+    Description: "Path to the TFRecord dataset used for replay during network retraining."
+    Units: dimless
+  replay_batch_size:
+    Type: integer
+    Description: "Batch size used when sampling the replay dataset for retraining."
+    Units: dimless
+  replay_val_batches:
+    Type: integer
+    Description: "Number of validation batches drawn from the replay dataset."
+    Units: dimless
+  replay_shuffle_buffer:
+    Type: integer
+    Description: "Shuffle-buffer size for the replay dataset pipeline."
+    Units: dimless
+  replay_split_seed:
+    Type: integer
+    Description: "Random seed for the train/validation split of the replay dataset."
+    Units: dimless
+  replay_data_loss_type:
+    Type: string
+    Description: "Loss function for the replay data term (mse or huber)."
+    Units: dimless
+  replay_data_loss_huber_delta:
+    Type: float
+    Description: "Delta parameter of the Huber loss used for the replay data term."
+    Units: m y^{-1}
+output:
+  freq:
+    Type: integer
+    Description: "Callback and NetCDF write cadence in iterations (iteration 0 is always written)."
+    Units: dimless
+  vars_to_save:
+    Type: list
+    Description: "2D fields saved at each write."
+    Units: dimless
+variables:
+  Type: list
+  Description: "List of control-variable specifications (name, transform, optional bounds, and mask) defining which fields are inverted."
+  Units: dimless
+objective:
+  misfit:
+    Type: list
+    Description: "List of data-misfit terms; each matches modelled fields against observations with a given error model and standard deviation."
+    Units: dimless
+  regularization:
+    Type: list
+    Description: "List of regularization (penalty) terms applied to the control variables, each with a penalty type and weight."
+    Units: dimless

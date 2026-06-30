@@ -1,0 +1,43 @@
+# PISM names → IGM canonical (implementation) names.
+#
+# IGM's internal names were chosen to follow PISM conventions, so many
+# entries below are identity mappings (PISM name = IGM name).  All entries
+# are included for completeness and to serve as a single reference.
+#
+# Included in the default registration (builtin_state_aliases loads both
+# descriptive and pism at startup).
+
+topg: topg
+usurf: usurf
+thk: thk
+
+ubar: ubar
+vbar: vbar
+
+uvel: U
+vvel: V
+wvel: W
+
+uvelsurf: uvelsurf
+vvelsurf: vvelsurf
+wvelsurf: wvelsurf
+uvelbase: uvelbase
+vvelbase: vvelbase
+wvelbase: wvelbase
+velsurf_mag: velsurf_mag
+velbase_mag: velbase_mag
+
+climatic_mass_balance: smb
+flux_divergence: divflux
+arrhenius: arrhenius
+
+temp: T
+liqfrac: omega
+enthalpy: E
+temp_pa: T_pa
+temppabase: T_pa_b
+ice_surface_temp: T_s
+
+bmelt: basal_melt_rate
+tillwat: h_water_till
+bheatflx: basal_heat_flux

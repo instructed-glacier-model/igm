@@ -1,0 +1,40 @@
+smb:
+  # Choose the surface mass-balance implementation: simple | oggm | accpdd
+  method: simple
+
+  # ------------------------------------------------------------------
+  # simple — gradient-based SMB from a time-series of (gradabl, gradacc,
+  # ela, maxacc). Mirrors the legacy `smb_simple` module.
+  # ------------------------------------------------------------------
+  simple:
+    update_freq: 1.0
+    file: param.txt
+    array: []
+
+  # ------------------------------------------------------------------
+  # oggm — temperature-index melt model using OGGM calibration json.
+  # Requires state.precipitation and state.air_temp (e.g. from a climate
+  # module). Mirrors the legacy `smb_oggm` module.
+  # ------------------------------------------------------------------
+  oggm:
+    update_freq: 1.0
+    ice_density: 910.0
+    wat_density: 1000.0
+    melt_enhancer: 1.0
+
+  # ------------------------------------------------------------------
+  # accpdd — accumulation + positive-degree-day (Hock 2003 / PyPDD)
+  # melt model. Requires state.precipitation, state.air_temp, and
+  # optionally state.air_temp_sd. Mirrors the legacy `smb_accpdd` module.
+  # ------------------------------------------------------------------
+  accpdd:
+    update_freq: 1.0
+    refreeze_factor: 0.6
+    thr_temp_snow: 0.0
+    thr_temp_rain: 2.0
+    melt_factor_snow: 1.095726596343
+    melt_factor_ice:  2.921937590248
+    shift_hydro_year: 0.75
+    ice_density: 910.0
+    wat_density: 1000.0
+    smb_maximum_accumulation: 6.0

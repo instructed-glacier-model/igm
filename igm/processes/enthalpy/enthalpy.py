@@ -7,13 +7,10 @@ from omegaconf import DictConfig
 
 from igm.common import State
 
-from .arrhenius import compute_arrhenius
 from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
-from .temperature import compute_temperature, compute_pmp
-from .till.friction import compute_friction
-from .till.hydro import compute_hydro, update_hydro
+from .temperature import compute_pa, compute_pmp, compute_temperature
 from .utils import checks, initialize_enthalpy_fields
 
 
@@ -26,24 +23,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Initialize enthalpy fields
     initialize_enthalpy_fields(cfg, state)
 
-    # Compute E_pmp
-    E_pmp, _ = compute_pmp(cfg, state)
-
-    # Compute (T, omega) from E
-    T, omega = compute_temperature(cfg, state, E_pmp)
-
-    # Compute A = A(T, omega) (state.arrhenius)
-    compute_arrhenius(cfg, state, T, omega)
-
-    # Compute N (state.N)
-    compute_hydro(cfg, state)
-
-    # Compute phi, tauc, slidingco (state.tauc, state.phi)
-    compute_friction(cfg, state)
-
 
 def update(cfg: DictConfig, state: State) -> None:
-    """Update enthalpy and related fields."""
+    """Update enthalpy and derived fields."""
     if hasattr(state, "logger"):
         state.logger.info(f"Update ENTHALPY at time: {state.t.numpy()}")
 
@@ -61,20 +43,27 @@ def update(cfg: DictConfig, state: State) -> None:
     # (ii) SOLVE FOR ENTHALPY (state.E, state.basal_melt_rate)
     update_enthalpy(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
 
-    # (iii) DERIVE QUANTITIES
-
-    # Temperature and water content
-    T, omega = compute_temperature(cfg, state, E_pmp)
-
-    # Vertically-averaged Arrhenius factor (state.arrhenius)
-    compute_arrhenius(cfg, state, T, omega)
-
-    # Effective pressure from till hydrology (state.h_water_till, state.N)
-    update_hydro(cfg, state)
-
-    # Till friction and yield stress (state.tauc, state.phi)
-    compute_friction(cfg, state)
-
 
 def finalize(cfg: DictConfig, state: State) -> None:
     pass
+
+
+def compute_diagnostics(cfg: DictConfig, state: State, requested=None) -> None:
+    E_s, T_s = compute_surface(cfg, state)
+    E_pmp, T_pmp = compute_pmp(cfg, state)
+    T, omega = compute_temperature(cfg, state, E_pmp)
+    T_pa = compute_pa(cfg, state, T)
+    T_pa_b = T_pa[0]
+
+    computed = {
+        "E_s": E_s,
+        "T_s": T_s,
+        "E_pmp": E_pmp,
+        "T_pmp": T_pmp,
+        "T": T,
+        "omega": omega,
+        "T_pa": T_pa,
+        "T_pa_b": T_pa_b,
+    }
+    for var in (requested if requested is not None else computed):
+        setattr(state, var, computed[var])

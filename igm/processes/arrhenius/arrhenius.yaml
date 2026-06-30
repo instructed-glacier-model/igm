@@ -1,0 +1,6 @@
+description: Compute the vertically-averaged Arrhenius rate factor from ice temperature and water content
+category: cryosphere
+type: core #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet, Thomas Gregov]
+needs: [T, omega]
+updates: [arrhenius]

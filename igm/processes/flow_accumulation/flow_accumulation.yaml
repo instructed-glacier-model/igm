@@ -1,0 +1,6 @@
+description: Compute subglacial water routing and flow accumulation from bed topography
+category: hydrosphere
+type: community #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet]
+needs: [thk, topg, h_water_till]
+updates: [phi, flow_accumulation]

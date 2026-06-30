@@ -46,13 +46,14 @@ def _live_ela(thk, smb, usurf):
 
 def _init_2d(cfg, state):
     import matplotlib
-    matplotlib.use("TkAgg")
+    p = cfg.outputs.live_dashboard
+    matplotlib.use("Agg" if p.headless else "TkAgg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm, LightSource
     from matplotlib.gridspec import GridSpec
 
-    p = cfg.outputs.live_dashboard
-    plt.ion()
+    if not p.headless:
+        plt.ion()
     plt.style.use("dark_background")
 
     extent = [float(np.min(state.x)), float(np.max(state.x)),
@@ -155,8 +156,9 @@ def _init_2d(cfg, state):
     state._dash_save_count = 0
     state._dash_wall_start = clock.time()
 
-    fig.canvas.draw()
-    fig.canvas.flush_events()
+    if not p.headless:
+        fig.canvas.draw()
+        fig.canvas.flush_events()
 
 
 def _update_2d(cfg, state):
@@ -261,10 +263,11 @@ def _update_2d(cfg, state):
                 f"Vmax = {vmax:.0f} m/a   Wall = {elapsed:.0f} s")
     ax_ts.set_title(info_str, color="gray", fontsize=12, fontfamily="monospace", pad=6)
 
-    state._dash_fig.canvas.draw_idle()
-    state._dash_fig.canvas.flush_events()
+    if not p.headless:
+        state._dash_fig.canvas.draw_idle()
+        state._dash_fig.canvas.flush_events()
 
-    if cfg.outputs.live_dashboard.save_frames:
+    if p.headless or cfg.outputs.live_dashboard.save_frames:
         state._dash_fig.savefig(f"dashboard_{int(t):06d}.png", facecolor="#0e1117",
                                 bbox_inches="tight", pad_inches=0.1)
 
@@ -272,7 +275,8 @@ def _update_2d(cfg, state):
 def _finalize_2d(cfg, state):
     import matplotlib.pyplot as plt
     if hasattr(state, "_dash_fig"):
-        plt.ioff()
+        if not cfg.outputs.live_dashboard.headless:
+            plt.ioff()
         plt.close(state._dash_fig)
 
 

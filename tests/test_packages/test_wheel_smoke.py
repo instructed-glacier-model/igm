@@ -12,11 +12,13 @@ IMPORTS_TO_TEST = [
     "outputs",
     "common",
     "processes",
+    "assimilations",
     "utils",
     "conf",
     "conf_help",
     # add more critical paths here
 ]
+
 
 def test_imports_from_installed_package():
     """

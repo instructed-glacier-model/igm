@@ -1,0 +1,6 @@
+description: Track a passive scalar (e.g. sediment, tracer) transported through the ice
+category: misc
+type: community #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Brandon Finley]
+needs: [U, V, thk, usurf]
+updates: []

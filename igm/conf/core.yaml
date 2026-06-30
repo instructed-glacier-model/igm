@@ -22,7 +22,13 @@ core:
   print_info: True
   print_imported_modules: False
   check_compat_params: True
-  
+  check_module_needs: False
+
+  # State variable aliases
+  aliases:
+    builtin: []
+    extra_files: []
+
   # Custom Modules
   structure:
     root_foldername: user
@@ -30,4 +36,5 @@ core:
     code_foldername: code
     input_modules_foldername: inputs
     process_modules_foldername: processes
+    assimilation_modules_foldername: assimilations
     output_modules_foldername: outputs

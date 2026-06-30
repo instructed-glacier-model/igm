@@ -1,0 +1,6 @@
+description: Pre-train an ice flow emulator on a catalogue of synthetic glaciers
+category: assimilations
+type: core #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Sebastian Rosier]  # REVIEW: confirm / add co-authors
+needs: [] # runs standalone; does not read glacier state fields
+updates: [] # output is an emulator artifact written to disk, not a state field

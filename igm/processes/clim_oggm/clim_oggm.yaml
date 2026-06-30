@@ -1,0 +1,6 @@
+description: Distribute GSWP3-W5E5 monthly climate from oggm_shop with lapse-rate correction
+category: atmosphere
+type: deprecated #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Guillaume Jouvet, Fabien Maussion]
+needs: [t, usurf]
+updates: [air_temp, precipitation]

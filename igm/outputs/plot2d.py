@@ -37,7 +37,7 @@ def run(cfg, state):
  
         if cfg.outputs.plot2d.var=="velbar_mag":
             im = state.ax.imshow(
-                np.where(state.thk > 0, vars(state)[cfg.outputs.plot2d.var], np.nan),
+                np.where(state.thk > 0, getattr(state, cfg.outputs.plot2d.var), np.nan),
                 origin="lower",
                 cmap="turbo",
                 extent=state.extent, 
@@ -45,7 +45,7 @@ def run(cfg, state):
             )
         else:
             im = state.ax.imshow(
-                np.where(state.thk > 0, vars(state)[cfg.outputs.plot2d.var], np.nan),
+                np.where(state.thk > 0, getattr(state, cfg.outputs.plot2d.var), np.nan),
                 origin="lower",
                 cmap='jet',
                 vmin=0,

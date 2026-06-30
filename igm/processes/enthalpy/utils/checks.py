@@ -21,7 +21,9 @@ def checks(cfg: DictConfig, state: State) -> None:
     if "iceflow" not in cfg.processes:
         raise ValueError("The 'iceflow' module is required for the 'enthalpy' module.")
 
-    if cfg.processes.iceflow.physics.sliding.law != "weertman":
+    law = cfg.processes.iceflow.physics.sliding.law
+    if law not in ("weertman", "mohr_coulomb"):
         raise ValueError(
-            "The 'weertman' sliding law is required for the 'enthalpy' module."
+            f"The enthalpy module currently supports sliding laws "
+            f"'weertman' and 'mohr_coulomb' (got '{law}')."
         )

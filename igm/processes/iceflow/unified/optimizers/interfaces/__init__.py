@@ -8,6 +8,7 @@ from .newton import InterfaceNewton
 from .sequential import InterfaceSequential
 from .soap import InterfaceSOAP
 from .trust_region import InterfaceTrustRegion
+from .spg import InterfaceSPG
 
 InterfaceOptimizers = {
     "adam": InterfaceAdam,
@@ -22,4 +23,5 @@ InterfaceOptimizers = {
     "sequential": InterfaceSequential,
     "soap": InterfaceSOAP,
     "trust_region": InterfaceTrustRegion,
+    "spg": InterfaceSPG,
 }
