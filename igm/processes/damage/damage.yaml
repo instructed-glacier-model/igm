@@ -1,6 +1,0 @@
-description: Damage
-category: cryosphere
-type: experimental #  `core`, `community`, `experimental`, or `deprecated`
-authors: [Guillaume Jouvet]
-needs: []
-updates: []
