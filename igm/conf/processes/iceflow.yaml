@@ -7,10 +7,10 @@ iceflow:
       law: weertman
       use_mask_gr: false
       slidingco: 0.0464      # legacy stack (was init_slidingco; MPa)
-      tau_ref: 0.0464        # new stack (was init_tau_ref; same MPa value)
+      tau_ref: 0.2153697218796329  # new (unified) stack; = slidingco * u_ref^(1/m) so physics matches u_ref=100
       regularization: 1.0e-10  # was sliding.<law>.regu
       exponent: 3.0            # was sliding.<law>.exponent
-      u_ref: 1.0               # m/yr — set to 100.0 if law is mohr_coulomb
+      u_ref: 100.0             # m/yr — active in 'unified' only; emulated/solved/diagnostic require u_ref=1.0
       N_ref: 1.0               # budd only
       mu: 0.4                  # regu_coulomb only
       q_exponent: 1.0          # budd only (1.0=linear, 0.5=Tsai sublinear)

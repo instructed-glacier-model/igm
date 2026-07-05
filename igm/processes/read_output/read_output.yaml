@@ -1,6 +1,6 @@
 description: Replay a saved NetCDF output file as if freshly computed
 category: misc
-community: true
+type: community #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Guillaume Jouvet]
 needs: []
 updates: []

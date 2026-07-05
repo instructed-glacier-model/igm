@@ -102,6 +102,7 @@ class EmulatorArtifact(tf.keras.Model):
         core_model: tf.keras.Model | None = None,
         basis_vertical: str | None = None,
         basis_horizontal: str | None = None,
+        u_ref: float | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -109,14 +110,15 @@ class EmulatorArtifact(tf.keras.Model):
         self.architecture_params = dict(architecture_params)
         self.basis_vertical = basis_vertical
         self.basis_horizontal = basis_horizontal
+        self.u_ref = float(u_ref) if u_ref is not None else None
 
         if core_model is None:
-            if self.architecture_name not in Architectures:
+            if self.architecture_name.lower() not in Architectures:
                 raise ValueError(
                     f"Unknown architecture {self.architecture_name!r}. "
                     f"Available: {list(Architectures.keys())}"
                 )
-            self.core = Architectures[self.architecture_name](**self.architecture_params)
+            self.core = Architectures[self.architecture_name.lower()](**self.architecture_params)
         else:
             self.core = core_model
 
@@ -152,6 +154,7 @@ class EmulatorArtifact(tf.keras.Model):
         config["architecture_params"] = self.architecture_params
         config["basis_vertical"] = self.basis_vertical
         config["basis_horizontal"] = self.basis_horizontal
+        config["u_ref"] = self.u_ref
         return config
 
     def get_build_config(self) -> dict[str, Any]:
@@ -210,6 +213,10 @@ def validate_emulator_artifact(
     cfg_Nz = int(cfg.processes.iceflow.numerics.Nz)
     if model.Nz != cfg_Nz:
         raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
+
+    cfg_u_ref = float(cfg.processes.iceflow.physics.sliding.u_ref)
+    if model.u_ref != cfg_u_ref:
+        raise ValueError(f"u_ref mismatch: emulator={model.u_ref}, config={cfg_u_ref}")
 
     model_inputs = list(model.input_names)
     cfg_inputs = list(expected_inputs)

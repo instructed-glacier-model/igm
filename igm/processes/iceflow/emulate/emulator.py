@@ -229,7 +229,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
         from igm.processes.iceflow.emulate.utils.architectures import Architectures
 
-        arch_name = cfg_emulator.network.architecture.upper()
+        arch_name = cfg_emulator.network.architecture.lower()
         arch_cls = Architectures[arch_name]
         state.iceflow_model = arch_cls(
             input_names=list(cfg_emulator.fieldin),

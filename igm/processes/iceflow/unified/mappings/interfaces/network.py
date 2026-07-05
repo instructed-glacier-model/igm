@@ -75,7 +75,7 @@ class InterfaceNetwork(InterfaceMapping):
 
             nb_inputs = len(cfg_unified.inputs)
 
-            arch_name = str(cfg_unified.network.architecture)
+            arch_name = str(cfg_unified.network.architecture).lower()
             if arch_name not in Architectures:
                 raise ValueError(
                     f"Unknown network architecture: {arch_name}. "

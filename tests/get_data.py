@@ -15,7 +15,7 @@ ISMIP_HOM_OGA_URL = "https://frank.pattyn.web.ulb.be/ismip/tc-2-95-2008-suppleme
 ISMIP_HOM_AROLLA_URL = "https://frank.pattyn.web.ulb.be/ismip/arolla100.dat"
 ISMIP_HOM_OGA_ZIP_INNER = "tc-2007-0019-sp2.zip"
 ISMIP_HOM_OGA_ZIP_OUTER = "tc-2-95-2008-supplement.zip"
-ISMIP_HOM_TARGET_DIR = os.path.join(".", "test_iceflow", "ismip_hom", "data")
+ISMIP_HOM_TARGET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_iceflow", "ismip_hom", "data")
 
 
 def download_file(url: str, dest_path: str) -> None:

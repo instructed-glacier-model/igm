@@ -1,6 +1,7 @@
 import tensorflow as tf
 import math
 from typing import Any, Dict, Tuple, List
+from omegaconf import OmegaConf
 
 
 def prepare_X(
@@ -61,8 +62,9 @@ def pertubate_X(cfg, X):
         vec = [tf.ones_like(X[:, :, :, i]) * (i == j) for j in range(X.shape[3])]
         vec = tf.stack(vec, axis=-1)
 
-        if hasattr(cfg.processes, "data_assimilation"):
-            if f in cfg.processes.data_assimilation.control_list:
+        da_cfg = OmegaConf.select(cfg, "assimilations.data_assimilation", default=None)
+        if da_cfg is not None:
+            if f in da_cfg.control_list:
                 XX.append(X + X * vec * 0.2)
                 XX.append(X - X * vec * 0.2)
         else:

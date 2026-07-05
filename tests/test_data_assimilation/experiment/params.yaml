@@ -5,15 +5,16 @@ defaults:
   - oggm_shop
   - local
 - override /processes:
-  - data_assimilation 
   - iceflow
+- override /assimilations:
+  - data_assimilation
 
 inputs:
   oggm_shop:
     RGI_ID: RGI60-11.01238
     RGI_version: 6
 
-processes:
+assimilations:
   data_assimilation:
     nbitmax: 100
     fitting:
@@ -25,10 +26,12 @@ processes:
        thk: 1
        slidingco: 1000000
        smooth_anisotropy_factor: 1.0
-       convexity_weight: 0    
+       convexity_weight: 0
     output:
       freq: 1000
       plot2d: false
+
+processes:
   iceflow:
     physics:
       sliding:

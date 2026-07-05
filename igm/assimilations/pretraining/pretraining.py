@@ -143,6 +143,7 @@ def initialize(cfg, state):
         state.iceflow_model = wrap_emulator_artifact(state.iceflow_model)
         state.iceflow_model.basis_vertical = str(cfg_iceflow.numerics.basis_vertical)
         state.iceflow_model.basis_horizontal = str(cfg_iceflow.numerics.basis_horizontal)
+        state.iceflow_model.u_ref = float(cfg_iceflow.physics.sliding.u_ref)
         state.iceflow_model.input_normalizer.adapt(
             train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000)
         )

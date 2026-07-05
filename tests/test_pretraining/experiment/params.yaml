@@ -28,15 +28,11 @@ processes:
         pretrained: false
         architecture: CNN
         print_summary: false
-    emulator:
-      network:
         params:
           nb_layers: 2
           nb_out_filter: 4
           conv_ker_size: 3
-          batch_norm: false
           residual: false
-          separable: false
 
 assimilations:
   pretraining:

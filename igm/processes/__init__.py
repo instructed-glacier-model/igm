@@ -4,7 +4,6 @@ from . import (
     iceflow,
     enthalpy,
     arrhenius,
-    stress,
     subglacial_hydrology,
 )
 from . import smb_accpdd, smb_oggm, smb_simple

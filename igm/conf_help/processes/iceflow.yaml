@@ -38,7 +38,7 @@ physics:
       Units: dimless
     u_ref:
       Type: float
-      Description: "Reference velocity (all laws). For mohr_coulomb, the legacy default is 100 m/yr; the other laws use 1 m/yr."
+      Description: "Reference basal velocity. Active in the 'unified' method only (default 100 m/yr). The emulated/solved/diagnostic stack uses slidingco directly as tau_ref at u_ref=1 and refuses to run unless u_ref=1.0."
       Units: m y^{-1}
     N_ref:
       Type: float

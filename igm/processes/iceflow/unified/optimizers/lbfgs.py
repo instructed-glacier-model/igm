@@ -93,7 +93,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs (must match second loop)
+            # rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs (must match second loop)
             alpha_i = rho * self._dot(s_i, q)
             alpha_i = tf.cast(alpha_i, q.dtype)
             alpha_list = alpha_list.write(i, alpha_i)
@@ -116,7 +116,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs
+            # rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))  # cap effect of bad pairs
             beta = rho * self._dot(y_i, r)
             beta = tf.cast(beta, r.dtype)
             alpha_i = alpha_list.read(i)
@@ -286,8 +286,10 @@ class OptimizerLBFGS(Optimizer):
                 tau,
             )
 
-            # Force descent (bounded can use the mask_base if it wants)
-            p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
+            # Force descent always checks against the actual gradient at the current
+            # iterate (not the subspace-masked grad_base_flat), so the steepest-descent
+            # fallback is never a zero direction when the Cauchy probe masks everything.
+            p_flat, mask = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
             # Line search
             alpha = self._line_search(theta_base, p_flat, input)

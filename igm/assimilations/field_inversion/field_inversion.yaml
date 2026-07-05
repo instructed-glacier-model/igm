@@ -1,6 +1,6 @@
 description: Invert for unknown fields (e.g. ice thickness) from surface observations (e.g. surface ice velocities)
 category: assimilations
-community: false
+type: core #  `core`, `community`, `experimental`, or `deprecated`
 authors: [Sebastian Rosier]  # REVIEW: confirm / add co-authors
 needs: [usurf, thk, icemask, uvelsurfobs, vvelsurfobs]
 updates: [] # depends on the variable being inverted, typically thk, tau_ref or arrhenius

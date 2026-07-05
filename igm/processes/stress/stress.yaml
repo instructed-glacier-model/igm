@@ -1,5 +1,0 @@
-description: Compute the full 3D deviatoric stress tensor and principal stress invariants from ice velocities
-category: cryosphere
-community: true
-needs: [U, V, thk, arrhenius]
-updates: [tau_xx, tau_yy, tau_zz, tau_xy, tau_xz, tau_yz, p, sigma1, sigmaI, tauII]
