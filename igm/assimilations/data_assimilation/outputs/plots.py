@@ -121,15 +121,19 @@ def update_plot_inversion(cfg, state, i):
     else:
 
         fric_field = getattr(state, state.da_friction)
+        # tau_ref (MPa at u_ref = 100) typically spans 0-0.5; the legacy
+        # slidingco (u_ref = 1) lives an order of magnitude lower.
+        if state.da_friction == "tau_ref":
+            fric_vmin, fric_vmax = 0.0, 0.5
+        else:
+            fric_vmin, fric_vmax = 0.01, 0.10
         im1 = ax2.imshow(
             np.ma.masked_where(state.thk == 0, fric_field),
             origin="lower",
     #        norm=colors.LogNorm(),
-            vmin=0.01,
-            vmax=0.10,
+            vmin=fric_vmin,
+            vmax=fric_vmax,
             cmap=cmap,
-    #        vmin=100,
-    #        vmax=500,
         )
         if i == 0:
             plt.colorbar(im1, format="%.2f", ax=ax2)
