@@ -16,6 +16,7 @@ from .terms import (
     MisfitRegistry,
     MisfitSpec,
     Regularization,
+    TARGET_FREE_MISFITS,
 )
 from .utils import _as_list
 
@@ -79,13 +80,18 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
         d = dict(item)
         kind = str(d.get("kind", "gaussian"))
         name = str(d["name"])
-        components = [str(s) for s in _as_list(d.get("components", [name]))]
-        obs = [str(s) for s in _as_list(d["obs"])]
 
-        if len(components) != len(obs):
-            raise ValueError(
-                f"Misfit '{name}' has {len(components)} components but {len(obs)} observations."
-            )
+        if kind in TARGET_FREE_MISFITS:
+            # These kinds synthesize their own target; no components/obs.
+            components = []
+            obs = []
+        else:
+            components = [str(s) for s in _as_list(d.get("components", [name]))]
+            obs = [str(s) for s in _as_list(d["obs"])]
+            if len(components) != len(obs):
+                raise ValueError(
+                    f"Misfit '{name}' has {len(components)} components but {len(obs)} observations."
+                )
         if kind not in MisfitRegistry:
             raise ValueError(f"Unknown misfit '{kind}'. Available: {list(MisfitRegistry.keys())}")
 
@@ -99,6 +105,7 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
                     mask=None if d.get("mask") is None else str(d["mask"]),
                     eps=float(d.get("eps", 1e-12)),
                     delta=float(d.get("delta", 1.0)),
+                    force_zero_sum=bool(d.get("force_zero_sum", False)),
                 )
             )
         )

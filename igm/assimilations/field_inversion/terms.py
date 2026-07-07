@@ -25,6 +25,7 @@ class MisfitSpec:
     mask: Optional[str] = None
     eps: float = 1e-12
     delta: float = 1.0  # Huber transition (σ-units); ignored by gaussian misfit
+    force_zero_sum: bool = False  # divfluxfcz only: also drive the mean divflux to zero
 
 
 @dataclass(frozen=True)
@@ -167,7 +168,80 @@ class HuberMisfitTerm(CostTerm):
         return integral / denom
 
 
+class DivfluxFczMisfitTerm(CostTerm):
+    """Port of the legacy data_assimilation `divfluxfcz` cost.
+
+    Penalizes the residual of the modelled flux divergence around its own
+    best linear-in-elevation fit (an SMB-shaped apparent-mass-balance proxy)
+    — no observation field required. Unlike the legacy module (scipy
+    regression outside the tape, i.e. a stop-gradient target refreshed every
+    10 Adam iterations), the closed-form least-squares fit here is fully
+    DIFFERENTIABLE: the cost is the exact projection residual, so objective
+    and gradient stay consistent — required by the L-BFGS line search, which
+    chronically fails with an inconsistent (stop-gradient) target. This term
+    couples every thickness pixel to the flux field, which both regularizes
+    divflux (key for shock-free transient starts) and propagates thickness
+    information beyond the observation footprints.
+
+    Spec usage: `std` plays the role of the legacy `divfluxobs_std`;
+    `components`/`obs` are unused; `force_zero_sum` adds the legacy optional
+    penalty driving the mask-mean divflux to zero.
+    """
+
+    group = Misfit
+
+    def __init__(self, spec: MisfitSpec) -> None:
+        self.spec = spec
+        self.name = f"misfit:{spec.name}"
+
+    def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
+        dtype = ctx.dtype
+        std = tf.cast(self.spec.std, dtype)
+        eps = tf.cast(self.spec.eps, dtype)
+
+        divflux = tf.cast(ctx.divflux(), dtype)
+        # Elevation regressor: θ-dependent field if usurf is inverted for,
+        # otherwise the static state field.
+        try:
+            s = ctx.physical("usurf")
+        except ValueError:
+            s = ctx.state_field("usurf")
+        s = tf.cast(s, dtype)
+
+        mask = ctx.get_mask(self.spec.mask) if self.spec.mask is not None else ctx.get_mask(None)
+        m = tf.cast(mask, dtype)
+        n = tf.reduce_sum(m) + eps
+
+        # Closed-form linear regression of divflux on elevation over the mask.
+        # The regressor (elevation) enters as a constant; the regressand
+        # (divflux) stays differentiable so the cost is the exact projection
+        # residual with consistent gradients.
+        s_c = tf.stop_gradient(s)
+        s_mean = tf.reduce_sum(m * s_c) / n
+        d_mean = tf.reduce_sum(m * divflux) / n
+        cov = tf.reduce_sum(m * (s_c - s_mean) * (divflux - d_mean)) / n
+        var = tf.reduce_sum(m * tf.square(s_c - s_mean)) / n + eps
+        slope = cov / var
+        intercept = d_mean - slope * s_mean
+        target = intercept + slope * s_c
+
+        res2 = tf.square((target - divflux) / std)
+        integral = masked_integral(res2, mask, ctx.dx)
+        denom = masked_area(mask, ctx.dx, res2) + eps
+        cost = tf.cast(0.5, dtype) * integral / denom
+
+        if self.spec.force_zero_sum:
+            div_mean = tf.reduce_sum(m * divflux) / n
+            cost += tf.cast(0.5 * 1000.0, dtype) * tf.square(div_mean / std)
+
+        return cost
+
+
 MisfitRegistry = {
     "gaussian": GaussianMisfitTerm,
     "huber": HuberMisfitTerm,
+    "divfluxfcz": DivfluxFczMisfitTerm,
 }
+
+# Misfit kinds that synthesize their own target and take no `obs` fields.
+TARGET_FREE_MISFITS = {"divfluxfcz"}
