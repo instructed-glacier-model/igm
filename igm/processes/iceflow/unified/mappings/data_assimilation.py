@@ -30,6 +30,11 @@ class VariableSpec:
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
     mask: Optional[str] = None  # e.g. inverse_mask would use state.inverse_mask
+    # Per-variable diagonal preconditioner: theta = transform(x) / scale.
+    # Set to the expected update magnitude of transform(x) so all theta blocks
+    # are O(1) — global-step optimizers (L-BFGS/SPG) otherwise starve blocks
+    # whose gradients are orders of magnitude below the stiffest one.
+    scale: float = 1.0
 
 
 class MappingDataAssimilation(Mapping):
@@ -110,6 +115,7 @@ class MappingDataAssimilation(Mapping):
                 raise ValueError(f"Duplicate variable name in DA mapping: {spec.name}")
             self._varname_to_idx[spec.name] = i
 
+        self._scales: List[tf.Tensor] = []
         for spec in self.vars:
             tname = (spec.transform or "identity").lower()
             if tname not in TRANSFORMS:
@@ -119,10 +125,16 @@ class MappingDataAssimilation(Mapping):
             tform = TRANSFORMS[tname]()
             self.transforms.append(tform)
 
+            if not spec.scale > 0.0:
+                raise ValueError(
+                    f"❌ scale for '{spec.name}' must be > 0 (got {spec.scale})."
+                )
+            self._scales.append(tf.cast(spec.scale, self.precision))
+
             x0_var = self._field_refs[spec.name]
             x0 = tf.cast(tf.convert_to_tensor(x0_var), self.precision)
 
-            theta0_full = tform.to_theta(x0, eps=self.eps)
+            theta0_full = tform.to_theta(x0, eps=self.eps) / self._scales[-1]
             full_shape_static = theta0_full.shape
             self._full_shapes.append(full_shape_static)
 
@@ -166,15 +178,18 @@ class MappingDataAssimilation(Mapping):
             self._mask_flat_idx.append(flat_idx)
             self._background_phys_flat.append(background_phys_flat)
 
-        # Precompute θ-space bounds for optimizer consumption.
+        # Precompute θ-space bounds for optimizer consumption (scale > 0, so
+        # dividing preserves the bound ordering).
         self._L_list: List[tf.Tensor] = []
         self._U_list: List[tf.Tensor] = []
-        for spec, theta, tform in zip(self.vars, self._theta, self.transforms):
+        for spec, theta, tform, scale in zip(
+            self.vars, self._theta, self.transforms, self._scales
+        ):
             Ls, Us = tform.theta_bounds(
                 spec.lower_bound, spec.upper_bound, dtype=theta.dtype, eps=self.eps
             )
-            self._L_list.append(tf.fill(theta.shape, Ls))
-            self._U_list.append(tf.fill(theta.shape, Us))
+            self._L_list.append(tf.fill(theta.shape, Ls / tf.cast(scale, theta.dtype)))
+            self._U_list.append(tf.fill(theta.shape, Us / tf.cast(scale, theta.dtype)))
 
         # Bounds are static during a DA phase. Flatten once; the bounded optimizer
         # queries these inside every accepted iteration and line search setup.
@@ -232,7 +247,7 @@ class MappingDataAssimilation(Mapping):
     def _theta_to_field(self, idx: int) -> tf.Tensor:
         tform = self.transforms[idx]
         theta = self._theta[idx]
-        updates = tform.to_physical(theta)
+        updates = tform.to_physical(theta * self._scales[idx])
         return self._active_to_full_field(
             idx,
             updates,

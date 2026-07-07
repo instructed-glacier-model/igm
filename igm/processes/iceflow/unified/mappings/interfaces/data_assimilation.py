@@ -44,6 +44,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
                     lower_bound=item.get("lower_bound", None),
                     upper_bound=item.get("upper_bound", None),
                     mask=None if item.get("mask") is None else str(item["mask"]),
+                    scale=float(item.get("scale", 1.0)),
                 )
             )
         return specs

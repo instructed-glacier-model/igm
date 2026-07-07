@@ -1,6 +1,7 @@
 field_inversion:
   use_existing_thk: false  # if true, skip initial_thickness() and use the existing state.thk
   optimization:
+    method: lbfgs # DA minimizer: 'lbfgs' (bounded, default) or 'spg' (spectral projected gradient — more robust on stiff/kinked objectives like divfluxfcz)
     minimizer_patience: 10
     retrain_lr: 2e-5 # Learning rate for network retraining steps
     retrain_iter: 5 # number of times we iterate between DA minimize and network retraining
@@ -21,6 +22,8 @@ field_inversion:
     freq: 100 # Callback + NetCDF write cadence in iterations (iteration 0 is always written)
     vars_to_save: [usurf,thk,icemask,velbase_mag,velsurf_mag,velsurfobs_mag] # 2D fields saved each write; *_mag and sliding_ratio are computed in update_ncdf_optimize when requested
   variables:
+  # optional per-variable `scale` (default 1.0): theta = transform(x)/scale — set to the
+  # expected update magnitude so all control blocks are O(1) for the global-step optimizers
   - { name: thk, transform: identity,  lower_bound: 0.0 , upper_bound: 1000.0 , mask: icemask}
   objective:
     misfit:

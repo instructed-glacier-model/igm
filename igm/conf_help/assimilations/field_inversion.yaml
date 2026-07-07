@@ -1,4 +1,8 @@
 optimization:
+  method:
+    Type: string
+    Description: "Inner data-assimilation minimizer: 'lbfgs' (bounded L-BFGS, default) or 'spg' (spectral projected gradient; more robust on stiff or kinked objectives such as the divfluxfcz misfit)."
+    Units: dimless
   minimizer_patience:
     Type: integer
     Description: "Number of iterations without improvement before the inner data-assimilation minimizer stops early (0 = disabled)."
@@ -74,12 +78,12 @@ output:
     Units: dimless
 variables:
   Type: list
-  Description: "List of control-variable specifications (name, transform, optional bounds, and mask) defining which fields are inverted."
+  Description: "List of control-variable specifications (name, transform, optional bounds, mask, and optional scale) defining which fields are inverted. 'scale' (default 1.0) sets theta = transform(x)/scale, a per-variable preconditioner: choose the expected update magnitude of transform(x) so all control blocks are O(1) for the optimizer."
   Units: dimless
 objective:
   misfit:
     Type: list
-    Description: "List of data-misfit terms; each matches modelled fields against observations with a given error model and standard deviation."
+    Description: "List of data-misfit terms; each matches modelled fields against observations with a given error model (kind: gaussian or huber) and standard deviation. The kind 'divfluxfcz' needs no observations: it penalizes the flux-divergence residual around its best linear-in-elevation fit (optional flag force_zero_sum additionally drives the mean flux divergence to zero)."
     Units: dimless
   regularization:
     Type: list

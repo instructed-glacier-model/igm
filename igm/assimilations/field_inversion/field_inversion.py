@@ -87,13 +87,23 @@ def data_assimilation_initialize(cfg, state) -> None:
     )
     cost_fn, objective = build_cost_and_objective(cfg, state, da_map)
 
-    optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
-    optimizer_args["halt"] = _build_halt(cfg)
-    optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
-
-    # optimizer_args = InterfaceSPG.get_optimizer_args(cfg, cost_fn, da_map)
-    # optimizer_args["halt"] = _build_halt(cfg)
-    # optimizer = OptimizerSpectralProjectedGradient(**optimizer_args)
+    # DA minimizer: bounded L-BFGS (default) or spectral projected gradient.
+    # SPG's nonmonotone steps are more robust on stiff/kinked objectives
+    # (e.g. the upwind-divflux `divfluxfcz` misfit) where the L-BFGS Wolfe
+    # line search can stall.
+    method = str(getattr(cfg_da.optimization, "method", "lbfgs")).lower()
+    if method == "lbfgs":
+        optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, cost_fn, da_map)
+        optimizer_args["halt"] = _build_halt(cfg)
+        optimizer = OptimizerLBFGSBoundsDA(**optimizer_args)
+    elif method == "spg":
+        optimizer_args = InterfaceSPG.get_optimizer_args(cfg, cost_fn, da_map)
+        optimizer_args["halt"] = _build_halt(cfg)
+        optimizer = OptimizerSpectralProjectedGradient(**optimizer_args)
+    else:
+        raise ValueError(
+            f"Unknown field_inversion optimization.method '{method}' (use 'lbfgs' or 'spg')."
+        )
 
     retraining = None
     if retrain_iter > 0:
