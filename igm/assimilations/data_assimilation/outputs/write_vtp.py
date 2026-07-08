@@ -8,8 +8,16 @@ import numpy as np
 import tensorflow as tf 
  
 def update_vtp(cfg, state, it):
-    
-    import pyvista as pv
+
+    try:
+        import pyvista as pv
+    except ImportError:
+        if it == 0:
+            print(
+                "Warning: pyvista is not installed, skipping VTP output. "
+                "Install it with: pip install pyvista"
+            )
+        return
 
     vtp_directory = "vtp"
 
