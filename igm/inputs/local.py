@@ -40,8 +40,12 @@ def run(cfg, state):
         raise ValueError(f"Unknown type {cfg.inputs.local.type}")
 
     ds = ds.sortby(['x', 'y']) # Sort by x and y to ensure that the data is in the correct order
- 
-    ds = xr.where(ds > 1.0e+35, np.nan, ds)
+
+    # Mask fill values (>1e35) -> NaN, but only on numeric variables. A dataset-wide
+    # `ds > 1e35` throws on non-numeric vars such as the CF grid-mapping dummy
+    # (e.g. `transverse_mercator`, dtype |S1), which carry projection metadata only.
+    num = [k for k, v in ds.data_vars.items() if np.issubdtype(v.dtype, np.number)]
+    ds[num] = xr.where(ds[num] > 1.0e+35, np.nan, ds[num])
 
     crop = np.any(list(dict(cfg.inputs.local.crop).values()))
     if crop:
