@@ -31,8 +31,12 @@ setup(
     description="IGM - a glacier evolution model",
     long_description=readme,
     long_description_content_type="text/markdown",
+    python_requires=">=3.10,<3.13",
     install_requires=[
         "tensorflow[and-cuda]==2.17.0",
+        # Explicit numpy bound: TF requires it anyway, but stating it here makes
+        # pip refuse later upgrades to numpy 2.x that would break the install.
+        "numpy>=1.26,<2.0",
         "matplotlib",
         "scipy",
         "netCDF4>=1.6.5",
@@ -54,5 +58,6 @@ setup(
     ],
     extras_require={
         "dev": ["pytest"],
+        "vtk": ["pyvista"],  # optional VTP output in data_assimilation
     },
 )
