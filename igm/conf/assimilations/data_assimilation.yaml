@@ -28,6 +28,13 @@ data_assimilation:
     nb_relaxation_steps: 0
     relaxation_freq: 0
     patience: 0
+    # Patch-wise inversion: when the grid exceeds patch_size, the gradient
+    # tape runs on overlapping windows of patch_size + 2*patch_halo and only
+    # the halo-stripped core of each window gradient is kept, bounding peak
+    # GPU memory by the window size. 0 disables (always full-grid tape).
+    # patch_halo must exceed the emulator receptive-field radius.
+    patch_size: 1024
+    patch_halo: 64
   regularization:
     thk: 10.0
     thk_version: 1

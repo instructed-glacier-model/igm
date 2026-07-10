@@ -17,7 +17,12 @@ def regu_thk(cfg,state):
 
 def regu_thk_v1(cfg,state):
 
-    areaicemask = tf.reduce_sum(tf.where(state.icemask>0.5,1.0,0.0))*state.dx**2
+    # the patched driver precomputes the full-grid value on state (the
+    # patch-local one would be wrong for the convexity term)
+    if hasattr(state, "areaicemask"):
+        areaicemask = state.areaicemask
+    else:
+        areaicemask = tf.reduce_sum(tf.where(state.icemask>0.5,1.0,0.0))*state.dx**2
 
     # here we had factor 8*np.pi*0.04, which is equal to 1
     if cfg.assimilations.data_assimilation.cook.infer_params:
@@ -96,7 +101,10 @@ def regu_thk_v2(cfg,state):
     if cfg.assimilations.data_assimilation.regularization.abl_acc_balance == 1:
         rect = 1
     else:
-        ELA = np.percentile(state.usurf[state.usurf > 0], 66.7, method="linear")       
+        # the patched driver precomputes the full-grid percentile on state
+        ELA = getattr(state, "ELA", None)
+        if ELA is None:
+            ELA = np.percentile(state.usurf[state.usurf > 0], 66.7, method="linear")
         r_acc = cfg.assimilations.data_assimilation.regularization.abl_acc_balance
         r_abl = 1/cfg.assimilations.data_assimilation.regularization.abl_acc_balance
         w_acc = 0.5 * (1.0 + tf.math.tanh((state.usurf - ELA) / 100.0)) 

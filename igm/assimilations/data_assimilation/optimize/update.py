@@ -21,6 +21,16 @@ from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
 
 def optimize_update(cfg, state, cost, i):
 
+    # Patch-wise (out-of-core) inversion for grids exceeding patch_size:
+    # the gradient tape runs window by window instead of on the full grid,
+    # so peak GPU memory is bounded by the window size. See update_patched.py.
+    patch_size = cfg.assimilations.data_assimilation.optimization.patch_size
+    if patch_size and patch_size > 0:
+        ny, nx = state.thk.shape
+        if ny > patch_size or nx > patch_size:
+            from .update_patched import optimize_update_patched
+            return optimize_update_patched(cfg, state, cost, i)
+
     sc = {}
     sc["thk"] = cfg.assimilations.data_assimilation.scaling.thk
     sc["usurf"] = cfg.assimilations.data_assimilation.scaling.usurf
