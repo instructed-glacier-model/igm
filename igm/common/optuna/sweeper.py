@@ -117,6 +117,13 @@ class IGMOptunaSweeper(Sweeper):
             )
             logger.warning(f"Trial {trial.number} timed out")
             return
+        except KeyboardInterrupt:
+            process.kill()
+            process.communicate()
+            self.study.tell(
+                trial.number, state=optuna.trial.TrialState.FAIL
+            )
+            raise
 
         if score_file.exists():
             with open(score_file) as f:

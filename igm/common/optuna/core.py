@@ -34,7 +34,7 @@ def create_study(optimize_cfg):
     study_name = optimize_cfg.get("study_name")
 
     if isinstance(direction, list):
-        return optuna.create_study(
+        study = optuna.create_study(
             study_name=study_name,
             directions=direction,
             sampler=sampler,
@@ -43,7 +43,7 @@ def create_study(optimize_cfg):
             load_if_exists=True,
         )
     else:
-        return optuna.create_study(
+        study = optuna.create_study(
             study_name=study_name,
             direction=direction,
             sampler=sampler,
@@ -51,6 +51,21 @@ def create_study(optimize_cfg):
             storage=storage,
             load_if_exists=True,
         )
+
+    # Fail any trials left RUNNING by a previous interrupted run so that
+    # the study resumes cleanly and n_trials counts don't accumulate.
+    stale = [t for t in study.trials if t.state == optuna.trial.TrialState.RUNNING]
+    if stale:
+        logger.warning(
+            "Found %d stale RUNNING trial(s) from a previous interrupted run "
+            "(numbers: %s) — marking as FAIL.",
+            len(stale),
+            [t.number for t in stale],
+        )
+        for t in stale:
+            study.tell(t.number, state=optuna.trial.TrialState.FAIL)
+
+    return study
 
 
 def report_results(study, output_dir, objective_names=None):
