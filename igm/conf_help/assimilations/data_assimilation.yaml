@@ -75,6 +75,14 @@ optimization:
     Type: integer
     Description: "Number of forward ice dynamics relaxation steps applied after the final optimization iteration to refine the ice geometry solution."
     Units: dimless
+  patch_size:
+    Type: integer
+    Description: "Patch-wise (out-of-core) inversion: when the grid exceeds patch_size in any dimension, the gradient tape runs on overlapping windows of patch_size + 2*patch_halo and only the halo-stripped core of each window gradient is kept, bounding peak GPU memory by the window size. 0 disables (always full-grid tape). Grids <= patch_size take the unchanged full-grid path."
+    Units: gridpoint
+  patch_halo:
+    Type: integer
+    Description: "Halo width of the patch-wise inversion windows; must exceed the iceflow emulator receptive-field radius so that halo-stripped window gradients equal the full-grid gradient."
+    Units: gridpoint
   relaxation_freq:
     Type: integer
     Description: "If > 0, also apply the nb_relaxation_steps relaxation every relaxation_freq optimization iterations (interleaved), so the optimizer can re-compensate the misfit after each physical projection. 0 = terminal-only (legacy). Requires the thk process group to be loaded."
