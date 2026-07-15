@@ -6,8 +6,10 @@ from .misfit_velsurf import misfit_velsurf
 from .misfit_vol import misfit_vol
 from .cost_divfluxfcz import cost_divfluxfcz
 from .cost_divfluxobs import cost_divfluxobs
+from .cost_divfluxpen import cost_divfluxpen
 from .cost_vol import cost_vol
 from .regu_thk import regu_thk
+from .regu_usurf import regu_usurf
 from .regu_slidingco import regu_slidingco
 from .regu_arrhenius import regu_arrhenius
 
@@ -26,6 +28,9 @@ def total_cost(cfg, state, cost, i):
         cost["divflux"] = cost_divfluxfcz(cfg, state, i)
     elif ("divfluxobs" in cfg.assimilations.data_assimilation.cost_list):
         cost["divflux"] = cost_divfluxobs(cfg, state, i)
+    elif ("divfluxpen" in cfg.assimilations.data_assimilation.cost_list):
+        # pure smoothness penalty on divflux (no target)
+        cost["divflux"] = cost_divfluxpen(cfg, state, i)
 
     # misfit between top ice surfaces
     if "usurf" in cfg.assimilations.data_assimilation.cost_list:
@@ -65,6 +70,12 @@ def total_cost(cfg, state, cost, i):
     # Here one adds a regularization terms for the bed toporgraphy to the cost function
     if "thk" in cfg.assimilations.data_assimilation.control_list:
         cost["thk_regu"] = regu_thk(cfg, state)
+
+    # Smoothness of the surface-elevation deviation (usurf - usurfobs);
+    # active only when usurf is a control and a positive weight is set.
+    if ("usurf" in cfg.assimilations.data_assimilation.control_list
+            and cfg.assimilations.data_assimilation.regularization.get("usurf", 0.0) > 0.0):
+        cost["usurf_regu"] = regu_usurf(cfg, state)
 
     # Here one adds a regularization terms for the friction control
     # (slidingco or tau_ref) to the cost function

@@ -26,6 +26,7 @@ data_assimilation:
     optimizer_epsilon: 1.0e-07
     pertubate: False
     nb_relaxation_steps: 0
+    relaxation_freq: 0
     patience: 0
   regularization:
     thk: 10.0
@@ -38,6 +39,7 @@ data_assimilation:
     tau_ref: 1.0       # mirror of slidingco for the new (unified) stack
     arrhenius: 10.0
     divflux: 1.0
+    usurf: 0.0         # smoothness of (usurf - usurfobs) when usurf is a control; 0 disables
     smooth_anisotropy_factor: 1.0
     smooth_anisotropy_factor_sl: 1.0
     smooth_anisotropy_var: 'vel'

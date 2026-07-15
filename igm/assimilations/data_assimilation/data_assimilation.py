@@ -41,9 +41,21 @@ def initialize(cfg, state):
         else:
             raise ValueError(f"Unknown optim. method: {cfg.assimilations.data_assimilation.optimization.method}")
 
-        if i == cfg.assimilations.data_assimilation.optimization.nbitmax:
-            if cfg.assimilations.data_assimilation.optimization.nb_relaxation_steps > 0:
-                apply_relaxation(cfg, state)
+        # Relaxation (nb_relaxation_steps mass-conservation steps with an
+        # SMB-like smooth forcing): always at the last iteration, and — if
+        # relaxation_freq > 0 — interleaved every relaxation_freq iterations.
+        # Interleaving lets the optimizer re-compensate the misfit after each
+        # physical projection, unlike the terminal-only application.
+        opt = cfg.assimilations.data_assimilation.optimization
+        if opt.nb_relaxation_steps > 0 and (
+            i == opt.nbitmax
+            or (
+                opt.get("relaxation_freq", 0) > 0
+                and 0 < i < opt.nbitmax
+                and i % opt.relaxation_freq == 0
+            )
+        ):
+            apply_relaxation(cfg, state)
 
         compute_rms_std_optimization(state, i)
 

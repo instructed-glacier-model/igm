@@ -75,6 +75,10 @@ optimization:
     Type: integer
     Description: "Number of forward ice dynamics relaxation steps applied after the final optimization iteration to refine the ice geometry solution."
     Units: dimless
+  relaxation_freq:
+    Type: integer
+    Description: "If > 0, also apply the nb_relaxation_steps relaxation every relaxation_freq optimization iterations (interleaved), so the optimizer can re-compensate the misfit after each physical projection. 0 = terminal-only (legacy). Requires the thk process group to be loaded."
+    Units: dimless
   patience:
     Type: integer
     Description: "Window size (in iterations) for rolling-average early stopping: halts if the recent velsurf cost average exceeds 1.1x the historical best over this window (0 = disabled)."
