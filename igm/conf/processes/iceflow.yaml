@@ -184,6 +184,35 @@ iceflow:
         nb_layers: 6
         conv_ker_size: 3
         residual: true
+    adaptive_time:
+      # Temporal lever (B) — decides WHEN to retrain. Mirror of adaptive_patching (C).
+      # Additive: never moves top-level retrain_freq / retrain_threshold, only dispatches.
+      method: none                     # none (fix retrain_freq) | shift_distribution (Hotelling-T2 vs
+                                       # retrain_threshold, early trigger; retrain_freq kept as safety
+                                       # net = legacy combined behaviour) | credit
+      enabled_observation: false       # diagnostic credit_log.jsonl, also when method != credit
+      credit:                          # only used when method=credit (or enabled_observation=true)
+        kappa: 1.0e-3                  # credit threshold in z-units (dimensionless)
+        retrain_freq_max: 100          # safety ceiling (steps without trigger)
+        record_path: credit_log.jsonl  # JSONL log of credit / Δ per step
+    adaptive_patching:
+      enabled: false
+      # Step 1 — window generation
+      windows: peak_augmented        # regular_grid | peak_augmented (default)
+      n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count)
+      patch_size: 0                  # actual tile side (= "ps"). 0 = use framesizemax.
+                                     # bs = floor(framesizemax² / (ly·lx)), computed once.
+      # Step 2 — scoring + thk eligibility filter
+      selection: scored              # all (uniform over eligibles) | scored
+      min_thk_in_window: 0.0         # (m) max(thk) below this → ineligible. 
+      score_alpha: 1.0               # p[i] ∝ (score[i] + eps)^score_alpha. α=0 → uniform;
+      temporal_downsample: 1         # downsampling factor for the cached input snapshot.
+      # Step 3 — training_windows
+      shuffle_training_windows: true # shuffle the N_train indices before batching
+      record_training_windows: false # write one JSONL line per call to record_path
+      record_path: null              # null → training_windows.jsonl in cwd
+      rng_seed: null                 # null → fresh randomness per call 
+      rescore_freq: 10               # Caching: steps 1+2 recomputed every rescore_freq
     data_preparation:
       framesizemax: 99999
       patches_per_batch: 1

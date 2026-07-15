@@ -15,7 +15,11 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 from igm.utils.math.precision import normalize_precision
 
 from ..mappings.normalizer import is_distribution_shifted
-# from .patch_selection import select_patches
+from .patch_selection import select_patches
+from .credit_tracker import (
+    update_credit_observer,
+    log_and_maybe_reset_credit_observer,
+)
 
 
 def get_status(
@@ -28,13 +32,27 @@ def get_status(
     nbit_warmup = cfg_unified.nbit_warmup
     retrain_freq = cfg_unified.retrain_freq
 
+    # adaptive_time decides WHEN to retrain: "none" = retrain_freq only,
+    # "shift_distribution" = retrain_freq + distribution-shift early trigger,
+    # "credit" = per-step input-change accumulator (see credit_tracker.py).
+    cfg_at = getattr(cfg_unified, "adaptive_time", None)
+    method = str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+
     if init:
         return Status.INIT
     elif state.it <= nbit_warmup:
         return Status.WARM_UP
+    elif method == "credit":
+        # retrain once the credit accumulated by update_credit_observer
+        # exceeds kappa, or after retrain_freq_max steps (safety ceiling)
+        if state.it > 0 and (
+            float(getattr(state, "_ct_credit", 0.0)) >= cfg_at.credit.kappa
+            or int(getattr(state, "_ct_steps_since_retrain", 0)) >= cfg_at.credit.retrain_freq_max
+        ):
+            return Status.DEFAULT
     elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
         return Status.DEFAULT
-    elif state.it > 0 and distribution_shifted:
+    elif method == "shift_distribution" and state.it > 0 and distribution_shifted:
         print(
             "Retraining due to distribution shift!"
         )  # temporary measure to make debugging more clear for users
@@ -96,17 +114,24 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
         else False
     )
 
+    # Per-step credit observer (no-op unless adaptive_time activates it)
+    update_credit_observer(cfg, state)
+
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
 
-    # Placeholder for the adaptive patch selection (currently tested on adaptive patching branch)
-    # The goal is to select a subset of patches where the dh/dt change the most, to intensify the training
-    # on the most changing areas while mitigating the little changing areas.
-    # cfg_ap = cfg.processes.iceflow.unified.adaptive_patching
-    # if do_solve and status == Status.DEFAULT and bool(getattr(cfg_ap, "enabled", False)):
-    #     inputs = select_patches(cfg, state, inputs)
+    # Adaptive patch selection: train on a subset of patches where the inputs
+    # change the most. Applied to INIT/WARM_UP/DEFAULT alike so the optimizer
+    # graph is XLA-compiled once on a fixed (bs, ly, lx, C) shape.
+    use_adaptive = bool(getattr(cfg_unified.adaptive_patching, "enabled", False))
 
     # Optimize and save cost
-    if do_solve:
-
+    if do_solve and use_adaptive:
+        training_inputs, bs = select_patches(cfg, state, inputs)
+        for start in range(0, int(training_inputs.shape[0]), bs):
+            state.cost = optimizer.minimize(training_inputs[start:start + bs])
+    elif do_solve:
         state.cost = optimizer.minimize(inputs)
+
+    # Log + reset the credit accumulator if a retrain fired (no-op unless active)
+    log_and_maybe_reset_credit_observer(cfg, state, status, do_solve)
