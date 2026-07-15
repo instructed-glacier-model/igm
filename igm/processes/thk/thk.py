@@ -88,6 +88,7 @@ def update(cfg, state):
                 state.dx,
                 state.dt,
                 slope_type=p.slope_type,
+                smooth_sigma=float(getattr(p, "divflux_smooth_sigma", 0.0)),
             )
             if not hasattr(state, "smb"):
                 state.smb = tf.zeros_like(state.thk)

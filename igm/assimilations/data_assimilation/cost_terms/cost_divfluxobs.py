@@ -9,7 +9,8 @@ from igm.utils.grad.compute_divflux import compute_divflux
 def cost_divfluxobs(cfg,state,i):
 
     divflux = compute_divflux(
-        state.ubar, state.vbar, state.thk, state.dx, state.dx, method=cfg.assimilations.data_assimilation.divflux.method
+        state.ubar, state.vbar, state.thk, state.dx, state.dx, method=cfg.assimilations.data_assimilation.divflux.method,
+        smooth_sigma=cfg.assimilations.data_assimilation.divflux.smooth_sigma
     )
  
     divfluxtar = state.divfluxobs

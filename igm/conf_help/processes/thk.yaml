@@ -2,6 +2,10 @@ slope_type:
   Type: string
   Units: dimless
   Description: "Type of slope limiter for the ice thickness equation (godunov or superbee). Used in stock mode (`calving_front: false`)."
+divflux_smooth_sigma:
+  Type: float
+  Units: dimless
+  Description: "If > 0, Gaussian-filter the staggered fluxes Qx/Qy (std in grid cells) before taking the divergence in the thickness transport. Conservative flux smoothing: the filtered flux is the transport operator, so mass is exactly conserved; slightly smears the flux at the ice margin. Stock mode only; 0 disables."
 ratio_density:
   Type: float
   Units: dimless

@@ -58,6 +58,7 @@ data_assimilation:
     log_slidingco: false
   divflux:
     method: upwind
+    smooth_sigma: 0.0
     force_zero_sum: false
   scaling:
     thk: 2.0

@@ -1,6 +1,7 @@
 thk:
 
   slope_type: superbee                 # limiter used in stock mode (calving_front: false)
+  divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter (std in cells) the staggered fluxes before the divergence (conservative flux smoothing; stock mode only)
   ratio_density: 0.910                 # rho_ice / rho_water for flotation
 
   calving_front: false                 # true -> enable method below; false -> plain thk

@@ -1,5 +1,7 @@
 import tensorflow as tf
- 
+
+from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
+
 def minmod(a, b):
     return tf.where( (tf.abs(a)<tf.abs(b))&(a*b>0.0), a, tf.where((tf.abs(a)>tf.abs(b))&(a*b>0.0),b,0))
     
@@ -7,11 +9,17 @@ def maxmod(a, b):
     return tf.where( (tf.abs(a)<tf.abs(b))&(a*b>0.0), b, tf.where((tf.abs(a)>tf.abs(b))&(a*b>0.0),a,0))
 
 @tf.function()
-def compute_divflux_slope_limiter(u, v, h, dx, dy, dt, slope_type):
+def compute_divflux_slope_limiter(u, v, h, dx, dy, dt, slope_type, smooth_sigma=0.0):
     """
     upwind computation of the divergence of the flux : d(u h)/dx + d(v h)/dy
     propose a slope limiter for the upwind scheme with 3 options : godunov, minmod, superbee
-    
+
+    smooth_sigma > 0 applies a Gaussian filter (std smooth_sigma, in cells) to the
+    staggered fluxes Qx, Qy BEFORE taking the divergence (conservative flux
+    smoothing, see compute_divflux). When used in the thk transport, the filtered
+    flux IS the transport operator, so mass conservation is exact by construction;
+    the trade-off is a slight diffusive smearing of the flux at the ice margin.
+
     References :
     - Numerical Methods for Engineers, Leif Rune Hellevik, book
       https://folk.ntnu.no/leifh/teaching/tkt4140/._main074.html
@@ -59,7 +67,12 @@ def compute_divflux_slope_limiter(u, v, h, dx, dy, dt, slope_type):
     s   = Hy[1:-2,:] + 0.5*dy*(1.0 - v*dt/dy)*slopey[:-1,:]      #  (ny+1,nx)      
     n   = Hy[2:-1,:] - 0.5*dy*(1.0 + v*dt/dy)*slopey[1:,:]       #  (ny+1,nx)    
      
-    Qx = u * tf.where(u > 0, w, e)  #  (ny,nx+1)   
-    Qy = v * tf.where(v > 0, s, n)  #  (ny+1,nx)   
-     
-    return (Qx[:, 1:] - Qx[:, :-1]) / dx + (Qy[1:, :] - Qy[:-1, :]) / dy  
+    Qx = u * tf.where(u > 0, w, e)  #  (ny,nx+1)
+    Qy = v * tf.where(v > 0, s, n)  #  (ny+1,nx)
+
+    if smooth_sigma > 0.0:
+        kernel_size = 2 * int(3 * smooth_sigma) + 1  # spans +/- 3 sigma
+        Qx = gaussian_filter_tf(Qx, sigma=smooth_sigma, kernel_size=kernel_size)
+        Qy = gaussian_filter_tf(Qy, sigma=smooth_sigma, kernel_size=kernel_size)
+
+    return (Qx[:, 1:] - Qx[:, :-1]) / dx + (Qy[1:, :] - Qy[:-1, :]) / dy

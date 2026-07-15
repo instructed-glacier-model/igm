@@ -21,7 +21,8 @@ def cost_divfluxpen(cfg, state, i):
 
     divflux = compute_divflux(
         state.ubar, state.vbar, state.thk, state.dx, state.dx,
-        method=cfg.assimilations.data_assimilation.divflux.method
+        method=cfg.assimilations.data_assimilation.divflux.method,
+        smooth_sigma=cfg.assimilations.data_assimilation.divflux.smooth_sigma
     )
 
     dddx = (divflux[:, 1:] - divflux[:, :-1]) / state.dx
