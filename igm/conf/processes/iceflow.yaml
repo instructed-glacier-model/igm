@@ -200,8 +200,10 @@ iceflow:
       # Step 1 — window generation
       windows: peak_augmented        # regular_grid | peak_augmented (default)
       n_extra_peaks: -1              # peak_augmented only; -1 = auto (match grid count)
-      patch_size: 0                  # actual tile side (= "ps"). 0 = use framesizemax.
-                                     # bs = floor(framesizemax² / (ly·lx)), computed once.
+      patch_size: 64                 # tile side (must be > 0), decoupled from framesizemax
+      batch_cells_max: 2250000       # GPU budget: cells (patches × ly·lx) per training batch;
+                                     # bs = floor(batch_cells_max / (ly·lx)), computed once.
+                                     # Default = 1500² (validated on the exp1 campaign).
       # Step 2 — scoring + thk eligibility filter
       selection: scored              # all (uniform over eligibles) | scored
       min_thk_in_window: 0.0         # (m) max(thk) below this → ineligible. 

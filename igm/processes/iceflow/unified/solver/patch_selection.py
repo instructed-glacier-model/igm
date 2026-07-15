@@ -9,7 +9,7 @@ Adaptive patch selection for the unified iceflow solver.
 PIPELINE (one call to `select_patches`):
 
   Once early — compute the fixed-shape budget:
-      bs      = max(1, floor(framesizemax^2 / (ly · lx)))
+      bs      = max(1, floor(batch_cells_max / (ly · lx)))
       N_train = floor(grid_cover_count / bs) · bs          (multiple of bs)
 
   STEP 1 — WINDOW GENERATION
@@ -48,8 +48,11 @@ PIPELINE (one call to `select_patches`):
 KEY CONFIG KNOBS
   (see igm/conf/processes/iceflow.yaml for the full schema and defaults)
 
-      data_preparation.framesizemax     GPU capacity per batch (= one tile fits at bs=1)
-      adaptive_patching.patch_size      Actual tile side. 0 → fall back to framesizemax.
+      adaptive_patching.patch_size      Tile side (must be > 0; default 64).
+      adaptive_patching.batch_cells_max GPU budget: cells (patches × ly × lx) per
+                                          training batch. Default 2_250_000 (= the
+                                          validated 1500²). Fully decoupled from
+                                          data_preparation.framesizemax.
       adaptive_patching.windows         "regular_grid" | "peak_augmented"
       adaptive_patching.selection       "all" | "scored"
       adaptive_patching.min_thk_in_window  (m) Drop windows below this thk → ineligible.
@@ -90,10 +93,10 @@ from igm.common import State
 # Helpers
 # ===========================================================================
 
-def _patch_grid_dims(ny: int, nx: int, framesizemax: int):
+def _patch_grid_dims(ny: int, nx: int, patch_size: int):
     """Return (sy, sx, ly, lx) — number of strips and patch size in each dim."""
-    sy = ny // framesizemax + 1
-    sx = nx // framesizemax + 1
+    sy = ny // patch_size + 1
+    sx = nx // patch_size + 1
     ly = ny // sy
     lx = nx // sx
     return sy, sx, ly, lx
@@ -142,7 +145,7 @@ def _windows_regular_grid(state, cfg_ap):
     """Non-overlapping regular grid. Exact coverage, zero overlap."""
     dhdt = _get_dhdt(state)
     ny, nx = dhdt.shape
-    sy, sx, ly, lx = _patch_grid_dims(ny, nx, cfg_ap.framesizemax)
+    sy, sx, ly, lx = _patch_grid_dims(ny, nx, cfg_ap.patch_size)
     windows = []
     for j in range(sy):
         for i in range(sx):
@@ -170,7 +173,7 @@ def _windows_peak_augmented(state, cfg_ap):
         return grid  # no proxy signal yet → grid only
 
     ny, nx = dhdt.shape
-    _, _, ly, lx = _patch_grid_dims(ny, nx, cfg_ap.framesizemax)
+    _, _, ly, lx = _patch_grid_dims(ny, nx, cfg_ap.patch_size)
     half_y, half_x = ly // 2, lx // 2
 
     extras = []
@@ -421,12 +424,17 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     # `stride_factor`, `temporal_history_K` were removed in the 2026-05-20
     # tier-1 cleanup. They are silently ignored if still present in old configs.
 
-    # Capacity = data_preparation.framesizemax (one tile of this size fits at bs=1).
-    framemax = int(cfg.processes.iceflow.unified.data_preparation.framesizemax)
-    # Actual tile size used by the window generators. When > 0 overrides framemax;
-    # when 0 falls back to framemax.
-    _patch_size = int(_get("patch_size", 0) or 0)
-    ap.framesizemax = _patch_size if _patch_size > 0 else framemax
+    # Tile side used by the window generators, and GPU budget (cells per
+    # training batch) — both owned by adaptive_patching, fully decoupled from
+    # data_preparation.framesizemax (whose 99999 no-split sentinel is NOT a
+    # realistic capacity).
+    ap.patch_size = int(_get("patch_size", 64))
+    if ap.patch_size <= 0:
+        raise ValueError(
+            "adaptive_patching.patch_size must be > 0 (e.g. 64); the legacy "
+            "0 = fall-back-to-framesizemax behaviour was removed"
+        )
+    ap.batch_cells_max = int(_get("batch_cells_max", 2_250_000))
 
     if ap.windows not in _WINDOW_GENS:
         raise ValueError(
@@ -439,12 +447,12 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
             f"available: {list(_SELECTORS)} (top_k/nms archived — see patch_selection_archive.py)"
         )
 
-    # --- Once early: bs and N_train, computed from grid dims and framesizemax ---
+    # --- Once early: bs and N_train, computed from grid dims and the GPU budget ---
     dhdt = _get_dhdt(state)
     ny, nx = dhdt.shape
-    _, _, ly, lx = _patch_grid_dims(ny, nx, ap.framesizemax)
-    bs = max(1, framemax ** 2 // max(1, ly * lx))
-    grid_cover_count = (ny // ap.framesizemax + 1) * (nx // ap.framesizemax + 1)
+    _, _, ly, lx = _patch_grid_dims(ny, nx, ap.patch_size)
+    bs = max(1, ap.batch_cells_max // max(1, ly * lx))
+    grid_cover_count = (ny // ap.patch_size + 1) * (nx // ap.patch_size + 1)
     n_train = max(bs, (grid_cover_count // bs) * bs)
 
     rng = (np.random.default_rng(int(ap.rng_seed))
@@ -470,7 +478,7 @@ def select_patches(cfg: DictConfig, state: State, inputs: tf.Tensor):
     #   - the bs/ly/lx changed (e.g. grid size changed mid-run)
     cache = getattr(state, "_ap_cache", None)
     cache_key = (ap.windows, ap.selection, ap.min_thk_in_window,
-                 ap.framesizemax, ap.n_extra_peaks,
+                 ap.patch_size, ap.n_extra_peaks,
                  ap.score_alpha, ap.temporal_downsample)
     call_n = (cache["call_n"] + 1) if cache is not None else 0
     needs_rebuild = (
