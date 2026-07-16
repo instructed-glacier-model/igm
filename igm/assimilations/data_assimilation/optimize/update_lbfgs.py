@@ -8,6 +8,7 @@ import tensorflow as tf
 # from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.grad.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
+from ..utils import compute_forward_divflux
 
 from ..iceflow_dispatch import iceflow_evaluate
 
@@ -88,11 +89,4 @@ def optimize_update_lbfgs(cfg, state, cost, i):
     for i, f in enumerate(cfg.assimilations.data_assimilation.control_list):
         setattr(state, f + "_sc", controls[i])
 
-    state.divflux = compute_divflux(
-        state.ubar,
-        state.vbar,
-        state.thk,
-        state.dx,
-        state.dx,
-        method=cfg.assimilations.data_assimilation.divflux.method
-    )
+    state.divflux = compute_forward_divflux(cfg, state)

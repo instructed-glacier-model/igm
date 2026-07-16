@@ -32,6 +32,7 @@ from scipy import stats
 
 from igm.utils.grad.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
+from ..utils import compute_forward_divflux
 from ..iceflow_dispatch import iceflow_evaluate
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
@@ -309,11 +310,4 @@ def optimize_update_patched(cfg, state, cost, i):
             # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)
             state.arrhenius = tf.where(state.arrhenius < 1.0, 1.0, state.arrhenius)
 
-    state.divflux = compute_divflux(
-        state.ubar,
-        state.vbar,
-        state.thk,
-        state.dx,
-        state.dx,
-        method=da.divflux.method
-    )
+    state.divflux = compute_forward_divflux(cfg, state)

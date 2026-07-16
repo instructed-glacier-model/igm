@@ -64,10 +64,12 @@ data_assimilation:
     velsurfobs_thr: 0.0
     log_slidingco: false
   divflux:
-    method: upwind      # used by divfluxobs/divfluxfcz; divfluxpen ignores it (see below)
+    method: upwind      # used by divfluxobs/divfluxfcz only. divfluxpen and the saved
+                        # state.divflux diagnostic ALWAYS use the forward transport
+                        # operator (slope limiter) — single source of truth, see
+                        # data_assimilation.utils.compute_forward_divflux.
     force_zero_sum: false
-    pen_operator: upwind  # divfluxpen stencil: upwind | slope_limiter (= the forward
-    pen_dt: 0.1           # transport operator, with this nominal dt in years)
+    pen_dt: 0.1         # nominal transport dt (yr) entering the forward-operator flux
   scaling:
     thk: 2.0
     usurf: 0.5

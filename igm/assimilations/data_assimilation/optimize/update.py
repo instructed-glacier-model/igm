@@ -15,6 +15,7 @@ from ..cost_terms.total_cost import total_cost
 
 from ..iceflow_dispatch import iceflow_evaluate
 
+from ..utils import compute_forward_divflux
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
 
@@ -157,11 +158,7 @@ def optimize_update(cfg, state, cost, i):
                 # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)
                 state.arrhenius = tf.where(state.arrhenius < 1.0, 1.0, state.arrhenius)
 
-        state.divflux = compute_divflux(
-            state.ubar,
-            state.vbar,
-            state.thk,
-            state.dx,
-            state.dx,
-            method=cfg.assimilations.data_assimilation.divflux.method
-        )
+        # Diagnostic divflux (saved/plotted): ALWAYS the forward transport
+        # operator — the only divergence whose smoothness predicts the
+        # forward start (see compute_forward_divflux).
+        state.divflux = compute_forward_divflux(cfg, state)

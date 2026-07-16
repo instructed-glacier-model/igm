@@ -44,6 +44,32 @@ def resolve_friction_name(cfg, state=None) -> str:
             return "slidingco"
     return "slidingco"
 
+
+def compute_forward_divflux(cfg, state):
+    """div(uH) computed with the SAME operator as the forward thk transport.
+
+    Single source of truth for the flux divergence in data_assimilation:
+    used by the divfluxpen cost AND for the state.divflux diagnostic that is
+    saved/plotted, so that 'smooth divflux' in the inversion means exactly
+    'smooth under the operator that will advance the ice' (smoothness is
+    operator-dependent: a freely-evolved glacier has grain ~0.2 m/yr under
+    this operator but ~4-7 under first-order upwind, and vice versa for
+    upwind-penalized inversions).
+
+    slope_type follows the forward config (processes.thk.slope_type) when the
+    thk process is loaded, else the forward default 'superbee'; divflux.pen_dt
+    is the nominal transport time step (yr) entering the flux reconstruction.
+    """
+    try:
+        slope_type = cfg.processes.thk.slope_type
+    except Exception:
+        slope_type = "superbee"
+    return compute_divflux_slope_limiter(
+        state.ubar, state.vbar, state.thk, state.dx, state.dx,
+        tf.constant(cfg.assimilations.data_assimilation.divflux.pen_dt, tf.float32),
+        slope_type=slope_type,
+    )
+
 def compute_rms_std_optimization(state, i):
     I = state.icemaskobs > 0.5
 
