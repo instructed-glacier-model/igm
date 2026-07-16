@@ -64,8 +64,10 @@ data_assimilation:
     velsurfobs_thr: 0.0
     log_slidingco: false
   divflux:
-    method: upwind      # used by divfluxobs/divfluxfcz; divfluxpen is hardcoded raw upwind
+    method: upwind      # used by divfluxobs/divfluxfcz; divfluxpen ignores it (see below)
     force_zero_sum: false
+    pen_operator: upwind  # divfluxpen stencil: upwind | slope_limiter (= the forward
+    pen_dt: 0.1           # transport operator, with this nominal dt in years)
   scaling:
     thk: 2.0
     usurf: 0.5
