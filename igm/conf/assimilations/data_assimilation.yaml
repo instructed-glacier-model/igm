@@ -64,8 +64,7 @@ data_assimilation:
     velsurfobs_thr: 0.0
     log_slidingco: false
   divflux:
-    method: upwind
-    smooth_sigma: 0.0
+    method: upwind      # used by divfluxobs/divfluxfcz; divfluxpen is hardcoded raw upwind
     force_zero_sum: false
   scaling:
     thk: 2.0

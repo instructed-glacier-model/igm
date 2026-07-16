@@ -185,8 +185,7 @@ def optimize_update_patched(cfg, state, cost, i):
         _evaluate_patched(cfg, state, ctx, ny, nx)
         divflux = compute_divflux(
             state.ubar, state.vbar, state.thk, state.dx, state.dx,
-            method=da.divflux.method,
-            smooth_sigma=da.divflux.smooth_sigma,
+            method=da.divflux.method
         )
         ACT = state.icemaskobs > 0.5
         state.res = stats.linregress(state.usurf[ACT], divflux[ACT])
@@ -316,6 +315,5 @@ def optimize_update_patched(cfg, state, cost, i):
         state.thk,
         state.dx,
         state.dx,
-        method=da.divflux.method,
-        smooth_sigma=da.divflux.smooth_sigma,
+        method=da.divflux.method
     )

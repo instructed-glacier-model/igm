@@ -163,6 +163,5 @@ def optimize_update(cfg, state, cost, i):
             state.thk,
             state.dx,
             state.dx,
-            method=cfg.assimilations.data_assimilation.divflux.method,
-            smooth_sigma=cfg.assimilations.data_assimilation.divflux.smooth_sigma,
+            method=cfg.assimilations.data_assimilation.divflux.method
         )

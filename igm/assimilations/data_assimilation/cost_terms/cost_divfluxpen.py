@@ -17,12 +17,21 @@ def cost_divfluxpen(cfg, state, i):
     should be. Rationale: a real glacier always has a smooth flux divergence
     (divflux = smb - dh/dt, both smooth and bounded), so roughness of divflux
     is a proxy for physical inconsistency of the (thk, velocity) pair.
+
+    This penalty acts on the raw upwind divflux BY CONSTRUCTION (hardcoded
+    below, independent of divflux.method). Penalizing a filtered or centered
+    divergence would leave the sub-filter/checkerboard modes of the controls
+    unpenalized while they remain useful to the misfit terms — the optimizer
+    then systematically fills that blind spot with grid noise (Aletsch
+    2026-07: ~3900-trial search, apparent grain 0.2 m/yr but true raw grain
+    29-40 m/yr). The conservative flux smoothing remains available for the
+    forward model (processes.thk.divflux_smooth_sigma), which faces no
+    adversarial optimizer.
     """
 
     divflux = compute_divflux(
         state.ubar, state.vbar, state.thk, state.dx, state.dx,
-        method=cfg.assimilations.data_assimilation.divflux.method,
-        smooth_sigma=cfg.assimilations.data_assimilation.divflux.smooth_sigma
+        method="upwind", smooth_sigma=0.0,
     )
 
     dddx = (divflux[:, 1:] - divflux[:, :-1]) / state.dx

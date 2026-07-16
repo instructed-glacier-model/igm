@@ -194,10 +194,6 @@ divflux:
     Type: string
     Description: "Compute the divergence of the flux using the upwind or centered method."
     Units: dimless
-  smooth_sigma:
-    Type: float
-    Description: "If > 0, Gaussian-filter the staggered fluxes Qx/Qy (std in grid cells) before taking the divergence. Conservative: divflux stays the exact discrete divergence of a (filtered) flux. Tames grid-scale divflux noise; 0 disables."
-    Units: dimless
   force_zero_sum:
     Type: boolean
     Description: "Add a penalty to the cost function to force the sum of the divergence of the flux to be zero"
