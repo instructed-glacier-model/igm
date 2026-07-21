@@ -26,7 +26,7 @@ setup(
     license="gpl-3.0",
     packages=find_packages(include=["igm", "igm.*"]),
     include_package_data=True,
-    package_data={"igm": package_files("igm/emulators")},
+    package_data={"igm": package_files("igm/processes/iceflow/emulate/emulators")},
     entry_points={"console_scripts": ["igm_run = igm.igm_run:main"]},
     description="IGM - a glacier evolution model",
     long_description=readme,
