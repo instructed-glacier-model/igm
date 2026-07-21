@@ -1,45 +1,69 @@
 import os
+from pathlib import Path
 import zipfile
+
 import pytest
 
 ROOT_PACKAGE = "igm"  # top-level package
-DIST_DIR = "dist"  # where the wheel is built
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ROOT_PACKAGE_DIR = PROJECT_ROOT / ROOT_PACKAGE
+DIST_DIR = PROJECT_ROOT / "dist"  # where the wheel is built
 
 
-def get_all_subpackages(root_dir):
-    """Recursively find all subdirectories containing .py files"""
-    subpackages = []
+def get_all_package_names(root_dir):
+    """Recursively find all package directories containing .py files."""
+    package_names = []
+    root_dir = Path(root_dir)
     for dirpath, dirnames, filenames in os.walk(root_dir):
         if any(f.endswith(".py") for f in filenames):
-            rel_path = os.path.relpath(dirpath, root_dir)
-            subpackages.append(rel_path.replace(os.sep, "."))
-    return subpackages
+            rel_path = Path(dirpath).relative_to(root_dir)
+            package_names.append(".".join([ROOT_PACKAGE, *rel_path.parts]))
+    return package_names
 
 
 def test_all_subpackages_have_init():
     """Ensure every subpackage directory has __init__.py"""
     missing = []
-    for dirpath, dirnames, filenames in os.walk(ROOT_PACKAGE):
+    for dirpath, dirnames, filenames in os.walk(ROOT_PACKAGE_DIR):
         if any(f.endswith(".py") for f in filenames) and "__init__.py" not in filenames:
-            missing.append(dirpath)
+            missing.append(os.path.relpath(dirpath, PROJECT_ROOT))
     assert not missing, f"Missing __init__.py in: {missing}"
 
 
-@pytest.mark.parametrize("subpkg", get_all_subpackages(ROOT_PACKAGE))
-def test_subpackages_in_wheel(subpkg):
+def get_wheel_path():
+    """Return the newest wheel path, or skip when no wheel has been built."""
+    if not DIST_DIR.exists():
+        pytest.skip(
+            f"No wheel build directory found at {DIST_DIR}. "
+            "Skipping wheel packaging check; build a wheel first with "
+            "`python setup.py bdist_wheel`."
+        )
+
+    wheel_files = sorted(
+        DIST_DIR.glob("*.whl"), key=lambda path: path.stat().st_mtime, reverse=True
+    )
+    if not wheel_files:
+        pytest.skip(
+            f"No wheel file found in {DIST_DIR}. "
+            "Skipping wheel packaging check; build a wheel first with "
+            "`python setup.py bdist_wheel`."
+        )
+    return wheel_files[0]
+
+
+def test_subpackages_in_wheel():
     """Check that every subpackage is included in the wheel"""
-    # Find wheel file
-    wheel_files = [f for f in os.listdir(DIST_DIR) if f.endswith(".whl")]
-    assert wheel_files, f"No wheel file found in {DIST_DIR}"
-    wheel_path = os.path.join(DIST_DIR, wheel_files[0])
+    wheel_path = get_wheel_path()
 
     # List all files in wheel
     with zipfile.ZipFile(wheel_path, "r") as whl:
-        whl_files = whl.namelist()
+        whl_files = set(whl.namelist())
 
-    # Construct expected path
-    # e.g., igm/processes/iceflow/emulate/__init__.py
-    pkg_path = os.path.join(ROOT_PACKAGE, *subpkg.split("."), "__init__.py").replace(
-        os.sep, "/"
-    )
-    assert pkg_path in whl_files, f"Package {subpkg} missing from wheel"
+    missing = []
+    for package_name in get_all_package_names(ROOT_PACKAGE_DIR):
+        # Construct expected path, e.g. igm/processes/iceflow/emulate/__init__.py
+        pkg_path = "/".join([*package_name.split("."), "__init__.py"])
+        if pkg_path not in whl_files:
+            missing.append(package_name)
+
+    assert not missing, f"Packages missing from wheel: {missing}"
