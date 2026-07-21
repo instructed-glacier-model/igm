@@ -4,13 +4,16 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from igm.utils.grad.compute_divflux import compute_divflux
+from ..utils import compute_forward_divflux
 
 def cost_divfluxobs(cfg,state,i):
 
-    divflux = compute_divflux(
-        state.ubar, state.vbar, state.thk, state.dx, state.dx, method=cfg.assimilations.data_assimilation.divflux.method
-    )
+    # Fit AND regularize the SAME flux divergence that grain_div measures and the
+    # forward model advances (forward transport operator), not the upwind one:
+    # smoothness is operator-dependent, so fitting/penalizing upwind left the
+    # forward-operator divflux rough (grain blew up on fast trunks). Aligns
+    # divfluxobs with divfluxpen (203ff65).
+    divflux = compute_forward_divflux(cfg, state)
  
     divfluxtar = state.divfluxobs
     ACT = ~tf.math.is_nan(divfluxtar)
