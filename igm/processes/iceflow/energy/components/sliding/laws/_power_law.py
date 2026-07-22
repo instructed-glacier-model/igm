@@ -42,7 +42,7 @@ def power_law_cost(
     N_ref: tf.Tensor,
     q: tf.Tensor,
     rho_ratio: tf.Tensor,
-    use_mask_gr: tf.Tensor,
+    use_mask_gr: bool,
     discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:

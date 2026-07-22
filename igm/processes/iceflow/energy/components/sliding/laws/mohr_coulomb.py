@@ -108,7 +108,7 @@ def cost_mohr_coulomb(
     u_regu = tf.cast(params.regularization, dtype)
     u_ref = tf.cast(params.u_ref, dtype)
     rho_ratio = tf.cast(params.rho_ratio, dtype)
-    use_mask_gr = tf.cast(params.use_mask_gr, tf.bool)
+    use_mask_gr = params.use_mask_gr
     tauc_min = tf.cast(params.tauc_min, dtype)
     tauc_max = tf.cast(params.tauc_max, dtype)
     tauc_ice_free = tf.cast(params.tauc_ice_free, dtype)

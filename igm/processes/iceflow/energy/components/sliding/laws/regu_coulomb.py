@@ -68,7 +68,7 @@ def cost_regu_coulomb(
     μ = tf.cast(regu_coulomb_params.mu, dtype)
     u_ref = tf.cast(regu_coulomb_params.u_ref, dtype)
     rho_ratio = tf.cast(regu_coulomb_params.rho_ratio, dtype)
-    use_mask_gr = tf.cast(regu_coulomb_params.use_mask_gr, tf.bool)
+    use_mask_gr = regu_coulomb_params.use_mask_gr
 
     return _cost(
         U,
@@ -103,7 +103,7 @@ def _cost(
     u_regu: tf.Tensor,
     u_ref: tf.Tensor,
     rho_ratio: tf.Tensor,
-    use_mask_gr: tf.Tensor,
+    use_mask_gr: bool,
     discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:

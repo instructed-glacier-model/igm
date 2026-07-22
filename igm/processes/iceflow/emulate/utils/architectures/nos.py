@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict
 import tensorflow as tf
 
@@ -83,7 +84,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
                     f"modes2 must be <= W//2 + 1."
                 )
 
-        limit = tf.math.sqrt(tf.cast(self.scale, self.compute_dtype))
+        limit = math.sqrt(self.scale)
         init = tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
         weight_shape = (

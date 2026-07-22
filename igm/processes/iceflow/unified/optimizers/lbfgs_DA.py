@@ -354,7 +354,12 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         if self._line_search_supports_result:
             return self.line_search.search_result(theta_flat, p_flat, eval_fn, val_0=val_0)
 
-        alpha = self.line_search.search(theta_flat, p_flat, eval_fn)
+        alpha = self.line_search.search(
+            theta_flat,
+            p_flat,
+            eval_fn,
+            val_0=val_0,
+        )
         alpha_valid = tf.math.is_finite(alpha) & (alpha >= tf.zeros_like(alpha))
         alpha_safe = tf.where(alpha_valid, alpha, tf.zeros_like(alpha))
         vg = eval_fn(alpha_safe)

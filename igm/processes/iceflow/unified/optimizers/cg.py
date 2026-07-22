@@ -111,7 +111,28 @@ class OptimizerCG(Optimizer):
                 self.map.set_theta(theta_bak)
                 return ValueAndGradient(x=alpha, f=f, df=df)
 
-            alpha = self.line_search.search(theta_flat, p, val_grad)
+            def value_fn(alpha):
+                theta_bak = self.map.copy_theta(self.map.get_theta())
+                theta_trial = theta_flat + alpha * p
+                if self._has_box_bounds:
+                    theta_trial = self._project_box(theta_trial, L_flat, U_flat)
+                self.map.set_theta(self.map.unflatten_theta(theta_trial))
+                f = self._get_cost(x)
+                self.map.set_theta(theta_bak)
+                return f
+
+            val_0 = ValueAndGradient(
+                x=tf.constant(0.0, dtype=theta_flat.dtype),
+                f=tf.cast(cost, theta_flat.dtype),
+                df=tf.cast(self._dot(g, p), theta_flat.dtype),
+            )
+            alpha = self.line_search.search(
+                theta_flat,
+                p,
+                val_grad,
+                val_0=val_0,
+                value_fn=self.line_search.select_value_fn(value_fn),
+            )
             
             # Safeguard against NaN or invalid step sizes
             alpha = tf.where(tf.math.is_nan(alpha) | tf.math.is_inf(alpha), 

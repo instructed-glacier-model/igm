@@ -7,7 +7,7 @@ import tensorflow as tf
 from typing import Optional, Tuple
 
 from .lbfgs import OptimizerLBFGS
-from .line_searches import LineSearches, ValueAndGradient
+from .line_searches import ValueAndGradient
 from igm.utils.math.norms import compute_norm
 
 class OptimizerLBFGSBounds(OptimizerLBFGS):
@@ -70,7 +70,14 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         return theta_proj, theta_trial
 
     @tf.function
-    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+    def _line_search(
+        self,
+        theta_flat: tf.Tensor,
+        p_flat: tf.Tensor,
+        input: tf.Tensor,
+        f0: Optional[tf.Tensor] = None,
+        grad0_flat: Optional[tf.Tensor] = None,
+    ) -> tf.Tensor:
         L, U = self.map.get_box_bounds_flat()
         amax = self._alpha_max(theta_flat, p_flat, L, U)
 
@@ -91,7 +98,32 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             self.map.set_theta(theta_backup)
             return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
 
-        return self.line_search.search(theta_flat, p_flat, eval_fn)
+        def value_fn(alpha: tf.Tensor) -> tf.Tensor:
+            alpha_eff = tf.minimum(alpha, amax)
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
+            f = self._get_cost(input)
+            self.map.set_theta(theta_backup)
+            return f
+
+        val_0 = None
+        if f0 is not None and grad0_flat is not None:
+            mask0 = self._get_mask(theta_flat, grad0_flat, L, U)
+            p_masked0 = tf.where(mask0, p_flat, tf.zeros_like(p_flat))
+            val_0 = ValueAndGradient(
+                x=tf.constant(0.0, dtype=theta_flat.dtype),
+                f=tf.cast(f0, theta_flat.dtype),
+                df=tf.cast(self._dot(grad0_flat, p_masked0), theta_flat.dtype),
+            )
+
+        return self.line_search.search(
+            theta_flat,
+            p_flat,
+            eval_fn,
+            val_0=val_0,
+            value_fn=self.line_search.select_value_fn(value_fn),
+        )
 
 
     @tf.function(jit_compile=False)

@@ -127,7 +127,8 @@ def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
     Name-agnostic. The dual-name handling for the friction field is on
     the consumer side, in `sliding.get_friction_field`.
     """
-    return {name: X[..., i] for i, name in enumerate(fieldin_names)}
+    channels = tf.unstack(X, num=len(fieldin_names), axis=-1)
+    return dict(zip(fieldin_names, channels))
 
 
 @tf.function(jit_compile=True)

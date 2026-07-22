@@ -22,21 +22,15 @@ def iceflow_energy(
     batch_size: int,
     Ny: int,
     Nx: int,
-) -> tf.TensorArray:
+) -> tf.Tensor:
 
-    dtype = U.dtype
-    element_shape = (batch_size, Ny - 1, Nx - 1)
-    size = len(energy_components)
-
-    energies = tf.TensorArray(dtype=dtype, size=size, element_shape=element_shape)
-
-    for i, component in enumerate(energy_components):
-        output = component.cost(U, V, fieldin, discr_h, discr_v)
-        energies = energies.write(i, output)
-
-    energies = energies.stack()
-
-    return energies
+    return tf.stack(
+        [
+            component.cost(U, V, fieldin, discr_h, discr_v)
+            for component in energy_components
+        ],
+        axis=0,
+    )
 
 
 @tf.function()

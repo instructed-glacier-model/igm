@@ -217,7 +217,12 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function
     def _line_search(
-        self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
+        self,
+        theta_flat: tf.Tensor,
+        p_flat: tf.Tensor,
+        input: tf.Tensor,
+        f0: Optional[tf.Tensor] = None,
+        grad0_flat: Optional[tf.Tensor] = None,
     ) -> tf.Tensor:
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
             theta_backup = self.map.copy_theta(self.map.get_theta())
@@ -232,7 +237,29 @@ class OptimizerLBFGS(Optimizer):
             self.map.set_theta(theta_backup)
             return ValueAndGradient(x=alpha, f=f, df=df)
 
-        return self.line_search.search(theta_flat, p_flat, eval_fn)
+        def value_fn(alpha: tf.Tensor) -> tf.Tensor:
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
+            f = self._get_cost(input)
+            self.map.set_theta(theta_backup)
+            return f
+
+        val_0 = None
+        if f0 is not None and grad0_flat is not None:
+            val_0 = ValueAndGradient(
+                x=tf.constant(0.0, dtype=theta_flat.dtype),
+                f=tf.cast(f0, theta_flat.dtype),
+                df=tf.cast(self._dot(grad0_flat, p_flat), theta_flat.dtype),
+            )
+
+        return self.line_search.search(
+            theta_flat,
+            p_flat,
+            eval_fn,
+            val_0=val_0,
+            value_fn=self.line_search.select_value_fn(value_fn),
+        )
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -292,7 +319,13 @@ class OptimizerLBFGS(Optimizer):
             p_flat, mask = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
             # Line search
-            alpha = self._line_search(theta_base, p_flat, input)
+            alpha = self._line_search(
+                theta_base,
+                p_flat,
+                input,
+                cost,
+                grad_theta_flat,
+            )
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
             alpha = self._clip_alpha(alpha, theta_base, p_flat)
 

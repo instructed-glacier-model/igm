@@ -16,6 +16,19 @@ def load_test_config() -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def get_unified_mapping_optimizers(config: Dict[str, Any]) -> List[tuple]:
+    """Return configured mapping/optimizer pairs, honoring optional restrictions."""
+    unified = config["methods"]["unified"]
+    optimizer_mappings = unified.get("optimizer_mappings", {})
+    pairs = []
+    for mapping in unified["mappings"]:
+        for optimizer in unified["optimizers"]:
+            allowed_mappings = optimizer_mappings.get(optimizer)
+            if allowed_mappings is None or mapping in allowed_mappings:
+                pairs.append((mapping, optimizer))
+    return pairs
+
+
 def get_test_parameters() -> List[tuple]:
     """Generate test parameters from config."""
     config = load_test_config()
@@ -29,17 +42,16 @@ def get_test_parameters() -> List[tuple]:
 
         for length in config["lengths"]:
             if config["methods"]["unified"]["enabled"]:
-                for mapping in config["methods"]["unified"]["mappings"]:
-                    for optimizer in config["methods"]["unified"]["optimizers"]:
-                        test_case = {
-                            "experiment": exp,
-                            "length": length,
-                            "method": "unified",
-                            "mapping": mapping,
-                            "optimizer": optimizer,
-                        }
-                        if not _should_skip(test_case, config.get("skip", [])):
-                            params.append((exp, length, "unified", mapping, optimizer))
+                for mapping, optimizer in get_unified_mapping_optimizers(config):
+                    test_case = {
+                        "experiment": exp,
+                        "length": length,
+                        "method": "unified",
+                        "mapping": mapping,
+                        "optimizer": optimizer,
+                    }
+                    if not _should_skip(test_case, config.get("skip", [])):
+                        params.append((exp, length, "unified", mapping, optimizer))
 
             if config["methods"]["emulated"]["enabled"]:
                 test_case = {
@@ -79,9 +91,8 @@ def get_unified_parameters(experiment: str) -> List[tuple]:
 
     params = []
     for length in config["lengths"]:
-        for mapping in config["methods"]["unified"]["mappings"]:
-            for optimizer in config["methods"]["unified"]["optimizers"]:
-                params.append((length, mapping, optimizer))
+        for mapping, optimizer in get_unified_mapping_optimizers(config):
+            params.append((length, mapping, optimizer))
 
     return params
 
@@ -97,9 +108,8 @@ def get_unified_parameters_no_length(experiment: str) -> List[tuple]:
         return []
 
     params = []
-    for mapping in config["methods"]["unified"]["mappings"]:
-        for optimizer in config["methods"]["unified"]["optimizers"]:
-            params.append((mapping, optimizer))
+    for mapping, optimizer in get_unified_mapping_optimizers(config):
+        params.append((mapping, optimizer))
 
     return params
 

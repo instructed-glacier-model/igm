@@ -74,7 +74,7 @@ def cost_weertman(
     u_regu = tf.cast(weertman_params.regularization, dtype)
     u_ref = tf.cast(weertman_params.u_ref, dtype)
     rho_ratio = tf.cast(weertman_params.rho_ratio, dtype)
-    use_mask_gr = tf.cast(weertman_params.use_mask_gr, tf.bool)
+    use_mask_gr = weertman_params.use_mask_gr
 
     # Weertman ≡ power law with N=1, N_ref=1, q=1 (N terms cancel)
     N = tf.ones_like(h)

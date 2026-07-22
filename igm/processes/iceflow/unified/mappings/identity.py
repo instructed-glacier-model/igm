@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import numpy as np
 import tensorflow as tf
 from typing import List, Tuple
 
@@ -30,9 +31,16 @@ class MappingIdentity(Mapping):
         self.V = tf.Variable(V_guess, trainable=True)
         self.input_normalizer = IdentityNormalizer()
         self.name = "identity"
-        
+
     def get_UV_impl(self) -> Tuple[tf.Variable, tf.Variable]:
         return self.U, self.V
+
+    @tf.function(reduce_retracing=True)
+    def get_UV(self, inputs: tf.Tensor) -> Tuple[tf.Variable, tf.Variable]:
+        U, V = self.get_UV_impl()
+        for apply_bc in self.apply_bcs:
+            U, V = apply_bc(U, V)
+        return U, V
 
     def copy_theta(self, theta: list[tf.Variable]) -> list[tf.Tensor]:
         return [theta[0].read_value(), theta[1].read_value()]
@@ -53,9 +61,9 @@ class MappingIdentity(Mapping):
         return tf.concat([u_flat, v_flat], axis=0)
 
     def unflatten_theta(self, theta_flat: tf.Tensor) -> list[tf.Tensor]:
-        n = tf.size(theta_flat) // 2
+        n = int(np.prod(self.shape))
         u_flat = theta_flat[:n]
-        v_flat = theta_flat[n:]
+        v_flat = theta_flat[n : 2 * n]
         U = tf.reshape(u_flat, self.shape)
         V = tf.reshape(v_flat, self.shape)
         return [U, V]

@@ -47,13 +47,27 @@ def _run_unified(
     length: Optional[int] = None,
 ) -> str:
     """Run unified method simulation."""
+    experiment_optimizer = "lbfgs" if optimizer == "cg_newton" else optimizer
     argv = [
         "igm_run.py",
-        f"+experiment=params_{optimizer}",
+        f"+experiment=params_{experiment_optimizer}",
         "processes.iceflow.method=unified",
         f"processes.iceflow.unified.mapping={mapping}",
         f"processes.iceflow.unified.optimizer={optimizer}",
     ]
+
+    if optimizer == "cg_newton":
+        argv.extend(
+            [
+                "processes.iceflow.numerics.precision=double",
+                "processes.iceflow.unified.cg_newton.hvp_mode=banded",
+                "processes.iceflow.unified.cg_newton.probe_mode=fd",
+                "processes.iceflow.unified.cg_newton.hvp_verify=false",
+                "processes.iceflow.unified.cg_newton.preconditioner=block_jacobi",
+                "processes.iceflow.unified.cg_newton.damping=1e-15",
+                "processes.iceflow.unified.cg_newton.damping_adaptive=false",
+            ]
+        )
 
     if length is not None:
         argv.append(f"inputs.init_state.L={length * 1e3}")

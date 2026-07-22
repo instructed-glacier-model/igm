@@ -12,7 +12,7 @@ from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.utils.grad.strain_rate import (
     compute_eps_dot2,
     correct_grad_zeta_to_z,
-    dampen_eps_dot_z_floating,
+    # dampen_eps_dot_z_floating,
 )
 
 
@@ -22,7 +22,6 @@ class ViscosityParams(tf.experimental.ExtensionType):
     n: float
     h_min: float
     eps_dot_regu: float
-    eps_dot_min: float
     eps_dot_max: float
 
 
@@ -56,7 +55,6 @@ def get_viscosity_params_args(cfg) -> Dict[str, Any]:
         "n": cfg_physics.viscosity.exponent,
         "h_min": cfg_physics.thr_ice_thk,
         "eps_dot_regu": cfg_physics.viscosity.regularization,
-        "eps_dot_min": cfg_physics.min_sr,
         "eps_dot_max": cfg_physics.max_sr,
     }
 
@@ -85,7 +83,6 @@ def cost_viscosity(
     n = tf.cast(viscosity_params.n, dtype)
     h_min = tf.cast(viscosity_params.h_min, dtype)
     eps_dot_regu = tf.cast(viscosity_params.eps_dot_regu, dtype)
-    eps_dot_min = tf.cast(viscosity_params.eps_dot_min, dtype)
     eps_dot_max = tf.cast(viscosity_params.eps_dot_max, dtype)
 
     return _cost(
@@ -98,7 +95,6 @@ def cost_viscosity(
         n,
         h_min,
         eps_dot_regu,
-        eps_dot_min,
         eps_dot_max,
         discr_h,
         w_v,
@@ -119,7 +115,6 @@ def _cost(
     n: tf.Tensor,
     h_min: tf.Tensor,
     eps_dot_regu: tf.Tensor,
-    eps_dot_min: tf.Tensor,
     eps_dot_max: tf.Tensor,
     discr_h: HorizontalDiscr,
     w_v: tf.Tensor,
@@ -152,8 +147,6 @@ def _cost(
         Minimum ice thickness threshold (m)
     eps_dot_regu : tf.Tensor
         Strain rate regularization (year^-1)
-    eps_dot_min : tf.Tensor
-        Minimum strain rate (year^-1)
     eps_dot_max : tf.Tensor
         Maximum strain rate (year^-1)
     discr_h : HorizontalDiscr
@@ -222,10 +215,8 @@ def _cost(
 
     # Compute strain rate
     eps_dot2_hv = compute_eps_dot2(dudx_hv, dvdx_hv, dudy_hv, dvdy_hv, dudz_hv, dvdz_hv)
-
-    eps_dot2_min = tf.pow(eps_dot_min, 2.0)
     eps_dot2_max = tf.pow(eps_dot_max, 2.0)
-    eps_dot2_hv = tf.clip_by_value(eps_dot2_hv, eps_dot2_min, eps_dot2_max)
+    eps_dot2_hv = tf.minimum(eps_dot2_hv, eps_dot2_max)
 
     # Compute viscous contribution
     eps_dot2_regu = tf.pow(eps_dot_regu, 2.0)

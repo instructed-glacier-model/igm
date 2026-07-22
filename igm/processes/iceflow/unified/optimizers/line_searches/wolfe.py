@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Callable
+from typing import Callable, Optional
 
 from .line_search import LineSearch, ValueAndGradient
 
@@ -25,15 +25,19 @@ class LineSearchWolfe(LineSearch):
         self.max_iter = max_iter
         self.zoom_max_iter = zoom_max_iter
 
-    @tf.function
+    @tf.function(autograph=False, reduce_retracing=True)
     def search(
         self,
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
+        val_0: Optional[ValueAndGradient] = None,
+        value_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
     ) -> tf.Tensor:
-        # Initial evaluation
-        vg0 = value_and_grad_fn(tf.constant(0.0, dtype=w.dtype))
+        del p, value_fn
+        vg0 = val_0
+        if vg0 is None:
+            vg0 = value_and_grad_fn(tf.constant(0.0, dtype=w.dtype))
         f0, df0 = vg0.f, vg0.df
 
         # Constants
@@ -42,24 +46,25 @@ class LineSearchWolfe(LineSearch):
 
         alpha_prev = tf.constant(0.0, dtype=w.dtype)
         alpha = tf.constant(self.step_size_initial, dtype=w.dtype)
-        f_prev = f0
+        vg_prev = vg0
 
         # State variables for loop control
         found = tf.constant(False)
         result_alpha = alpha
 
         # Main loop
-        def condition(i, alpha, alpha_prev, f_prev, found, result_alpha):
+        def condition(i, alpha, alpha_prev, vg_prev, found, result_alpha):
+            del alpha, alpha_prev, vg_prev, result_alpha
             return tf.logical_and(i < self.max_iter, tf.logical_not(found))
 
-        def body(i, alpha, alpha_prev, f_prev, found, result_alpha):
+        def body(i, alpha, alpha_prev, vg_prev, found, result_alpha):
             vg_alpha = value_and_grad_fn(alpha)
             f_alpha, df_alpha = vg_alpha.f, vg_alpha.df
 
             # Check Armijo condition
             armijo_violated = tf.logical_or(
                 f_alpha > f0 + c1 * alpha * df0,
-                tf.logical_and(f_alpha >= f_prev, i > 0),
+                tf.logical_and(f_alpha >= vg_prev.f, i > 0),
             )
 
             # Check curvature condition
@@ -68,51 +73,53 @@ class LineSearchWolfe(LineSearch):
             # Check if derivative is positive
             derivative_positive = df_alpha >= 0.0
 
-            def zoom_case():
+            def armijo_case():
+                return self._zoom(
+                    alpha_prev,
+                    alpha,
+                    vg_prev,
+                    value_and_grad_fn,
+                    f0,
+                    df0,
+                    c1,
+                    c2,
+                )
+
+            def accepted_or_continue():
                 return tf.cond(
-                    armijo_violated,
-                    lambda: self._zoom(
-                        alpha_prev,
-                        alpha,
-                        value_and_grad_fn,
-                        f0,
-                        df0,
-                        c1,
-                        c2,
-                    ),
-                    lambda: self._zoom(
-                        alpha,
-                        alpha_prev,
-                        value_and_grad_fn,
-                        f0,
-                        df0,
-                        c1,
-                        c2,
+                    curvature_satisfied,
+                    lambda: alpha,
+                    lambda: tf.cond(
+                        derivative_positive,
+                        lambda: self._zoom(
+                            alpha,
+                            alpha_prev,
+                            vg_alpha,
+                            value_and_grad_fn,
+                            f0,
+                            df0,
+                            c1,
+                            c2,
+                        ),
+                        lambda: alpha * 2.0,
                     ),
                 )
 
-            def continue_case():
-                return alpha * 2.0
-
             new_result_alpha = tf.cond(
-                tf.logical_or(armijo_violated, derivative_positive),
-                zoom_case,
-                lambda: tf.cond(curvature_satisfied, lambda: alpha, continue_case),
+                armijo_violated, armijo_case, accepted_or_continue
             )
 
-            new_found = tf.logical_or(
-                tf.logical_or(armijo_violated, derivative_positive), curvature_satisfied
-            )
+            new_found = armijo_violated | curvature_satisfied | derivative_positive
 
             new_alpha_prev = alpha
-            new_f_prev = f_alpha
+            new_vg_prev = vg_alpha
             new_alpha = tf.cond(new_found, lambda: alpha, lambda: new_result_alpha)
 
             return (
                 i + 1,
                 new_alpha,
                 new_alpha_prev,
-                new_f_prev,
+                new_vg_prev,
                 new_found,
                 new_result_alpha,
             )
@@ -120,16 +127,18 @@ class LineSearchWolfe(LineSearch):
         _, final_alpha, _, _, found, result_alpha = tf.while_loop(
             condition,
             body,
-            [tf.constant(0), alpha, alpha_prev, f_prev, found, result_alpha],
+            [tf.constant(0), alpha, alpha_prev, vg_prev, found, result_alpha],
+            parallel_iterations=1,
         )
 
         return tf.cond(found, lambda: result_alpha, lambda: final_alpha)
 
-    @tf.function
+    @tf.function(autograph=False, reduce_retracing=True)
     def _zoom(
         self,
         alpha_lo: tf.Tensor,
         alpha_hi: tf.Tensor,
+        vg_lo: ValueAndGradient,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
         f0: tf.Tensor,
         df0: tf.Tensor,
@@ -140,16 +149,16 @@ class LineSearchWolfe(LineSearch):
         found = tf.constant(False)
         result_alpha = (alpha_lo + alpha_hi) / 2.0
 
-        def condition(i, alpha_lo, alpha_hi, found, result_alpha):
+        def condition(i, alpha_lo, alpha_hi, vg_lo, found, result_alpha):
+            del alpha_lo, alpha_hi, vg_lo, result_alpha
             return tf.logical_and(i < self.zoom_max_iter, tf.logical_not(found))
 
-        def body(i, alpha_lo, alpha_hi, found, result_alpha):
+        def body(i, alpha_lo, alpha_hi, vg_lo, found, result_alpha):
             # Bisection
             alpha_j = (alpha_lo + alpha_hi) / 2.0
             vg_j = value_and_grad_fn(alpha_j)
             f_j, df_j = vg_j.f, vg_j.df
 
-            vg_lo = value_and_grad_fn(alpha_lo)
             f_lo = vg_lo.f
 
             # Check conditions
@@ -157,11 +166,11 @@ class LineSearchWolfe(LineSearch):
             curvature_satisfied = tf.abs(df_j) <= -c2 * df0
 
             def update_hi():
-                return alpha_lo, alpha_j, tf.constant(False), result_alpha
+                return alpha_lo, alpha_j, vg_lo, tf.constant(False), result_alpha
 
             def check_curvature():
                 def found_solution():
-                    return alpha_lo, alpha_hi, tf.constant(True), alpha_j
+                    return alpha_lo, alpha_hi, vg_lo, tf.constant(True), alpha_j
 
                 def update_bounds():
                     new_alpha_hi = tf.cond(
@@ -169,18 +178,28 @@ class LineSearchWolfe(LineSearch):
                         lambda: alpha_lo,
                         lambda: alpha_hi,
                     )
-                    return alpha_j, new_alpha_hi, tf.constant(False), result_alpha
+                    return alpha_j, new_alpha_hi, vg_j, tf.constant(False), result_alpha
 
                 return tf.cond(curvature_satisfied, found_solution, update_bounds)
 
-            new_alpha_lo, new_alpha_hi, new_found, new_result_alpha = tf.cond(
-                armijo_violated, update_hi, check_curvature
+            new_alpha_lo, new_alpha_hi, new_vg_lo, new_found, new_result_alpha = (
+                tf.cond(armijo_violated, update_hi, check_curvature)
             )
 
-            return i + 1, new_alpha_lo, new_alpha_hi, new_found, new_result_alpha
+            return (
+                i + 1,
+                new_alpha_lo,
+                new_alpha_hi,
+                new_vg_lo,
+                new_found,
+                new_result_alpha,
+            )
 
-        _, final_alpha_lo, final_alpha_hi, found, result_alpha = tf.while_loop(
-            condition, body, [tf.constant(0), alpha_lo, alpha_hi, found, result_alpha]
+        _, final_alpha_lo, final_alpha_hi, _, found, result_alpha = tf.while_loop(
+            condition,
+            body,
+            [tf.constant(0), alpha_lo, alpha_hi, vg_lo, found, result_alpha],
+            parallel_iterations=1,
         )
 
         return tf.cond(

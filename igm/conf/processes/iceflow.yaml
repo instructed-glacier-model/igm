@@ -32,7 +32,6 @@ iceflow:
       exponent: 3.0            # was exp_glen
       regularization: 1.0e-05  # was regu_glen
     thr_ice_thk: 0.1
-    min_sr: 1.0e-20
     max_sr: 1.0e+20
     force_negative_gravitational_energy: false
     cf_eswn: []
@@ -119,10 +118,21 @@ iceflow:
       memory: 10
       alpha_min: 0.0
     cg_newton:
-      cg_tol: 1e-10
+      cg_tol: 1e-20
+      warm_start: true
       cg_max_iter: 100
-      truncated: true
+      line_search_compile: true
       damping: 1e-6
+      damping_adaptive: false
+      damping_min: 1e-12
+      damping_max: 1e2
+      damping_down: 0.25
+      damping_up: 4.0
+      hvp_mode: autodiff
+      hvp_verify: false
+      probe_mode: fd
+      preconditioner: block_jacobi
+      precond_update_freq: 1
     trust_region:
       cg_max_iter: 100
       cg_tol: 1e-12
@@ -216,7 +226,7 @@ iceflow:
       rng_seed: null                 # null → fresh randomness per call 
       rescore_freq: 10               # Caching: steps 1+2 recomputed every rescore_freq
     data_preparation:
-      framesizemax: 99999
+      framesizemax: 100000000
       patches_per_batch: 1
     halt:
       freq: 1

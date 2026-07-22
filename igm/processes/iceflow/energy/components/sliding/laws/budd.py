@@ -84,7 +84,7 @@ def cost_budd(
     N_ref = tf.cast(budd_params.N_ref, dtype)
     q = tf.cast(budd_params.q_exponent, dtype)
     rho_ratio = tf.cast(budd_params.rho_ratio, dtype)
-    use_mask_gr = tf.cast(budd_params.use_mask_gr, tf.bool)
+    use_mask_gr = budd_params.use_mask_gr
 
     # Floor N to avoid degenerate values in the cost (well-lubricated
     # bed at N≈0 is physically possible but numerically catastrophic).

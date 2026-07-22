@@ -93,6 +93,11 @@ class Optimizer(ABC):
         return grad_u_norm, grad_theta_norm
 
     @tf.function
+    def _get_cost(self, inputs: tf.Tensor) -> tf.Tensor:
+        U, V = self.map.get_UV(inputs)
+        return self.cost_fn(U, V, inputs)
+
+    @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:

@@ -21,7 +21,7 @@ def get_cost_fn(
 
     energy_components = get_energy_components(cfg)
 
-    def cost_fn(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+    def _cost_fn_impl(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         """Cost function from velocity fields and inputs."""
         energy = iceflow_energy_UV(
             inputs_names=tuple(cfg_unified.inputs),
@@ -38,4 +38,5 @@ def get_cost_fn(
 
         return total_energy
 
+    cost_fn = tf.function(_cost_fn_impl, reduce_retracing=True)
     return cost_fn

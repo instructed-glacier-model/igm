@@ -14,7 +14,9 @@ methods:
   unified:
     enabled: true
     mappings: [identity, network]
-    optimizers: [adam, lbfgs]
+    optimizers: [adam, lbfgs, cg_newton]
+    optimizer_mappings:
+      cg_newton: [identity]
 
   emulated:
     enabled: false

@@ -422,19 +422,63 @@ unified:
   cg_newton:
     cg_tol:
       Type: float
-      Description: "Tolerance for the conjugate-gradient linear solver in the CG-Newton optimizer."
+      Description: "Tolerance on the energy-norm residual of the CG linear solve; iteration continues while delta_new is greater than cg_tol squared times delta_0."
+      Units: dimless
+    warm_start:
+      Type: boolean
+      Description: "Reuse the previous Newton step direction as the initial guess for the next CG linear solve."
       Units: dimless
     cg_max_iter:
       Type: integer
       Description: "Maximum number of conjugate-gradient iterations in the CG-Newton optimizer."
       Units: dimless
-    truncated:
+    line_search_compile:
       Type: boolean
-      Description: "Use truncated (inexact) Newton steps in the CG-Newton optimizer."
+      Description: "CG-Newton only. If true, run the selected Armijo, Wolfe, or local Hager-Zhang search as a reusable TensorFlow graph. If false, use the CG-Newton-specific eager Armijo loop; line_search must therefore be armijo. Both paths reuse the cost and directional derivative already computed at the current iterate."
       Units: dimless
     damping:
       Type: float
-      Description: "Damping added to the Hessian diagonal for regularization in the CG-Newton optimizer."
+      Description: "Levenberg-Marquardt damping added to the Hessian diagonal, so CG solves (H + damping I) p = -g."
+      Units: dimless
+    damping_adaptive:
+      Type: boolean
+      Description: "Adapt the damping from line-search acceptance. Damping decreases when the quadratic model predicts a near-full step well and increases when it predicts poorly; this lets the method approach an undamped Newton step."
+      Units: dimless
+    damping_min:
+      Type: float
+      Description: "Lower bound for adaptive Levenberg-Marquardt damping."
+      Units: dimless
+    damping_max:
+      Type: float
+      Description: "Upper bound for adaptive Levenberg-Marquardt damping."
+      Units: dimless
+    damping_down:
+      Type: float
+      Description: "Multiplicative damping reduction applied when the line search accepts a near-full Newton step."
+      Units: dimless
+    damping_up:
+      Type: float
+      Description: "Multiplicative damping increase applied when the line search accepts only a very small Newton step."
+      Units: dimless
+    hvp_mode:
+      Type: string
+      Description: "Method used to compute Hessian-vector products: autodiff uses the exact reverse-over-reverse Hessian; banded extracts a periodic-aware frozen 9-point horizontal stencil by graph colouring for identity mappings. Both SSA and MOLHO retain dense coupling between all U/V vertical components."
+      Units: dimless
+    hvp_verify:
+      Type: boolean
+      Description: "For hvp_mode=banded, compare the colour-extracted stencil with the exact autodiff Hessian on a random vector. This debug check is expensive because it traces the otherwise unused double-backward Hessian graph, so it should be enabled when changing the energy or discretization rather than in production."
+      Units: dimless
+    probe_mode:
+      Type: string
+      Description: "Method used by the component and spatial colouring probes when hvp_mode=banded: fd uses central finite differences of the gradient and requires double precision; autodiff uses exact reverse-over-reverse Hessian-vector products and is substantially slower to trace. The number of probes depends on Nz and the periodic grid dimensions."
+      Units: dimless
+    preconditioner:
+      Type: string
+      Description: "Preconditioner for the CG linear solve: none or block_jacobi. Block-Jacobi uses a symmetric positive-definite point block coupling every U/V vertical component, and supports both SSA and MOLHO. It reuses banded operator blocks when available and otherwise extracts them from exact autodiff Hessian-vector products."
+      Units: dimless
+    precond_update_freq:
+      Type: integer
+      Description: "Number of Newton steps between preconditioner extractions."
       Units: dimless
   trust_region:
     cg_max_iter:
@@ -510,7 +554,7 @@ unified:
       Units: dimless
   line_search:
     Type: string
-    Description: "Type of line-search method."
+    Description: "Line-search method for unified optimizers that use one: armijo, wolfe (strong Wolfe), or hager-zhang. Armijo uses cost-only trial evaluations where the optimizer supports them; Wolfe reuses bracket endpoint evaluations; Hager-Zhang is implemented locally without TensorFlow Probability and preserves projected-step handling for bounded mappings."
     Units: dimless
   inputs:
     Type: list

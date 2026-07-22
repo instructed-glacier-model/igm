@@ -4,12 +4,14 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Callable
+from typing import Callable, Optional
 
 from .line_search import LineSearch, ValueAndGradient
 
 
 class LineSearchArmijo(LineSearch):
+    supports_value_only = True
+
     def __init__(
         self,
         step_size_initial: float = 1.0,
@@ -23,33 +25,44 @@ class LineSearchArmijo(LineSearch):
         self.rho = rho
         self.max_iter = max_iter
 
-    @tf.function
+    @tf.function(autograph=False, reduce_retracing=True)
     def search(
         self,
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
+        val_0: Optional[ValueAndGradient] = None,
+        value_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
     ) -> tf.Tensor:
-        # Initial evaluation
-        vg0 = value_and_grad_fn(tf.constant(0.0, dtype=w.dtype))
-        f0, df0 = vg0.f, vg0.df
+        del p
+        dtype = w.dtype
+        if val_0 is None:
+            val_0 = value_and_grad_fn(tf.constant(0.0, dtype=dtype))
+        if value_fn is None:
+            value_fn = lambda alpha: value_and_grad_fn(alpha).f
 
-        # Line search parameters
-        c1 = tf.constant(self.c1, dtype=w.dtype)
-        rho = tf.constant(self.rho, dtype=w.dtype)
+        c1 = tf.cast(self.c1, dtype)
+        rho = tf.cast(self.rho, dtype)
         alpha = tf.constant(self.step_size_initial, dtype=w.dtype)
+        f_alpha = value_fn(alpha)
+        accepted = f_alpha <= val_0.f + c1 * alpha * val_0.df
 
-        # Backtracking loop
-        for _ in tf.range(self.max_iter):
-            vg_alpha = value_and_grad_fn(alpha)
-            f_alpha = vg_alpha.f
+        def cond(i, alpha, f_alpha, accepted):
+            del alpha, f_alpha
+            return (i < self.max_iter) & tf.logical_not(accepted)
 
-            # Armijo condition: f(x + alpha*p) <= f(x) + c1*alpha*df0
-            armijo_condition = f_alpha <= f0 + c1 * alpha * df0
-
-            if armijo_condition:
-                break
-
+        def body(i, alpha, f_alpha, accepted):
+            del f_alpha, accepted
             alpha = alpha * rho
+            f_alpha = value_fn(alpha)
+            accepted = f_alpha <= val_0.f + c1 * alpha * val_0.df
+            return i + 1, alpha, f_alpha, accepted
+
+        _, alpha, _, _ = tf.while_loop(
+            cond,
+            body,
+            (tf.constant(1), alpha, f_alpha, accepted),
+            parallel_iterations=1,
+        )
 
         return alpha

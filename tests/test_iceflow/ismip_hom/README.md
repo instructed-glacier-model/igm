@@ -35,8 +35,15 @@ methods:
   unified:
     enabled: true
     mappings: [identity, network]
-    optimizers: [adam, lbfgs]
+    optimizers: [adam, lbfgs, cg_newton]
+    optimizer_mappings:
+      cg_newton: [identity]
 ```
+
+`optimizer_mappings` optionally restricts an optimizer to compatible mappings.
+The CG-Newton ISMIP-HOM configuration uses the MOLHO-capable banded operator
+with finite-difference probes and a vertical-component block-Jacobi
+preconditioner, so it is tested with the identity mapping only.
 
 ### Validation
 

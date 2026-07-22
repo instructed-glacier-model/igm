@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import collections
-from typing import Callable
+from typing import Callable, Optional
 
 import tensorflow as tf
 
@@ -667,15 +667,16 @@ class LineSearchHagerZhang(LineSearch):
         self.curvature_param = curvature_param
         self.max_iterations = max_iterations
 
-    @tf.function
+    @tf.function(autograph=False, reduce_retracing=True)
     def search_result(
         self,
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
         val_0: ValueAndGradient | None = None,
+        value_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
     ) -> LineSearchResult:
-        del p  # unused by the scalar line-search routine itself
+        del p, value_fn  # unused by the scalar line-search routine itself
 
         dtype = w.dtype
 
@@ -715,7 +716,6 @@ class LineSearchHagerZhang(LineSearch):
             & (val_initial.df < tf.zeros_like(val_initial.df))
             & (val_initial.f <= f_lim)
         )
-
         init_interval = HagerZhangLineSearchResult(
             converged=clamped_initial,
             failed=tf.logical_not(valid_inputs),
@@ -779,12 +779,18 @@ class LineSearchHagerZhang(LineSearch):
             right=result.right,
         )
 
-    @tf.function
     def search(
         self,
         w: tf.Tensor,
         p: tf.Tensor,
         value_and_grad_fn: Callable[[tf.Tensor], ValueAndGradient],
         val_0: ValueAndGradient | None = None,
+        value_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
     ) -> tf.Tensor:
-        return self.search_result(w, p, value_and_grad_fn, val_0=val_0).alpha
+        return self.search_result(
+            w,
+            p,
+            value_and_grad_fn,
+            val_0=val_0,
+            value_fn=value_fn,
+        ).alpha
