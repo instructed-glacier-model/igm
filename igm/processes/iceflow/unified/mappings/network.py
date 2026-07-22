@@ -43,7 +43,7 @@ class MappingNetwork(Mapping):
         return tf.identity(theta_flat)
 
     def get_theta(self) -> list[tf.Variable]:
-        return [v._value for v in self.network.trainable_variables]
+        return [getattr(v, "_value", v) for v in self.network.trainable_variables]
 
     def set_theta(self, theta: list[tf.Tensor]) -> None:
         for var, val in zip(self.network.trainable_variables, theta):
