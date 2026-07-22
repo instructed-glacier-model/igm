@@ -73,6 +73,15 @@ class InterfaceNetwork(InterfaceMapping):
             # message very clear... it's perfectly valid after all.
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
+            # Deterministic from-scratch runs: seed the RNGs (weight init) AND force
+            # deterministic GPU kernels. Without op-determinism, non-deterministic
+            # conv/reduction atomics make the ill-conditioned inversion diverge run to
+            # run even at a fixed seed. null keeps the previous fresh-randomness path.
+            seed = cfg_unified.network.get("seed", None)
+            if seed is not None:
+                tf.config.experimental.enable_op_determinism()
+                tf.keras.utils.set_random_seed(int(seed))
+
             nb_inputs = len(cfg_unified.inputs)
 
             arch_name = str(cfg_unified.network.architecture).lower()

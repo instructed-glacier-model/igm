@@ -182,6 +182,9 @@ iceflow:
       pretrained_path: ""
       print_summary: false
       output_scale: 1.0
+      seed: null                # int => deterministic weight init (set_random_seed
+                                # before the from-scratch net is built); null => fresh
+                                # randomness each run. Makes DA results reproducible.
       architecture: dahunet
       # Architecture hyperparameters for the from-scratch path (pretrained: false).
       # Owned by the unified mode (no longer read from emulator.network).
