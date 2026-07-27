@@ -57,6 +57,8 @@ data_assimilation:
     usurfobs_std: 2.0
     velsurfobs_std: 1.0
     thkobs_std: 3.0
+    thkprior_scale: 1.0      # tolerance multiplier on the thkinit prior (cost "thkprior")
+    thkprior_std_floor: 5.0  # min sigma (m) for the thkinit_err-based tolerance
     divfluxobs_std: 1.0
     volobsprop_std: 0.1
     uniformize_thkobs: true

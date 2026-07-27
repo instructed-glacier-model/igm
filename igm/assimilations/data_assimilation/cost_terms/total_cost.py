@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 from .misfit_thk import misfit_thk
+from .misfit_thkprior import misfit_thkprior
 from .misfit_usurf import misfit_usurf
 from .misfit_velsurf import misfit_velsurf
 from .misfit_vol import misfit_vol
@@ -22,6 +23,11 @@ def total_cost(cfg, state, cost, i):
     # misfit between ice thickness profiles
     if "thk" in cfg.assimilations.data_assimilation.cost_list:
         cost["thk"] = misfit_thk(cfg, state)
+
+    # prior pulling thk toward thkinit within its per-pixel error tolerance —
+    # prevents unconstrained thinning of unobserved glaciers
+    if "thkprior" in cfg.assimilations.data_assimilation.cost_list:
+        cost["thkprior"] = misfit_thkprior(cfg, state)
 
     # misfit between divergence of flux
     if ("divfluxfcz" in cfg.assimilations.data_assimilation.cost_list):
