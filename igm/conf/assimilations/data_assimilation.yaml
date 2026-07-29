@@ -62,6 +62,8 @@ data_assimilation:
     divfluxobs_std: 1.0
     volobsprop_std: 0.1
     uniformize_thkobs: true
+    velsurf_fit: linear      # linear | log | linear+log (log = per-pixel ln-speed misfit)
+    velsurflog_std: 0.1      # sigma of the log misfit, in ln units
     include_low_speed_term: false
     velsurfobs_thr: 0.0
     log_slidingco: false
