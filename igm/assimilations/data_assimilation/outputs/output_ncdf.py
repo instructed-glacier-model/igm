@@ -9,6 +9,18 @@ from scipy import stats
 from netCDF4 import Dataset
 from igm.utils.math.getmag import getmag
 
+
+def _ensure_z_dim(nc, nz):
+    """Create (or check) the vertical dimension for 3D variables (e.g. U, V).
+    Same convention as outputs/local.py: dims (z, y, x); NetCDF mixes 2D and
+    3D variables in one file without restriction."""
+    if "z" not in nc.dimensions:
+        nc.createDimension("z", nz)
+    elif len(nc.dimensions["z"]) != nz:
+        raise ValueError(
+            f"3D output: z dimension mismatch ({len(nc.dimensions['z'])} vs {nz})"
+        )
+
 def update_ncdf_optimize(cfg, state, it):
     """
     Initialize and write the ncdf optimze file
@@ -58,10 +70,18 @@ def update_ncdf_optimize(cfg, state, it):
         E[:] = state.x.numpy()
 
         for var in cfg.assimilations.data_assimilation.output.vars_to_save:
-            E = nc.createVariable(
-                var, np.dtype("float32").char, ("iterations", "y", "x")
-            )
-            E[0, :, :] = getattr(state, var).numpy()
+            arr = getattr(state, var).numpy()
+            if arr.ndim == 3:
+                _ensure_z_dim(nc, arr.shape[0])
+                E = nc.createVariable(
+                    var, np.dtype("float32").char, ("iterations", "z", "y", "x")
+                )
+                E[0, :, :, :] = arr
+            else:
+                E = nc.createVariable(
+                    var, np.dtype("float32").char, ("iterations", "y", "x")
+                )
+                E[0, :, :] = arr
 
         nc.close()
 
@@ -73,7 +93,11 @@ def update_ncdf_optimize(cfg, state, it):
         nc.variables["iterations"][d] = it
 
         for var in cfg.assimilations.data_assimilation.output.vars_to_save:
-            nc.variables[var][d, :, :] = getattr(state, var).numpy()
+            arr = getattr(state, var).numpy()
+            if arr.ndim == 3:
+                nc.variables[var][d, :, :, :] = arr
+            else:
+                nc.variables[var][d, :, :] = arr
 
         nc.close()
 
@@ -117,8 +141,13 @@ def output_ncdf_optimize_final(cfg, state):
 
     for v in cfg.assimilations.data_assimilation.output.vars_to_save:
         if hasattr(state, v):
-            E = nc.createVariable(v, np.dtype("float32").char, ("y", "x"))
+            arr = np.asarray(getattr(state, v))
+            if arr.ndim == 3:
+                _ensure_z_dim(nc, arr.shape[0])
+                E = nc.createVariable(v, np.dtype("float32").char, ("z", "y", "x"))
+            else:
+                E = nc.createVariable(v, np.dtype("float32").char, ("y", "x"))
             E.standard_name = v
-            E[:] = getattr(state, v)
+            E[:] = arr
 
     nc.close()
