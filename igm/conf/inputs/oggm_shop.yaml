@@ -13,3 +13,7 @@ oggm_shop:
   sub_entity_mask: False
   smooth_obs_vel: True
   highres: False
+  OGGM_server_v7: "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v4"
+  OGGM_server_v7_hr: "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v4_hr"
+  OGGM_server_v6: "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v5_era5/"
+  glathida_server: "https://gitlab.com/wgms/glathida "
