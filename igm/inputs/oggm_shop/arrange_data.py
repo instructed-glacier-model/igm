@@ -77,8 +77,11 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
                                       proj, cfg.inputs.oggm_shop.path_glathida, state)
         else:
             path_glathida = os.path.join(path_RGI, "glathida_data.csv")
-            thkobs = read_glathida_v7(ds.x.values, ds.y.values, path_glathida)
-        thkobs = xr.DataArray(np.where(ds_vars["icemask"], thkobs, np.nan), dims=("y", "x"))
+            if os.path.exists(path_glathida):
+                thkobs = read_glathida_v7(ds.x.values, ds.y.values, path_glathida)
+                thkobs = xr.DataArray(np.where(ds_vars["icemask"], thkobs, np.nan), dims=("y", "x"))
+            else:
+                thkobs = np.full(ds["topo"].shape, np.nan)
     else:
         thkobs = np.full(ds["topo"].shape, np.nan)   
     ds_vars["thkobs"] = thkobs
