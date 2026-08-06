@@ -1,6 +1,6 @@
 oggm_shop:
-  RGI_ID: "RGI60-11.01450"
-  RGI_IDs: ["RGI60-11.01450"]
+  RGI_ID: "RGI2000-v7.0-C-11-01323"
+  RGI_IDs: ["RGI2000-v7.0-C-11-01323"]
   preprocess: True
   dx: 100.0
   border: 30
