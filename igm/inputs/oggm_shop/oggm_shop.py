@@ -3,7 +3,8 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
  
-import os  
+import os
+import shutil  
 
 from igm.inputs.oggm_shop.oggm_util import oggm_util
 # from .make_input_file_old import make_input_file
@@ -53,4 +54,8 @@ def run(cfg, state):
         ds_vars = arrange_data(cfg, state, path_RGIs[0], ds, RGI_version, RGI_product)
 
         make_input_file(cfg, ds, ds_vars, path_file)
- 
+        
+    # Remove RGI folder if desired
+    if cfg.inputs.oggm_shop.remove_RGI_folder:
+        for p in path_RGIs:
+            shutil.rmtree(p)
