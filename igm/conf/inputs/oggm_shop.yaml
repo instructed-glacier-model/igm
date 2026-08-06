@@ -7,7 +7,6 @@ oggm_shop:
   thk_source: consensus_ice_thickness
   vel_source: millan_ice_velocity
   incl_glathida: False
-  path_glathida: ""
   filename: input.nc
   remove_RGI_folder: True
   sub_entity_mask: False
