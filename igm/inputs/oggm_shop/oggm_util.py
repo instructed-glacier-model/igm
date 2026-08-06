@@ -47,7 +47,7 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         # We need the outlines here
         if RGI_version==6:
             rgi_ids = RGIs  # rgi_ids = utils.get_rgi_glacier_entities(RGIs)
-            base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v2" )
+            base_url = ( cfg.inputs.oggm_shop.OGGM_server_v6 )
             gdirs = workflow.init_glacier_directories(
                 # Start from level 3 if you want some climate data in them
                 rgi_ids,
@@ -58,9 +58,9 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         else:
             rgi_ids = RGIs
             if cfg.inputs.oggm_shop.highres:
-                base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v4_hr" )
+                base_url = ( cfg.inputs.oggm_shop.OGGM_server_v7_hr )
             else:
-                base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v4" )
+                base_url = ( cfg.inputs.oggm_shop.OGGM_server_v7 )
 
             gdirs = workflow.init_glacier_directories(
                 # Start from level 3 if you want some climate data in them
@@ -163,6 +163,6 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
             shutil.rmtree(path_RGI)
         shutil.copytree(source_folder, path_RGI)
         
-    if cfg.inputs.oggm_shop.sub_entity_mask == True:
+    if (cfg.inputs.oggm_shop.sub_entity_mask == True) & (RGI_version == 7):
         get_tidewater_termini(
             gdirs[0], RGI_product, path_RGIs)
