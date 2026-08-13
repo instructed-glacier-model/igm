@@ -3,7 +3,8 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Callable, Optional, Tuple, List
+import time
+from typing import Callable, List, Optional, Tuple
 
 import tensorflow as tf
 
@@ -35,7 +36,8 @@ class OptimizerCGNewton(Optimizer):
         ord_grad_u: str = "l2_weighted",
         ord_grad_theta: str = "l2_weighted",
         line_search_method: str = "armijo",
-        line_search_compile: bool = True,
+        line_search_compile: bool = False,
+        print_timing: bool = False,
         alpha_min: float = 0.0,
         iter_max: int = 100,
         damping: float = 2e-2,
@@ -50,7 +52,9 @@ class OptimizerCGNewton(Optimizer):
         operator: Optional[Operator] = None,
         preconditioner: str = "block_jacobi",
         preconditioner_obj: Optional[Preconditioner] = None,
+        operator_update_freq: int = 1,
         precond_update_freq: int = 1,
+        preconditioner_options: Optional[dict] = None,
         **kwargs,
     ):
         super().__init__(
@@ -67,13 +71,10 @@ class OptimizerCGNewton(Optimizer):
 
         self.name = "cg_newton"
         self.line_search = LineSearches[line_search_method]()
-        self.line_search_compile = bool(line_search_compile)
-        if not self.line_search_compile and self.line_search.name != "armijo":
-            raise ValueError(
-                "cg_newton.line_search_compile=false currently supports only "
-                "line_search=armijo; use line_search_compile=true for "
-                f"line_search={self.line_search.name}."
-            )
+        self.line_search_compile = (
+            bool(line_search_compile) or self.line_search.name != "armijo"
+        )
+        self.print_timing = bool(print_timing)
 
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
         self.alpha_min = tf.Variable(alpha_min, dtype=self.precision)
@@ -93,9 +94,16 @@ class OptimizerCGNewton(Optimizer):
             tf.cast(float("nan"), self.precision), trainable=False
         )
 
-        self.operator: Operator = operator or ADOperator(cost_fn, self.map, precision)
+        self.operator: Operator = operator or ADOperator(
+            cost_fn, self.map, precision
+        )
 
+        self.operator_update_freq = int(operator_update_freq)
         self.precond_update_freq = int(precond_update_freq)
+        if self.operator_update_freq < 1:
+            raise ValueError("operator_update_freq must be at least one.")
+        if self.precond_update_freq < 1:
+            raise ValueError("precond_update_freq must be at least one.")
         if preconditioner_obj is not None:
             self.preconditioner: Preconditioner = preconditioner_obj
         else:
@@ -103,6 +111,8 @@ class OptimizerCGNewton(Optimizer):
                 kind=preconditioner,
                 mapping=self.map,
                 precision=precision,
+                layout=self.operator.preconditioner_layout,
+                options=preconditioner_options,
             )
         if getattr(self.preconditioner, "needs_operator", False):
             self.preconditioner.set_operator(self.operator)
@@ -123,6 +133,14 @@ class OptimizerCGNewton(Optimizer):
         if self.preconditioner.name != "identity":
             self.preconditioner.update(inputs, damping)
 
+    def _synchronize_setup(self) -> None:
+        for token in (
+            self.operator.synchronization_token(),
+            self.preconditioner.synchronization_token(),
+        ):
+            if token is not None:
+                tf.reshape(token, [-1])[0].numpy()
+
     @tf.function(reduce_retracing=True)
     def _cg_solve(
         self,
@@ -140,7 +158,7 @@ class OptimizerCGNewton(Optimizer):
         z = pre(r)
         d = z
         delta_new = tf.tensordot(r, z, axes=1)
-        # A cold-start reference keeps the tolerance meaningful after warm starts.
+        # Keep the tolerance relative to b even when CG is warm-started.
         delta_0 = tf.tensordot(b, pre(b), axes=1)
 
         def cond(i, x, r, d, z, delta_new):
@@ -175,9 +193,11 @@ class OptimizerCGNewton(Optimizer):
         return x, i, relres
 
     @tf.function
-    def _get_grad_cg_newton(
-        self, inputs: tf.Tensor
-    ) -> Tuple[tf.Tensor, List[tf.Tensor | tf.Variable], List[tf.Tensor | tf.Variable]]:
+    def _get_grad_cg_newton(self, inputs: tf.Tensor) -> Tuple[
+        tf.Tensor,
+        List[tf.Tensor | tf.Variable],
+        List[tf.Tensor | tf.Variable],
+    ]:
         cost, grad_u, grad_theta = self._cost_and_grad(inputs)
         return cost, grad_u, grad_theta
 
@@ -227,7 +247,7 @@ class OptimizerCGNewton(Optimizer):
         input: tf.Tensor,
         vg0: Optional[ValueAndGradient] = None,
     ) -> tf.Tensor:
-        """Run the previous compiled search or a CG-local eager Armijo search."""
+        """Run the compiled search or the eager Armijo path."""
         if self.line_search_compile:
             self._line_search_theta.assign(theta_flat)
             self._line_search_p.assign(p_flat)
@@ -279,21 +299,24 @@ class OptimizerCGNewton(Optimizer):
 
         self._cg_A = _cg_A
 
-        # A stable callback avoids retracing; variables carry each trial state.
-        with tf.device(theta_flat.device):
-            self._line_search_theta = tf.Variable(theta_flat, trainable=False)
-            self._line_search_p = tf.Variable(tf.zeros_like(theta_flat), trainable=False)
+        if self.line_search_compile:
+            # Variables carry trial state without retracing compiled searches.
+            with tf.device(theta_flat.device):
+                self._line_search_theta = tf.Variable(theta_flat, trainable=False)
+                self._line_search_p = tf.Variable(
+                    tf.zeros_like(theta_flat), trainable=False
+                )
 
-        def _line_search_eval(alpha: tf.Tensor) -> ValueAndGradient:
-            trial = self._line_search_theta + alpha * self._line_search_p
-            f, grad = self.operator.cost_grad_at(input, trial)
-            return ValueAndGradient(
-                x=alpha,
-                f=f,
-                df=self._dot(grad, self._line_search_p),
-            )
+            def _line_search_eval(alpha: tf.Tensor) -> ValueAndGradient:
+                trial = self._line_search_theta + alpha * self._line_search_p
+                f, grad = self.operator.cost_grad_at(input, trial)
+                return ValueAndGradient(
+                    x=alpha,
+                    f=f,
+                    df=self._dot(grad, self._line_search_p),
+                )
 
-        self._line_search_eval_fn = _line_search_eval
+            self._line_search_eval_fn = _line_search_eval
 
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
@@ -301,16 +324,22 @@ class OptimizerCGNewton(Optimizer):
         halt_status = HaltStatus.CONTINUE.value
         costs = []
 
-        for iter in range(int(self.iter_max)):
+        for iteration in range(int(self.iter_max)):
+            timing_start = time.perf_counter() if self.print_timing else 0.0
             cost, grad_u, grad_theta = self._get_grad_cg_newton(input)
             grad_theta_flat = self.map.flatten_theta(grad_theta)
+            if self.print_timing:
+                cost.numpy()
 
-            # Freeze a banded Hessian once per Newton step; exact AD is a no-op.
-            self.operator.prepare(input, _damping_var)
+            if (iteration % self.operator_update_freq) == 0:
+                self.operator.prepare(input, _damping_var)
 
-            if (iter % self.precond_update_freq) == 0:
+            if (iteration % self.precond_update_freq) == 0:
                 self._refresh_preconditioner(input, _damping_var)
+            if self.print_timing:
+                self._synchronize_setup()
 
+            cg_start = time.perf_counter() if self.print_timing else 0.0
             x0 = self._p_prev if self.warm_start else tf.zeros_like(grad_theta_flat)
             p_flat, _cg_iters, _cg_relres = self._cg_solve(
                 b=-grad_theta_flat,
@@ -318,6 +347,11 @@ class OptimizerCGNewton(Optimizer):
                 iter_max=self.cg_max_iter,
                 tol=self.cg_tol,
             )
+            if self.print_timing:
+                tf.reshape(p_flat, [-1])[0].numpy()
+                cg_iterations = int(_cg_iters.numpy())
+                cg_relative_residual = float(_cg_relres.numpy())
+                cg_seconds = time.perf_counter() - cg_start
             self.last_cg_iterations.assign(_cg_iters)
             self.last_cg_relative_residual.assign(_cg_relres)
             if self.warm_start:
@@ -338,6 +372,8 @@ class OptimizerCGNewton(Optimizer):
                 vg0=_vg0,
             )
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
+            if self.print_timing:
+                alpha_value = float(alpha.numpy())
 
             theta_flat, _ = self._apply_step(theta_flat, alpha, p_flat)
             self.map.set_theta(self.map.unflatten_theta(theta_flat))
@@ -345,13 +381,34 @@ class OptimizerCGNewton(Optimizer):
             costs.append(cost)
 
             U, V = self.map.get_UV(input)
-            grad_u_norm, step_norm = self._get_grad_norm(grad_u, grad_theta)
+            grad_u_norm, grad_theta_norm = self._get_grad_norm(
+                grad_u, grad_theta
+            )
             self._update_step_state(
-                iter, U, V, theta_flat, cost, grad_u_norm, step_norm
+                iteration,
+                U,
+                V,
+                theta_flat,
+                cost,
+                grad_u_norm,
+                grad_theta_norm,
             )
 
             halt_status = self._check_stopping()
             self._update_display()
+
+            if self.print_timing:
+                grad_u_norm.numpy()
+                gradient_norm = float(grad_theta_norm.numpy())
+                total_seconds = time.perf_counter() - timing_start
+                print(
+                    f"[timing] iter={iteration:3d} "
+                    f"cg={cg_seconds:.3f}s({cg_iterations}it, "
+                    f"relres={cg_relative_residual:.2e}) "
+                    f"total={total_seconds:.3f}s "
+                    f"alpha={alpha_value:.2e} grad={gradient_norm:.2e}",
+                    flush=True,
+                )
 
             if self.damping_adaptive:
                 self._adapt_damping(_damping_var, alpha)

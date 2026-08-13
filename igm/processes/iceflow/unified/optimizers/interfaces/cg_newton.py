@@ -2,9 +2,10 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+from typing import Any, Callable, Dict
+
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -14,7 +15,11 @@ from ..energy_operator import (
     Operator,
     ADOperator,
     BandedADOperator,
+    MOLHOBandedADOperator,
+    SSABandedADOperator,
 )
+from ..molho_banded import supports_compact_molho
+from ..ssa_banded import supports_compact_ssa
 
 
 class InterfaceCGNewton(InterfaceOptimizer):
@@ -25,17 +30,11 @@ class InterfaceCGNewton(InterfaceOptimizer):
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
     ) -> Operator:
-        """Build the energy operator (grad J and v -> H v) from hvp_mode.
+        """Build the Hessian operator selected by ``hvp_mode``.
 
-        - 'autodiff'        -> ADOperator (reverse-over-reverse AD; default).
-                               Exact, general (any Nz), but CG pays a full
-                               double-backward pass on EVERY inner iteration.
-        - 'banded'          -> BandedADOperator. Extracts the exact 9-point
-                               Hessian stencil once per Newton step by graph
-                               colouring, then each CG iteration is a cheap
-                               banded apply. SSA uses 18 probes; MOLHO repeats
-                               the 9 spatial colours for all 2*Nz coupled U/V
-                               components. Requires an identity mapping.
+        Autodiff is exact and general. Banded mode freezes a graph-coloured
+        9-point stencil for cheap CG applications; nonperiodic SSA and Nz=2
+        MOLHO use specialized compact storage.
         """
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
@@ -46,7 +45,15 @@ class InterfaceCGNewton(InterfaceOptimizer):
             return ADOperator(cost_fn, map, precision)
 
         if hvp_mode == "banded":
-            return BandedADOperator(
+            basis_vertical = str(cfg_numerics.get("basis_vertical", "")).lower()
+            if supports_compact_ssa(map):
+                operator_cls = SSABandedADOperator
+            elif supports_compact_molho(map, basis_vertical):
+                operator_cls = MOLHOBandedADOperator
+            else:
+                operator_cls = BandedADOperator
+
+            return operator_cls(
                 cost_fn,
                 map,
                 precision,
@@ -87,25 +94,24 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "ord_grad_u": cfg_numerics.ord_grad_u,
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "line_search_method": cfg_unified.line_search,
-            "line_search_compile": cg.get("line_search_compile", True),
+            "line_search_compile": cg.get("line_search_compile", False),
+            "print_timing": cg.get("print_timing", False),
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
-            # --- CG solver -------------------------------------------------
             "cg_max_iter": cg.cg_max_iter,
             "cg_tol": cg.cg_tol,
             "warm_start": cg.warm_start,
             "damping": cg.damping,
-            # --- Levenberg-Marquardt damping adaptation --------------------
             "damping_adaptive": cg.get("damping_adaptive", False),
             "damping_min": cg.get("damping_min", 1e-12),
             "damping_max": cg.get("damping_max", 1e2),
             "damping_down": cg.get("damping_down", 0.25),
             "damping_up": cg.get("damping_up", 4.0),
-            # --- operator (grad J / v -> H v) ------------------------------
             "operator": operator,
-            # --- preconditioning -------------------------------------------
             "preconditioner": cg.preconditioner,
+            "operator_update_freq": cg.get("operator_update_freq", 1),
             "precond_update_freq": cg.precond_update_freq,
+            "preconditioner_options": dict(cg.get("multigrid", {})),
         }
 
     @staticmethod

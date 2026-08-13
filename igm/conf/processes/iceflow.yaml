@@ -121,7 +121,8 @@ iceflow:
       cg_tol: 1e-20
       warm_start: true
       cg_max_iter: 100
-      line_search_compile: true
+      line_search_compile: false
+      print_timing: false
       damping: 1e-6
       damping_adaptive: false
       damping_min: 1e-12
@@ -132,7 +133,12 @@ iceflow:
       hvp_verify: false
       probe_mode: fd
       preconditioner: block_jacobi
+      operator_update_freq: 1
       precond_update_freq: 1
+      multigrid:
+        smoother_weight: 0.6666666666666666
+        smoother_steps: 1
+        coarse_size: 8
     trust_region:
       cg_max_iter: 100
       cg_tol: 1e-12
@@ -237,6 +243,9 @@ iceflow:
       failure: []
       criteria: 
         rel_tol:
+          tol: 1e-3
+          ord: l2
+        rel_initial:
           tol: 1e-3
           ord: l2
         abs_tol:

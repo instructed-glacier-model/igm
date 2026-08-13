@@ -434,7 +434,11 @@ unified:
       Units: dimless
     line_search_compile:
       Type: boolean
-      Description: "CG-Newton only. If true, run the selected Armijo, Wolfe, or local Hager-Zhang search as a reusable TensorFlow graph. If false, use the CG-Newton-specific eager Armijo loop; line_search must therefore be armijo. Both paths reuse the cost and directional derivative already computed at the current iterate."
+      Description: "CG-Newton only. If true, run the selected line search as a reusable TensorFlow graph. If false, use the faster eager Armijo loop when line_search is armijo; Wolfe and Hager-Zhang remain compiled because they have no eager path. Both Armijo paths reuse the cost and directional derivative already computed at the current iterate."
+      Units: dimless
+    print_timing:
+      Type: boolean
+      Description: "Print synchronized CG and total wall-clock timing for each Newton iteration. Intended for profiling because GPU synchronization slightly affects runtime."
       Units: dimless
     damping:
       Type: float
@@ -462,7 +466,7 @@ unified:
       Units: dimless
     hvp_mode:
       Type: string
-      Description: "Method used to compute Hessian-vector products: autodiff uses the exact reverse-over-reverse Hessian; banded extracts a periodic-aware frozen 9-point horizontal stencil by graph colouring for identity mappings. Both SSA and MOLHO retain dense coupling between all U/V vertical components."
+      Description: "Method used to compute Hessian-vector products: autodiff uses the exact reverse-over-reverse Hessian; banded extracts a frozen 9-point horizontal stencil by graph colouring for identity mappings. Nonperiodic SSA and Nz=2 MOLHO use compact stencils; other supported cases use generalized component blocks."
       Units: dimless
     hvp_verify:
       Type: boolean
@@ -470,16 +474,33 @@ unified:
       Units: dimless
     probe_mode:
       Type: string
-      Description: "Method used by the component and spatial colouring probes when hvp_mode=banded: fd uses central finite differences of the gradient and requires double precision; autodiff uses exact reverse-over-reverse Hessian-vector products and is substantially slower to trace. The number of probes depends on Nz and the periodic grid dimensions."
+      Description: "Method used by the component and spatial colouring probes when hvp_mode=banded: autodiff uses exact reverse-over-reverse Hessian-vector products and is the production MOLHO mode; fd uses central finite differences in double precision; forward uses exact forward-over-reverse products for validation. The number of probes depends on Nz and the periodic grid dimensions."
       Units: dimless
     preconditioner:
       Type: string
-      Description: "Preconditioner for the CG linear solve: none or block_jacobi. Block-Jacobi uses a symmetric positive-definite point block coupling every U/V vertical component, and supports both SSA and MOLHO. It reuses banded operator blocks when available and otherwise extracts them from exact autodiff Hessian-vector products."
+      Description: "CG preconditioner: none, block_jacobi, or barotropic_multigrid. The multigrid option requires identity-mapped MOLHO with Nz=2 and combines full four-component point smoothing with a two-component horizontal coarse correction."
+      Units: dimless
+    operator_update_freq:
+      Type: integer
+      Description: "Number of outer Newton iterations for which a frozen banded Hessian is reused. One rebuilds it every iteration."
       Units: dimless
     precond_update_freq:
       Type: integer
-      Description: "Number of Newton steps between preconditioner extractions."
+      Description: "Number of outer Newton iterations between preconditioner updates."
       Units: dimless
+    multigrid:
+      smoother_weight:
+        Type: float
+        Description: "Relaxation weight used by the symmetric point-block smoothers in barotropic_multigrid. It is capped at 0.5 on periodic duplicated-endpoint grids to preserve positive definiteness; 0.5 is also the validated ISMIP-HOM setting."
+        Units: dimless
+      smoother_steps:
+        Type: integer
+        Description: "Number of point-block smoothing steps before and after each coarse-grid correction."
+        Units: dimless
+      coarse_size:
+        Type: integer
+        Description: "Maximum horizontal size of the bottom multigrid level solved by dense Cholesky."
+        Units: dimless
   trust_region:
     cg_max_iter:
       Type: integer
@@ -688,6 +709,15 @@ unified:
         ord:
           Type: string
           Description: "Default type of norm for the relative-change criterion."
+          Units: dimless
+      rel_initial:
+        tol:
+          Type: float
+          Description: "Default tolerance for the metric norm relative to its value on the first criterion check."
+          Units: dimless
+        ord:
+          Type: string
+          Description: "Default type of norm for the relative-to-initial criterion."
           Units: dimless
       abs_tol:
         tol:

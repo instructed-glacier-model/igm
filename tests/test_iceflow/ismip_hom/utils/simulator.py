@@ -61,11 +61,20 @@ def _run_unified(
             [
                 "processes.iceflow.numerics.precision=double",
                 "processes.iceflow.unified.cg_newton.hvp_mode=banded",
-                "processes.iceflow.unified.cg_newton.probe_mode=fd",
+                "processes.iceflow.unified.cg_newton.probe_mode=autodiff",
                 "processes.iceflow.unified.cg_newton.hvp_verify=false",
-                "processes.iceflow.unified.cg_newton.preconditioner=block_jacobi",
+                "processes.iceflow.unified.cg_newton.preconditioner=barotropic_multigrid",
+                "processes.iceflow.unified.cg_newton.multigrid.smoother_weight=0.5",
                 "processes.iceflow.unified.cg_newton.damping=1e-15",
                 "processes.iceflow.unified.cg_newton.damping_adaptive=false",
+                "processes.iceflow.unified.cg_newton.cg_tol=1e-8",
+                "processes.iceflow.unified.cg_newton.cg_max_iter=300",
+                "processes.iceflow.unified.nbit_init=40",
+                (
+                    "processes.iceflow.unified.halt.success="
+                    "[{criterion:rel_initial,metric:grad_theta_norm,"
+                    "rel_initial:{tol:1e-8,ord:id}}]"
+                ),
             ]
         )
 

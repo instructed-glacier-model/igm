@@ -22,6 +22,7 @@ OFFSETS: Tuple[Tuple[int, int], ...] = (
     (-1, -1),
 )
 COMPONENT_BANDS_KEY = "component_blocks"
+COMPONENT_CENTER_KEY = "component_center"
 
 
 def as_dtype(precision) -> tf.DType:
@@ -70,13 +71,15 @@ def _cycle_square_colors(n: int) -> Tuple[List[int], int]:
     raise RuntimeError(f"Could not color periodic stencil of length {n}.")
 
 
-def _axis_colors(n: int, periodic: bool) -> Tuple[tf.Tensor, int]:
+def _axis_colors(
+    n: int,
+    periodic: bool,
+    duplicated_endpoint: bool,
+) -> Tuple[tf.Tensor, int]:
     if periodic:
-        # Periodic boundary conditions duplicate the first degree of freedom at
-        # the final array position. The final raw degree of freedom is inactive.
-        active_n = max(n - 1, 1)
+        active_n = max(n - 1, 1) if duplicated_endpoint else n
         colors, n_colors = _cycle_square_colors(active_n)
-        if n > 1:
+        if duplicated_endpoint and n > 1:
             colors.append(-1)
         return tf.constant(colors, tf.int32), n_colors
 
@@ -129,10 +132,15 @@ def build_component_selectors(
     *,
     periodic_y: bool = False,
     periodic_x: bool = False,
+    duplicated_endpoints: bool = True,
 ):
     """Build spatial colors and neighbour-color lookup tables."""
-    colors_y, n_colors_y = _axis_colors(ny, periodic_y)
-    colors_x, n_colors_x = _axis_colors(nx, periodic_x)
+    colors_y, n_colors_y = _axis_colors(
+        ny, periodic_y, duplicated_endpoints
+    )
+    colors_x, n_colors_x = _axis_colors(
+        nx, periodic_x, duplicated_endpoints
+    )
     valid = tf.logical_and(
         colors_y[:, tf.newaxis] >= 0,
         colors_x[tf.newaxis, :] >= 0,
@@ -140,15 +148,30 @@ def build_component_selectors(
     color = colors_x[tf.newaxis, :] + n_colors_x * colors_y[:, tf.newaxis]
     color = tf.where(valid, color, tf.constant(-1, tf.int32))
 
-    neighbour_colors = [
-        tf.cast(
-            shift_local(
-                color[tf.newaxis],
+    def shift_color(value, dy, dx):
+        if duplicated_endpoints:
+            return shift_local(
+                value,
                 dy,
                 dx,
                 periodic_y=periodic_y,
                 periodic_x=periodic_x,
                 fill_value=-1,
+            )
+        if periodic_y and dy:
+            value = tf.roll(value, shift=-dy, axis=-2)
+            dy = 0
+        if periodic_x and dx:
+            value = tf.roll(value, shift=-dx, axis=-1)
+            dx = 0
+        return shift_local(value, dy, dx, fill_value=-1)
+
+    neighbour_colors = [
+        tf.cast(
+            shift_color(
+                color[tf.newaxis],
+                dy,
+                dx,
             )[0],
             tf.int8,
         )
