@@ -16,6 +16,7 @@ from igm.processes.iceflow.utils.velocities import (
     get_velsurf,
     get_velbar,
     clip_max_velbar,
+    compute_node_ice_mask,
 )
 
 
@@ -77,8 +78,9 @@ def evaluator_iceflow(
     U, V = U[0], V[0]
 
     # Post-processing of velocity fields
-    U = tf.where(kwargs["thk"] > 0.0, U, 0.0)
-    V = tf.where(kwargs["thk"] > 0.0, V, 0.0)
+    node_mask = tf.expand_dims(compute_node_ice_mask(kwargs["thk"]), axis=0)
+    U = tf.where(node_mask, U, 0.0)
+    V = tf.where(node_mask, V, 0.0)
 
     if parameters.force_max_velbar > 0.0:
         U, V = clip_max_velbar(U, V, kwargs["V_bar"], parameters.force_max_velbar)

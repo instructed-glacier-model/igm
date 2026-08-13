@@ -10,6 +10,7 @@ from typing import Callable
 from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
+from igm.processes.iceflow.utils.velocities import compute_cell_ice_mask
 
 
 def get_cost_fn(
@@ -20,6 +21,10 @@ def get_cost_fn(
     cfg_unified = cfg.processes.iceflow.unified
 
     energy_components = get_energy_components(cfg)
+    idx_thk = tuple(cfg_unified.inputs).index("thk")
+
+    # Exclude partially covered Q1 cells so ice-free nodes cannot enter the solve.
+    # The floating-front energy is already defined on this cell region's boundary.
 
     def _cost_fn_impl(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         """Cost function from velocity fields and inputs."""
@@ -33,10 +38,15 @@ def get_cost_fn(
             energy_components=energy_components,
         )
 
+        thk = input[..., idx_thk]
+        cell_mask = compute_cell_ice_mask(thk)
+        energy = energy * tf.cast(cell_mask[tf.newaxis, :, :, :], energy.dtype)
+
         energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
         total_energy = tf.reduce_sum(energy_mean, axis=0)
 
         return total_energy
 
+    # Keep the nested HVP tapes compact by differentiating a PartitionedCall.
     cost_fn = tf.function(_cost_fn_impl, reduce_retracing=True)
     return cost_fn

@@ -3,8 +3,9 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Any, Dict, Tuple
+
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from .energy import EnergyComponent
@@ -79,7 +80,21 @@ def cost_floating(
     g = tf.cast(floating_params.g, dtype)
     cf_eswn = floating_params.cf_eswn
 
-    return _cost(U, V, h, s, wl, dx, rho, rho_w, g, cf_eswn, discr_h, V_q, w_v)
+    return _cost(
+        U,
+        V,
+        h,
+        s,
+        wl,
+        dx,
+        rho,
+        rho_w,
+        g,
+        cf_eswn,
+        discr_h,
+        V_q,
+        w_v,
+    )
 
 
 @tf.function()
@@ -99,109 +114,133 @@ def _cost(
     w_v: tf.Tensor,
 ) -> tf.Tensor:
     """
-    Compute the calving front energy cost term.
+    Compute the calving-front energy cost term.
 
-    Calculates the work done at the calving front: ∫_Γ P · u·n ds, expressed
-    as an energy density per cell so that it can be summed with volume
-    contributions. P = 0.5 * ρ * g * h² * (1 - ρ_w/ρ * r²) accounts for the
-    stress balance at the calving front.
+    The face integral of hydrostatic pressure against normal velocity is
+    expressed as an energy density on each active structured-grid cell.
 
     Parameters
     ----------
     U : tf.Tensor
-        Horizontal velocity along x axis (m/year), shape (batch, Nz, Ny, Nx)
+        Horizontal x velocity (m/year), shape (batch, Nz, Ny, Nx).
     V : tf.Tensor
-        Horizontal velocity along y axis (m/year), shape (batch, Nz, Ny, Nx)
+        Horizontal y velocity (m/year), shape (batch, Nz, Ny, Nx).
     h : tf.Tensor
-        Ice thickness (m), shape (batch, Ny, Nx)
+        Ice thickness (m), shape (batch, Ny, Nx).
     s : tf.Tensor
-        Upper-surface elevation (m), shape (batch, Ny, Nx)
+        Upper-surface elevation (m), shape (batch, Ny, Nx).
+    wl : tf.Tensor
+        Water-level elevation (m), shape (batch, Ny, Nx).
     dx : tf.Tensor
-        Grid spacing (m)
+        Grid spacing (m).
     rho : tf.Tensor
-        Ice density (kg m^-3)
+        Ice density (kg m^-3).
     rho_w : tf.Tensor
-        Water density (kg m^-3)
+        Water density (kg m^-3).
     g : tf.Tensor
-        Gravity acceleration (m s^-2)
+        Gravitational acceleration (m s^-2).
     cf_eswn : tuple
-        Calving front boundaries: ("E", "S", "W", "N")
+        Domain edges open to calving fronts: ("E", "S", "W", "N").
     discr_h : HorizontalDiscr
-        Horizontal discretization class (-)
+        Horizontal discretization.
     V_q : tf.Tensor
-        Quadrature matrix: dofs -> quads (-)
+        Vertical quadrature interpolation matrix.
     w_v : tf.Tensor
-        Weights for vertical integration (-)
+        Vertical quadrature weights.
 
     Returns
     -------
     tf.Tensor
-        Calving front energy cost with shape (batch, Ny-1, Nx-1) in MPa m/year
+        Calving-front energy density with shape (batch, Ny-1, Nx-1),
+        in MPa m/year.
     """
 
     dtype = U.dtype
 
-    # Lower surface elevation
     l = s - h
 
-    # Pad to detect calving front (pad with 1.0 if edge NOT in cf_eswn)
-    pad_value = lambda edge: 1.0 if edge not in cf_eswn else 0.0
-
-    # Pad h: [[batch], [y], [x]]
-    h_ext = tf.pad(h, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
-    h_ext = tf.pad(h_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
-    h_ext = tf.pad(h_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
-    h_ext = tf.pad(h_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
-
-    # Pad l
-    l_ext = tf.pad(l, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
-    l_ext = tf.pad(l_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
-    l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
-    l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
-
-    # Pad water_level (same convention as l: at non-CF boundaries the value
-    # is irrelevant because h_ext kills the test; at CF boundaries we pad
-    # with 0 so the legacy "ocean at sea level" behaviour is recovered if
-    # the user's domain edge is in fact open ocean).
-    wl_ext = tf.pad(wl, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
-    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
-    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
-    wl_ext = tf.pad(wl_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
-
-    # Detect calving front: current cell has ice (h>0) and the neighbour
-    # is a water cell (h_n=0 and its lower surface is at or below the
-    # local water level w_n).
-    is_ice = h > 0.0
-    is_water = lambda h_n, l_n, w_n: (h_n == 0.0) & (l_n <= w_n)
-    is_cf = lambda h_n, l_n, w_n: tf.cast(is_ice & is_water(h_n, l_n, w_n), dtype)
-
-    CF_W = is_cf(h_ext[:, 1:-1, :-2], l_ext[:, 1:-1, :-2], wl_ext[:, 1:-1, :-2])
-    CF_E = is_cf(h_ext[:, 1:-1, 2:],  l_ext[:, 1:-1, 2:],  wl_ext[:, 1:-1, 2:])
-    CF_S = is_cf(h_ext[:, :-2, 1:-1], l_ext[:, :-2, 1:-1], wl_ext[:, :-2, 1:-1])
-    CF_N = is_cf(h_ext[:, 2:, 1:-1],  l_ext[:, 2:, 1:-1],  wl_ext[:, 2:, 1:-1])
-
     # Depth-integrated velocity using vertical quadrature
-    # U, V: (batch, Nz, Ny, Nx) -> (batch, Nq_v, Ny, Nx)
     u_q = tf.einsum("vz,bzyx->bvyx", V_q, U)
     v_q = tf.einsum("vz,bzyx->bvyx", V_q, V)
     w_q = w_v[tf.newaxis, :, tf.newaxis, tf.newaxis]
-    U_int = tf.reduce_sum(u_q * w_q, axis=1)  # -> (batch, Ny, Nx)
-    V_int = tf.reduce_sum(v_q * w_q, axis=1)  # -> (batch, Ny, Nx)
+    u_integrated = tf.reduce_sum(u_q * w_q, axis=1)
+    v_integrated = tf.reduce_sum(v_q * w_q, axis=1)
 
-    # Pre-factor: P = 0.5 * ρ * g * h² * (1 - ρ_w/ρ * r²)
-    # r = D/h, where D = max(w - l, 0) is the water depth at the cliff
-    # (w = local water level, l = lower surface of the ice).
-    r = tf.maximum((wl - l) / tf.maximum(h, 1.0), 0.0)
-    P = 0.5 * g * rho * h * h * (1.0 - (rho_w / rho) * r * r)
+    # Wet neighbours are cells that contain neither ice nor exposed land.
+    def corners(values):
+        return (
+            values[:, :-1, :-1],
+            values[:, :-1, 1:],
+            values[:, 1:, :-1],
+            values[:, 1:, 1:],
+        )
 
-    # Boundary energy density on nodal grid: (batch, Ny, Nx)
-    # Line integral contribution P * u·n * dx divided by cell area dx²
-    # gives energy density P * u·n / dx with units MPa m/year
-    C_float = 1e-6 * P * (U_int * (CF_E - CF_W) + V_int * (CF_N - CF_S)) / dx
+    is_ice = h > 0.0
+    i_sw, i_se, i_nw, i_ne = corners(is_ice)
+    cell_ice = i_sw & i_se & i_nw & i_ne
 
-    # Map to staggered grid via horizontal quadrature -> (batch, Nq_h, Ny-1, Nx-1)
-    C_h = discr_h.interp_h(C_float)
+    is_land = (h <= 0.0) & (l > wl)
+    l_sw, l_se, l_nw, l_ne = corners(is_land)
+    cell_land = l_sw | l_se | l_nw | l_ne
 
-    # Integrate over horizontal quad points -> (batch, Ny-1, Nx-1)
-    w_h = discr_h.w_h[tf.newaxis, :, tf.newaxis, tf.newaxis]
-    return -tf.reduce_sum(C_h * w_h, axis=1)
+    wet = tf.cast(~cell_ice & ~cell_land, dtype)
+
+    # Declared calving-front domain edges are open ocean; other edges are closed.
+    def wet_edge(edge):
+        return 1.0 if edge in cf_eswn else 0.0
+
+    wet_p = tf.pad(wet, [[0, 0], [1, 0], [0, 0]], constant_values=wet_edge("S"))
+    wet_p = tf.pad(wet_p, [[0, 0], [0, 1], [0, 0]], constant_values=wet_edge("N"))
+    wet_p = tf.pad(wet_p, [[0, 0], [0, 0], [1, 0]], constant_values=wet_edge("W"))
+    wet_p = tf.pad(wet_p, [[0, 0], [0, 0], [0, 1]], constant_values=wet_edge("E"))
+
+    wet_east = wet_p[:, 1:-1, 2:]
+    wet_west = wet_p[:, 1:-1, :-2]
+    wet_north = wet_p[:, 2:, 1:-1]
+    wet_south = wet_p[:, :-2, 1:-1]
+
+    # Evaluate hydrostatic pressure from the two nodes of each face.
+    def face(h_a, h_b, lower_a, lower_b, water_a, water_b):
+        face_thk = 0.5 * (h_a + h_b)
+        water_depth = tf.maximum(
+            0.5 * (water_a + water_b) - 0.5 * (lower_a + lower_b), 0.0
+        )
+        return 0.5 * g * (
+            rho * face_thk * face_thk - rho_w * water_depth * water_depth
+        )
+
+    h_sw, h_se, h_nw, h_ne = corners(h)
+    lower_sw, lower_se, lower_nw, lower_ne = corners(l)
+    water_sw, water_se, water_nw, water_ne = corners(wl)
+    u_sw, u_se, u_nw, u_ne = corners(u_integrated)
+    v_sw, v_se, v_nw, v_ne = corners(v_integrated)
+
+    pressure_east = face(
+        h_se, h_ne, lower_se, lower_ne, water_se, water_ne
+    )
+    pressure_west = face(
+        h_sw, h_nw, lower_sw, lower_nw, water_sw, water_nw
+    )
+    pressure_north = face(
+        h_nw, h_ne, lower_nw, lower_ne, water_nw, water_ne
+    )
+    pressure_south = face(
+        h_sw, h_se, lower_sw, lower_se, water_sw, water_se
+    )
+
+    velocity_east = 0.5 * (u_se + u_ne)
+    velocity_west = 0.5 * (u_sw + u_nw)
+    velocity_north = 0.5 * (v_nw + v_ne)
+    velocity_south = 0.5 * (v_sw + v_se)
+
+    # Convert the face integral to the cell energy-density convention.
+    dx_c = 0.5 * (dx[:, :-1, :-1] + dx[:, 1:, 1:]) if dx.shape.rank == 3 else dx
+
+    front_energy = (
+        -pressure_east * velocity_east * wet_east
+        + pressure_west * velocity_west * wet_west
+        - pressure_north * velocity_north * wet_north
+        + pressure_south * velocity_south * wet_south
+    ) / dx_c
+
+    return 1e-6 * front_energy * tf.cast(cell_ice, dtype)

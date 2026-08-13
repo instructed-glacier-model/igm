@@ -4,6 +4,44 @@ import tensorflow as tf
 from igm.utils.math.getmag import getmag
 
 
+@tf.function(jit_compile=True)
+def compute_cell_ice_mask(thk: tf.Tensor) -> tf.Tensor:
+    """Return cells whose four corner nodes have positive thickness."""
+    return (
+        (thk[..., :-1, :-1] > 0.0)
+        & (thk[..., :-1, 1:] > 0.0)
+        & (thk[..., 1:, :-1] > 0.0)
+        & (thk[..., 1:, 1:] > 0.0)
+    )
+
+
+def _pad_cell_mask_to_nodes(
+    cell_mask: tf.Tensor,
+    top: int,
+    bottom: int,
+    left: int,
+    right: int,
+) -> tf.Tensor:
+    rank = cell_mask.shape.rank
+    if rank is None:
+        raise ValueError("cell_mask rank must be statically known.")
+    paddings = [[0, 0]] * (rank - 2) + [[top, bottom], [left, right]]
+    return tf.pad(cell_mask, paddings)
+
+
+@tf.function(jit_compile=True)
+def compute_node_ice_mask(thk: tf.Tensor) -> tf.Tensor:
+    """Return ice nodes belonging to at least one active Q1 cell."""
+    cell_mask = compute_cell_ice_mask(thk)
+    node_support = (
+        _pad_cell_mask_to_nodes(cell_mask, 0, 1, 0, 1)
+        | _pad_cell_mask_to_nodes(cell_mask, 0, 1, 1, 0)
+        | _pad_cell_mask_to_nodes(cell_mask, 1, 0, 0, 1)
+        | _pad_cell_mask_to_nodes(cell_mask, 1, 0, 1, 0)
+    )
+    return (thk > 0.0) & node_support
+
+
 def get_velbase_1(U: tf.Tensor, V_b: tf.Tensor) -> tf.Tensor:
     """Get the basal velocity of the velocity component U."""
     return tf.einsum("j,...jkl->...kl", V_b, U)
