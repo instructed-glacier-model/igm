@@ -1,0 +1,79 @@
+smb_inference:
+  # Time parameters for glacier simulation
+  ttot: 2017.0
+  t_start: 1700.0
+  dtmax: 1.0
+  cfl: 0.2
+
+  # Ice flow emulator configuration
+  emulator:
+    from_state: false          # If true, use state.iceflow_model (from data_assimilation/iceflow) instead of loading from disk
+    model_path: iceflow-model  # Path to emulator artifact directory
+    Nz: 4                     # Number of vertical levels (only used when loading from disk)
+
+  # Forward-run start geometry
+  initial_state:
+    # Empty (default) -> the forward run starts from state.thk, i.e. the geometry
+    # the data assimilation just produced.
+    # Set to a state/NetCDF variable name (e.g. usurfstart) to re-anchor the run
+    # to that surface on the DA-fixed bed: H_init = max(<var> - topg, 0) * icemask.
+    # Use this when the DA is performed against the END-of-period surface (the
+    # epoch the observed velocities sample) but the SMB run must start at t_start.
+    usurf_variable: ''
+
+  # Observation data
+  observations:
+    geology_file: ''           # Path to NetCDF with observation surfaces (e.g., geology.nc). If empty, uses state variable.
+    state_variable: usurfinfer  # State variable to use as observation target when geology_file is empty
+    smb_points_file: ''         # Optional CSV with columns Alt, 'Annual_SMB (m w.e.)'. If set, overlaid as scatter on per-iter SMB profile plots.
+    observation_years:
+      - surf_1880
+      - surf_1926
+      - surf_1957
+      - surf_1980
+      - surf_1999
+      - surf_2009
+      - surf_2017
+
+  # Inversion method configuration
+  inversion:
+    method: profile            # Inversion method: 'profile' (1D elevation-dependent SMB)
+    dz: 100.0                 # Elevation bin spacing (m) for profile method
+    smb_init_low: -5.0        # Initial SMB at lowest elevation (m ice eq/yr) — used when init_from_obs is false or no stakes
+    smb_init_high: 2.0        # Initial SMB at highest elevation (m ice eq/yr) — used when init_from_obs is false or no stakes
+    init_from_obs: false      # If true, initialize smb_vec from observations.smb_points_file (piecewise-linear, extrapolated at tails); falls back to linspace if file is absent
+
+  # Optimization parameters
+  optimization:
+    optimizer: adam               # 'adam' or 'lbfgs'
+    nbitmax: 300
+    learning_rate: 0.05           # Adam only
+    regularisation: 0.05          # Smoothness regularization weight for SMB profile curvature
+    early_stop_patience: 0        # 0 = disabled (Adam only)
+    early_stop_threshold: 1.0e-5
+    loss_threshold: 1.0e-4
+    retrain_emulator: true        # Retrain iceflow emulator during forward simulation
+    retrain_interval: 1.0         # Retrain every N simulated years (inside the forward loop)
+    retrain_emulator_freq: 10     # Retrain every N outer optimization iterations (0 = only first)
+    early_retrain_iters: 5        # Retrain every iteration for the first N iterations
+    # L-BFGS options (ignored when optimizer=adam)
+    lbfgs_memory: 10              # num_correction_pairs
+    lbfgs_tolerance: 1.0e-6       # gradient-norm convergence tol
+    lbfgs_x_tolerance: 0.0        # position-step tol (0 disables)
+    lbfgs_f_relative_tolerance: 0.0  # 0 -> effectively disabled
+    lbfgs_line_search: armijo     # IGM line search: armijo | wolfe | hager-zhang
+
+  # Fallback grid spacing, used only for a state without x/y coordinate
+  # vectors. Ice density, gravity and the flow-law parameters are NOT
+  # duplicated here: they are read from processes.iceflow.physics.
+  physics:
+    dx: 100.0
+    dy: 100.0
+
+  # Output configuration
+  output:
+    vis_freq: 10.0
+    visualize: false
+    outdir: ./results/smb_inference
+    plot_loss: true
+    save_results: true
