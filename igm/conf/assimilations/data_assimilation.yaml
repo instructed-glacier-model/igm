@@ -50,6 +50,10 @@ data_assimilation:
     smooth_anisotropy_factor: 1.0
     smooth_anisotropy_factor_sl: 1.0
     smooth_anisotropy_var: 'vel'
+    divflux_sole_mask: false  # divflux roughness taken between ice cells only
+    fastfric: 0.0             # pull friction toward 0 on fast ice; 0 disables
+    fastfric_uthr: 300.0      # ramp onset on observed speed (m/yr)
+    fastfric_uscale: 300.0    # ramp width (m/yr)
     convexity_weight: 0.0
     convexity_power: 1.3
     to_regularize: topg

@@ -34,6 +34,16 @@ def cost_divfluxpen(cfg, state, i):
     dddx = (divflux[:, 1:] - divflux[:, :-1]) / state.dx
     dddy = (divflux[1:, :] - divflux[:-1, :]) / state.dx
 
+    # Mask-aware smoothness, as regu_thk and regu_slidingco already do. Taken
+    # across the outline, the gradient sees the step from the interior divflux
+    # to 0 outside the ice; flattening that step costs less flux, which thins
+    # the margin. Default false keeps the historical behaviour.
+    if cfg.assimilations.data_assimilation.regularization.get("divflux_sole_mask", False):
+        mx = (state.icemaskobs[:, 1:] > 0.5) & (state.icemaskobs[:, :-1] > 0.5)
+        my = (state.icemaskobs[1:, :] > 0.5) & (state.icemaskobs[:-1, :] > 0.5)
+        dddx = tf.where(mx, dddx, 0.0)
+        dddy = tf.where(my, dddy, 0.0)
+
     return (
         cfg.assimilations.data_assimilation.regularization.divflux
         * 0.5

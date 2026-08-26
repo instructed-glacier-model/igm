@@ -12,6 +12,7 @@ from .cost_vol import cost_vol
 from .regu_thk import regu_thk
 from .regu_usurf import regu_usurf
 from .regu_slidingco import regu_slidingco
+from .regu_fastfric import regu_fastfric
 from .regu_arrhenius import regu_arrhenius
 
 def total_cost(cfg, state, cost, i):
@@ -87,6 +88,8 @@ def total_cost(cfg, state, cost, i):
     # (slidingco or tau_ref) to the cost function
     if state.da_friction in cfg.assimilations.data_assimilation.control_list:
         cost["slid_regu"] = regu_slidingco(cfg, state)
+        if float(cfg.assimilations.data_assimilation.regularization.get("fastfric", 0.0)) > 0.0:
+            cost["fastfric_regu"] = regu_fastfric(cfg, state)
 
     # Here one adds a regularization terms for arrhenius to the cost function
     if "arrhenius" in cfg.assimilations.data_assimilation.control_list:
