@@ -7,26 +7,22 @@ from igm.processes.iceflow.unified.bcs.frozen_bed import FrozenBed
 from igm.processes.iceflow.unified.bcs.periodic_ns import PeriodicNS
 from igm.processes.iceflow.unified.bcs.periodic_we import PeriodicWE
 from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
-from igm.processes.iceflow.unified.optimizers.banded import periodic_axes
-from igm.processes.iceflow.unified.optimizers.barotropic_multigrid import (
+from igm.processes.iceflow.unified.operators.banded import periodic_axes
+from igm.processes.iceflow.unified.preconditioners import (
     BarotropicMultigrid,
+    BarotropicMultigridPreconditioner,
     GridTransfer,
     barotropic_mode,
+    invert_spd_4x4,
 )
-from igm.processes.iceflow.unified.optimizers.energy_operator import (
+from igm.processes.iceflow.unified.operators import (
     ADOperator,
     MOLHOBandedADOperator,
 )
-from igm.processes.iceflow.unified.optimizers.molho_banded import (
+from igm.processes.iceflow.unified.operators.molho_banded import (
     SymmetricBandedStencil,
     extract_symmetric_bands_batched,
 )
-from igm.processes.iceflow.unified.optimizers.preconditioner import (
-    BarotropicMultigridPreconditioner,
-    invert_spd_4x4,
-)
-
-
 def _quadratic_energy(U, V, inputs):
     del inputs
     components = tf.concat([U, V], axis=1)

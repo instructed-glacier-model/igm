@@ -12,8 +12,8 @@ from .optimizer import Optimizer
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
-from .preconditioner import build_preconditioner, Preconditioner
-from .energy_operator import Operator, ADOperator
+from ..operators import ADOperator, Operator
+from ..preconditioners import Preconditioner, build_preconditioner
 
 
 class OptimizerCGNewton(Optimizer):

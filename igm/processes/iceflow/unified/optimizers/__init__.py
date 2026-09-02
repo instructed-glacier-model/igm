@@ -12,6 +12,7 @@ from .sequential import OptimizerSequential
 from .soap import OptimizerSOAP
 from .trust_region import OptimizerTrustRegion
 from .spectral_projected_gradient import OptimizerSpectralProjectedGradient
+from .tridiag_newton import OptimizerTridiagNewton
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -27,6 +28,7 @@ Optimizers = {
     "soap": OptimizerSOAP,
     "trust_region": OptimizerTrustRegion,
     "spg": OptimizerSpectralProjectedGradient,
+    "tridiag_newton": OptimizerTridiagNewton,
 }
 
 from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status

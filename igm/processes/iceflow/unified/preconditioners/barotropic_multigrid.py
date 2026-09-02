@@ -6,8 +6,8 @@ from typing import Callable, List, Tuple
 import numpy as np
 import tensorflow as tf
 
-from .banded import OFFSETS
-from .molho_banded import (
+from ..operators.banded import OFFSETS
+from ..operators.molho_banded import (
     SymmetricBandedStencil,
     allocate_symmetric_bands,
     center_pairs,

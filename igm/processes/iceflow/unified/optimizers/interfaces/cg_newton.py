@@ -11,15 +11,14 @@ from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
-from ..energy_operator import (
+from ...operators import (
     Operator,
     ADOperator,
     BandedADOperator,
     MOLHOBandedADOperator,
     SSABandedADOperator,
 )
-from ..molho_banded import supports_compact_molho
-from ..ssa_banded import supports_compact_ssa
+from ...operators import supports_compact_molho, supports_compact_ssa
 
 
 class InterfaceCGNewton(InterfaceOptimizer):

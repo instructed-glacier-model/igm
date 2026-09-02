@@ -139,6 +139,16 @@ iceflow:
         smoother_weight: 0.6666666666666666
         smoother_steps: 1
         coarse_size: 8
+    tridiag_newton:
+      assembly: probe
+      scalar_flowline: false
+      damping: 1e-6
+      damping_adaptive: false
+      damping_min: 1e-12
+      damping_max: 1e2
+      damping_down: 0.25
+      damping_up: 4.0
+      probe_mode: fd
     trust_region:
       cg_max_iter: 100
       cg_tol: 1e-12

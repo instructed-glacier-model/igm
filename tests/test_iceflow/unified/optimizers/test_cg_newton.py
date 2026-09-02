@@ -7,20 +7,18 @@ from omegaconf import OmegaConf
 
 from igm.processes.iceflow.unified.bcs.periodic_ns import PeriodicNS
 from igm.processes.iceflow.unified.bcs.periodic_we import PeriodicWE
-from igm.processes.iceflow.unified.bcs.dirichlet import DirichletBoundary
-from igm.processes.iceflow.unified.bcs.frozen_bed import FrozenBed
 from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
 from igm.processes.iceflow.unified.optimizers.cg_newton import OptimizerCGNewton
-from igm.processes.iceflow.unified.optimizers.banded import (
+from igm.processes.iceflow.unified.operators.banded import (
     COMPONENT_CENTER_KEY,
 )
-from igm.processes.iceflow.unified.optimizers.energy_operator import (
+from igm.processes.iceflow.unified.operators import (
     ADOperator,
     BandedADOperator,
     MOLHOBandedADOperator,
     SSABandedADOperator,
 )
-from igm.processes.iceflow.unified.optimizers.preconditioner import (
+from igm.processes.iceflow.unified.preconditioners import (
     ComponentBlockJacobiPreconditioner,
     SSABlockJacobiPreconditioner,
     build_preconditioner,

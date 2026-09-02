@@ -51,6 +51,15 @@ class Operator(ABC):
     def cost_grad_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor):
         """Return cost and flat gradient at an arbitrary parameter vector."""
 
+    def cost_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor) -> tf.Tensor:
+        """Return cost at an arbitrary parameter vector.
+
+        Operators may override this to avoid constructing a gradient tape in
+        value-only line-search evaluations.
+        """
+        cost, _ = self.cost_grad_at(inputs, theta_flat)
+        return cost
+
     @abstractmethod
     def hvp(
         self,
@@ -104,6 +113,13 @@ class ADOperator(Operator):
                 U, V = apply_bc(U, V)
             cost = self.cost_fn(U, V, inputs)
         return cost, tape.gradient(cost, theta_flat)
+
+    @tf.function(reduce_retracing=True)
+    def cost_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor) -> tf.Tensor:
+        U, V = self.map.unflatten_theta(theta_flat)
+        for apply_bc in self.map.apply_bcs:
+            U, V = apply_bc(U, V)
+        return self.cost_fn(U, V, inputs)
 
     def hvp(
         self,
@@ -204,6 +220,9 @@ class _BandedADOperatorBase(Operator):
 
     def cost_grad_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor):
         return self._ad.cost_grad_at(inputs, theta_flat)
+
+    def cost_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor) -> tf.Tensor:
+        return self._ad.cost_at(inputs, theta_flat)
 
     def _probe_hvp(self, inputs: tf.Tensor, v_flat: tf.Tensor) -> tf.Tensor:
         if self._probe_mode == "autodiff":

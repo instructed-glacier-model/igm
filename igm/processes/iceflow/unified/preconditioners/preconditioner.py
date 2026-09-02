@@ -9,7 +9,9 @@ from typing import Callable, Optional, Tuple
 
 import tensorflow as tf
 
-from .banded import (
+from igm.utils.math.tridiagonal import invert_2x2
+
+from ..operators.banded import (
     COMPONENT_BANDS_KEY,
     COMPONENT_CENTER_KEY,
     as_dtype,
@@ -22,40 +24,8 @@ from .barotropic_multigrid import (
     barotropic_mode,
     project_molho_stencil,
 )
-from .molho_banded import MOLHO_STENCIL_KEY
-from .ssa_banded import SSA_BAND_KEYS, supports_compact_ssa
-
-
-def invert_2x2(
-    a: tf.Tensor,
-    b: tf.Tensor,
-    c: tf.Tensor,
-    d: tf.Tensor,
-    relative_floor: tf.Tensor,
-) -> tf.Tensor:
-    """Invert pointwise 2x2 blocks with a determinant floor."""
-    determinant = a * d - b * c
-    tiny = 1e-300 if a.dtype == tf.float64 else 1e-30
-    floor = tf.maximum(
-        tf.cast(relative_floor, a.dtype) * tf.reduce_max(tf.abs(determinant)),
-        tf.cast(tiny, a.dtype),
-    )
-    sign = tf.where(
-        determinant < 0.0,
-        -tf.ones_like(determinant),
-        tf.ones_like(determinant),
-    )
-    determinant = sign * tf.maximum(tf.abs(determinant), floor)
-    adjugate = tf.stack(
-        [
-            tf.stack([d, -b], axis=1),
-            tf.stack([-c, a], axis=1),
-        ],
-        axis=1,
-    )
-    return adjugate * tf.math.reciprocal(
-        determinant[:, tf.newaxis, tf.newaxis]
-    )
+from ..operators.molho_banded import MOLHO_STENCIL_KEY
+from ..operators.ssa_banded import SSA_BAND_KEYS, supports_compact_ssa
 
 
 def invert_spd_4x4(

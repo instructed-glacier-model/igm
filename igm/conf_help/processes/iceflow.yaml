@@ -501,6 +501,43 @@ unified:
         Type: integer
         Description: "Maximum horizontal size of the bottom multigrid level solved by dense Cholesky."
         Units: dimless
+    tridiag_newton:
+      assembly:
+        Type: string
+        Units: dimless
+        Description: "Hessian band assembly: 'probe' recovers bands using configured AD/finite-difference probes; 'analytic' directly assembles the exact Q1/SSA viscosity-and-sliding element Hessian for Ny=2 periodic-north-south flowlines."
+      scalar_flowline:
+        Type: boolean
+        Units: dimless
+        Description: "For an exactly y-invariant flowline with zero transverse velocity, solve only the symmetry-reduced flow-parallel scalar tridiagonal system. Initial-state validation rejects non-invariant inputs. Requires analytic assembly and the standard relative-cost stopping rule."
+      damping:
+        Type: float
+        Description: "Levenberg-Marquardt damping added to the Hessian diagonal, so the direct solve is for (H + damping I) p = -g."
+        Units: dimless
+      damping_adaptive:
+        Type: boolean
+        Description: "Adapt the damping from line-search acceptance. Damping decreases when the quadratic model predicts a near-full step well and increases when it predicts poorly; this lets the method approach an undamped Newton step."
+        Units: dimless
+      damping_min:
+        Type: float
+        Description: "Lower bound for adaptive Levenberg-Marquardt damping."
+        Units: dimless
+      damping_max:
+        Type: float
+        Description: "Upper bound for adaptive Levenberg-Marquardt damping."
+        Units: dimless
+      damping_down:
+        Type: float
+        Description: "Multiplicative damping reduction applied when the line search accepts a near-full Newton step."
+        Units: dimless
+      damping_up:
+        Type: float
+        Description: "Multiplicative damping increase applied when the line search accepts only a very small Newton step."
+        Units: dimless
+      probe_mode:
+        Type: string
+        Description: "Method used when assembly=probe: autodiff uses exact reverse-over-reverse Hessian-vector products; fd uses central finite differences in double precision; forward uses exact forward-over-reverse products for validation."
+        Units: dimless
   trust_region:
     cg_max_iter:
       Type: integer
