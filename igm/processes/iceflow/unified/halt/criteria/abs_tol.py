@@ -15,9 +15,9 @@ from igm.utils.math.norms import compute_norm
 class CriterionAbsTol(Criterion):
     """Criterion satisfied when metric norm falls below absolute tolerance."""
 
-    def __init__(self, metric: Metric, tol: float, ord: str):
+    def __init__(self, metric: Metric, dtype: str, tol: float, ord: str):
         """Initialize absolute tolerance criterion."""
-        super().__init__(metric)
+        super().__init__(metric, dtype)
         self.tol = tol
         self.ord = ord
         self.name = "abs_tol"
