@@ -5,4 +5,5 @@ from . import (
     interpolate_bilinear_tf,
     gaussian_filter_tf,
     norms,
+    tridiagonal,
 )
