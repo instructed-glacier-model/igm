@@ -20,7 +20,6 @@ from rich.theme import Theme
 
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
 
-
 EMULATOR_FILENAME = "emulator.keras"
 
 _emulator_theme = Theme(
@@ -47,9 +46,7 @@ def _print_loaded_banner(artifact_path: Path, model: "EmulatorArtifact") -> None
     info.add_column("Label", style="label")
     info.add_column("Value", style="value")
     info.add_row("Architecture", model.architecture_name)
-    info.add_row(
-        "I/O", f"{model.nb_inputs} -> {model.nb_outputs} (Nz={model.Nz})"
-    )
+    info.add_row("I/O", f"{model.nb_inputs} -> {model.nb_outputs} (Nz={model.Nz})")
     info.add_row("Artifact", f"[path]{artifact_path}[/path]")
 
     _console.print()
@@ -118,7 +115,9 @@ class EmulatorArtifact(tf.keras.Model):
                     f"Unknown architecture {self.architecture_name!r}. "
                     f"Available: {list(Architectures.keys())}"
                 )
-            self.core = Architectures[self.architecture_name.lower()](**self.architecture_params)
+            self.core = Architectures[self.architecture_name.lower()](
+                **self.architecture_params
+            )
         else:
             self.core = core_model
 
@@ -161,9 +160,7 @@ class EmulatorArtifact(tf.keras.Model):
         return {"input_shape": self._build_input_shape}
 
     def build_from_config(self, config: dict[str, Any]) -> None:
-        self.build(
-            config.get("input_shape", [None, None, None, self.nb_inputs])
-        )
+        self.build(config.get("input_shape", [None, None, None, self.nb_inputs]))
 
 
 def wrap_emulator_artifact(core_model: tf.keras.Model) -> EmulatorArtifact:
@@ -186,9 +183,7 @@ def wrap_emulator_artifact(core_model: tf.keras.Model) -> EmulatorArtifact:
     )
 
 
-def save_emulator_artifact(
-    artifact_dir: str | Path, model: tf.keras.Model
-) -> Path:
+def save_emulator_artifact(artifact_dir: str | Path, model: tf.keras.Model) -> Path:
     """Save the model as a Keras emulator artifact (architecture + weights + normalizer)."""
     artifact_path = _resolve_emulator_path(artifact_dir)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,7 +210,8 @@ def validate_emulator_artifact(
         raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
 
     cfg_u_ref = float(cfg.processes.iceflow.physics.sliding.u_ref)
-    if model.u_ref != cfg_u_ref:
+    model_u_ref = 1.0 if model.u_ref is None else model.u_ref
+    if model_u_ref != cfg_u_ref:
         raise ValueError(f"u_ref mismatch: emulator={model.u_ref}, config={cfg_u_ref}")
 
     model_inputs = list(model.input_names)
@@ -232,7 +228,9 @@ def validate_emulator_artifact(
     ]:
         model_val = getattr(model, attr, None)
         if model_val is not None and model_val != cfg_val:
-            raise ValueError(f"{attr} mismatch: emulator={model_val!r}, config={cfg_val!r}")
+            raise ValueError(
+                f"{attr} mismatch: emulator={model_val!r}, config={cfg_val!r}"
+            )
 
 
 def load_emulator_artifact(
@@ -247,9 +245,7 @@ def load_emulator_artifact(
     """
     artifact_path = _resolve_emulator_path(artifact_dir)
     if not artifact_path.exists():
-        raise FileNotFoundError(
-            f"Missing Keras emulator artifact at {artifact_path}"
-        )
+        raise FileNotFoundError(f"Missing Keras emulator artifact at {artifact_path}")
 
     model = tf.keras.models.load_model(
         str(artifact_path), compile=False, safe_mode=True
@@ -259,7 +255,7 @@ def load_emulator_artifact(
             f"Expected {artifact_path} to contain an IGM emulator, "
             f"got {type(model)}"
         )
-    
+
     validate_emulator_artifact(model, cfg, expected_inputs)
 
     _print_loaded_banner(artifact_path, model)
