@@ -1,9 +1,9 @@
 """Thickness-transport implementations, their dispatch table, and selection."""
 
-from . import explicit, ffsl, implicit, implicit_x
-
+from . import adi, explicit, ffsl, implicit, implicit_x
 
 TransportSchemes = {
+    "adi": adi,
     "explicit": explicit,
     "ffsl": ffsl,
     "implicit": implicit,

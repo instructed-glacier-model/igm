@@ -1,6 +1,6 @@
 thk:
 
-  scheme: explicit                     # production default; ffsl/implicit are opt-in, implicit_x is for flowlines
+  scheme: explicit                     # production default; ffsl/implicit are opt-in, implicit_x is for flowlines, adi is experimental
   slope_type: superbee                 # limiter for scheme: explicit; ffsl uses its monotone Superbee reconstruction
   divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter (std in cells) the staggered fluxes before the divergence (conservative flux smoothing; explicit only)
   ratio_density: 0.910                 # rho_ice / rho_water for flotation

@@ -1,7 +1,7 @@
 scheme:
   Type: string
   Units: dimless
-  Description: "Thickness transport backend: `explicit` is the production-default slope-limited forward-Euler method; `ffsl` is conservative monotone flux-form semi-Lagrangian transport with arbitrary-CFL swept fluxes; `implicit` is the diffusive 2-D first-order-upwind theta method solved by matrix-free, Jacobi-preconditioned BiCGSTAB; `implicit_x` solves independent x-flowlines directly with one batched tridiagonal solve and no y transport. A front backend may compose with or explicitly replace transport."
+  Description: "Thickness transport backend: `explicit` is the production-default slope-limited forward-Euler method; `ffsl` is conservative monotone flux-form semi-Lagrangian transport with arbitrary-CFL swept fluxes; `implicit` is the diffusive 2-D first-order-upwind theta method solved by matrix-free, Jacobi-preconditioned BiCGSTAB; `implicit_x` solves independent x-flowlines directly with one batched tridiagonal solve and no y transport; `adi` is the experimental second-order Peaceman-Rachford alternating-direction method. A front backend may compose with or explicitly replace transport."
 domain:
   constraints:
     Type: list
