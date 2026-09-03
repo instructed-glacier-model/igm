@@ -131,7 +131,7 @@ iceflow:
       damping_up: 4.0
       hvp_mode: autodiff
       hvp_verify: false
-      probe_mode: fd
+      probe_mode: autodiff
       preconditioner: block_jacobi
       operator_update_freq: 1
       precond_update_freq: 1

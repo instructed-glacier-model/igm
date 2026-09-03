@@ -141,7 +141,7 @@ class OptimizerCGNewton(Optimizer):
             if token is not None:
                 tf.reshape(token, [-1])[0].numpy()
 
-    @tf.function(reduce_retracing=True)
+    @tf.function(autograph=False, reduce_retracing=True, jit_compile=True)
     def _cg_solve(
         self,
         b: tf.Tensor,
