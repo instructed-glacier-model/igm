@@ -27,8 +27,20 @@ def run(cfg, state):
     # load any field contained in the ncdf file, replace missing entries by nan
 
     if "time" in nc.variables:
-        TIME = np.squeeze(nc.variables["time"]).astype("float32")
-        I = np.where(TIME == cfg.processes.time.start)[0][0]
+        TIME = np.atleast_1d(
+            np.squeeze(nc.variables["time"]).astype("float32")
+        )
+        requested_time = cfg.inputs.load_ncdf.time
+        if requested_time is None:
+            time_cfg = getattr(cfg.processes, "time", None)
+            requested_time = getattr(time_cfg, "start", TIME[0])
+        matches = np.flatnonzero(np.isclose(TIME, float(requested_time)))
+        if matches.size == 0:
+            raise ValueError(
+                f"Requested input time {requested_time} is not present in "
+                f"{filepath}. Available times: {TIME.tolist()}."
+            )
+        I = int(matches[0])
         istheretime = True
     else:
         istheretime = False

@@ -1,5 +1,6 @@
 load_ncdf:
   input_file: input.nc
+  time: null
   method_coarsen: skipping
   coarsen: 1
   crop: False

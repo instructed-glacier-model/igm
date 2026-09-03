@@ -2,6 +2,10 @@ input_file:
   Type: string
   Units: dimless
   Description: "NetCDF input data file."
+time:
+  Type: float | null
+  Units: yr
+  Description: "Time record to load. When omitted, use processes.time.start if available, otherwise the first record."
 method_coarsen:
   Type: string
   Units: dimless
