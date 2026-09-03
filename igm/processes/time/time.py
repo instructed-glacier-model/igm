@@ -4,11 +4,10 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
-import matplotlib.pyplot as plt
-import datetime, time
 import tensorflow as tf
 
-def _reduce_for_cfl(x, percentile):
+
+def _reduce_for_cfl(x, percentile, active_mask=None):
     """Reduce abs(x) to a single representative speed.
 
     percentile == 100 (default) → exact maximum (legacy behaviour).
@@ -16,22 +15,50 @@ def _reduce_for_cfl(x, percentile):
                                   i.e. take the value at rank ceil(p*N/100).
     """
     abs_x = tf.abs(x)
+    if active_mask is not None:
+        active_mask = tf.cast(active_mask, tf.bool)
     if percentile >= 100.0:
-        return tf.reduce_max(abs_x)
-    flat = tf.reshape(abs_x, [-1])
+        if active_mask is None:
+            return tf.reduce_max(abs_x)
+        return tf.reduce_max(
+            tf.where(active_mask, abs_x, tf.zeros_like(abs_x))
+        )
+    flat = (
+        tf.reshape(abs_x, [-1])
+        if active_mask is None
+        else tf.boolean_mask(abs_x, active_mask)
+    )
+    flat = tf.cond(
+        tf.size(flat) > 0,
+        lambda: flat,
+        lambda: tf.zeros((1,), dtype=abs_x.dtype),
+    )
     n = tf.size(flat)
     # k = number of cells in the (100-p)% tail; top_k returns them in
     # descending order, and we want the smallest of those = the percentile.
     keep_tail = tf.maximum(
-        1, tf.cast(tf.math.ceil(
-            tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0
-        ), tf.int32)
+        1,
+        tf.cast(
+            tf.math.ceil(
+                tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0
+            ),
+            tf.int32,
+        ),
     )
     top = tf.math.top_k(flat, k=keep_tail, sorted=True).values
     return top[-1]
 
 
-def compute_dt_from_cfl(ubar, vbar, cfl, dx, step_max, percentile=100.0):
+@tf.function(autograph=False, reduce_retracing=True)
+def compute_dt_from_cfl(
+    ubar,
+    vbar,
+    cfl,
+    dx,
+    step_max,
+    percentile=100.0,
+    active_mask=None,
+):
     """Compute adaptive time step based on CFL condition.
 
     `percentile` < 100 uses the percentile of |velocity| in place of the
@@ -41,16 +68,15 @@ def compute_dt_from_cfl(ubar, vbar, cfl, dx, step_max, percentile=100.0):
     except the top (100-percentile)% of cells.
     """
     velomax = tf.maximum(
-        _reduce_for_cfl(ubar, percentile),
-        _reduce_for_cfl(vbar, percentile),
+        _reduce_for_cfl(ubar, percentile, active_mask),
+        _reduce_for_cfl(vbar, percentile, active_mask),
     )
-    # dt_target account for both cfl and dt_max
-    if (velomax > 0):
-        dt_target = tf.minimum( cfl * dx / velomax, step_max )
-    else:
-        dt_target = step_max
+    return tf.where(
+        velomax > 0,
+        tf.minimum(cfl * dx / velomax, step_max),
+        tf.cast(step_max, velomax.dtype),
+    )
 
-    return dt_target
 
 def initialize(cfg, state):
 
@@ -63,24 +89,30 @@ def initialize(cfg, state):
 
     state.dt_target = tf.Variable(float(cfg.processes.time.step_max))
 
-    state.time_save = np.ndarray.tolist(
-        np.arange(cfg.processes.time.start, cfg.processes.time.end, cfg.processes.time.save)
-    ) + [cfg.processes.time.end]
+    time_save_values = np.arange(
+        cfg.processes.time.start,
+        cfg.processes.time.end,
+        cfg.processes.time.save,
+    ).tolist() + [cfg.processes.time.end]
+    state.time_save = tf.constant(time_save_values, dtype="float32")
 
-    state.time_save = tf.constant(state.time_save, dtype="float32")
 
 def update(cfg, state):
     if hasattr(state, "logger"):
-        state.logger.info(
-            "Update DT at time : " + str(state.t.numpy())
-        )
+        # Avoid a device-to-host synchronization solely for log formatting.
+        state.logger.info("Update time step")
 
-    if (cfg.processes.time.cfl>0):
+    if cfg.processes.time.cfl > 0:
         state.dt_target = compute_dt_from_cfl(
-            state.ubar, state.vbar,
-            cfg.processes.time.cfl, state.dx,
+            state.ubar,
+            state.vbar,
+            cfg.processes.time.cfl,
+            state.dx,
             cfg.processes.time.step_max,
-            percentile=float(getattr(cfg.processes.time, "cfl_percentile", 100.0)),
+            percentile=float(
+                getattr(cfg.processes.time, "cfl_percentile", 100.0)
+            ),
+            active_mask=getattr(state, "thk_active_mask", None),
         )
     else:
         state.dt_target = cfg.processes.time.step_max
@@ -99,7 +131,8 @@ def update(cfg, state):
     if state.it >= 0:
         state.t.assign(state.t + state.dt)
 
-    state.continue_run = (state.t < cfg.processes.time.end)
+    state.continue_run = state.t < cfg.processes.time.end
+
 
 def finalize(cfg, state):
     pass

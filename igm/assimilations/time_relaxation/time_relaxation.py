@@ -37,6 +37,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.utils.grad.compute_divflux import compute_divflux
+from igm.processes.time.time import compute_dt_from_cfl
 
 
 # ===================================================================== #
@@ -482,15 +483,15 @@ def _build_save_times(t_start, t_end, t_save):
 
 def _advance_time(state, save_times, step_max, cfl, use_cfl):
     if use_cfl and hasattr(state, "ubar") and hasattr(state, "vbar"):
-        velomax = tf.maximum(
-            tf.reduce_max(tf.abs(state.ubar)),
-            tf.reduce_max(tf.abs(state.vbar)),
-        )
-        vmax = float(velomax.numpy())
-        dt_target = (
-            float(tf.minimum(cfl * state.dx / velomax,
-                             tf.constant(step_max, dtype=tf.float32)).numpy())
-            if vmax > 0.0 else step_max
+        dt_target = float(
+            compute_dt_from_cfl(
+                state.ubar,
+                state.vbar,
+                cfl,
+                state.dx,
+                step_max,
+                active_mask=getattr(state, "thk_active_mask", None),
+            ).numpy()
         )
     else:
         dt_target = step_max
@@ -615,7 +616,6 @@ def _run_loop(cfg, p, state, forward_mod, pre_modules, post_modules, steps):
     t_start, t_end = float(p.time.start), float(p.time.end)
     step_max = float(p.time.step)
     cfl = float(getattr(p.time, "cfl", 0.3))
-
     save_times = _build_save_times(t_start, t_end, float(p.time.save))
 
     state.t = tf.Variable(t_start, dtype=tf.float32)
@@ -629,9 +629,13 @@ def _run_loop(cfg, p, state, forward_mod, pre_modules, post_modules, steps):
         s.last_applied_time = tf.Variable(t_start, dtype=tf.float32)
 
     # CFL-limit dt iff any step OR post_module evolves geometry.
-    use_cfl = any(s.control_field in ("thk", "topg", "usurf") for s in steps) \
-              or any(m.__name__.endswith(".thk") for m in post_modules)
-
+    geometry_control = any(
+        s.control_field in ("thk", "topg", "usurf") for s in steps
+    )
+    transport_requires_cfl = any(
+        m.__name__.endswith(".thk") for m in post_modules
+    )
+    use_cfl = geometry_control or transport_requires_cfl
     output_hooks = _collect_output_hooks(cfg)
     misfit_log = _build_misfit_logger(getattr(p, "outputs", None), steps)
 
