@@ -1,18 +1,26 @@
 thk:
 
-  scheme: explicit                     # production-default slope-limited forward-Euler transport
+  scheme: explicit                     # production default; implicit is opt-in, implicit_x is for flowlines
   slope_type: superbee                 # limiter for scheme: explicit
-  divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter the staggered fluxes before the divergence
+  divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter the staggered fluxes before the divergence (explicit only)
   ratio_density: 0.910                 # rho_ice / rho_water for flotation
 
   domain:
     constraints: []                    # intersect reusable active-cell constraints; empty evolves the full grid
 
   boundary:                            # independent thickness-transport domain sides
-    left: zero                         # zero/open | symmetric/no-flux
-    right: zero
-    top: zero
-    bottom: zero
+    left: zero                         # zero/open | symmetric/no-flux | periodic
+    right: zero                        # periodic must be set on both left and right
+    top: zero                          # rows at the beginning of the y dimension
+    bottom: zero                       # periodic must be set on both top and bottom
+
+  implicit:                            # used with scheme: implicit or implicit_x
+    theta: 1.0                         # 1.0 = backward Euler; 0.5 = Crank-Nicolson
+    solver:                            # used only with scheme: implicit
+      tol: 1.0e-6                      # requested relative residual tolerance (bounded below by dtype roundoff)
+      max_iter: 1000                   # matrix-free BiCGSTAB iteration limit
+      max_restarts: 8                  # low-memory residual replacements after breakdown or residual drift
+      failure_policy: stop             # stop the run and retain old H on failure | accept the best iterate
 
   calving_front: false                 # optional front evolution
   method: sub_grid                     # sub_grid (Albrecht/PISM) | level_set

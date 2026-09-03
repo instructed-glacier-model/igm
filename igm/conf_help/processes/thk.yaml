@@ -1,7 +1,7 @@
 scheme:
   Type: string
   Units: dimless
-  Description: "Thickness transport backend. `explicit` is the production-default slope-limited forward-Euler method. A front backend may compose with or explicitly replace transport."
+  Description: "Thickness transport backend: `explicit` is the production-default slope-limited forward-Euler method; `implicit` is the diffusive 2-D first-order-upwind theta method solved by matrix-free, Jacobi-preconditioned BiCGSTAB; `implicit_x` solves independent x-flowlines directly with one batched tridiagonal solve and no y transport. A front backend may compose with or explicitly replace transport."
 domain:
   constraints:
     Type: list
@@ -11,19 +11,41 @@ boundary:
   left:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the left x side: `zero` (alias `open`) assumes zero exterior ice and permits outflow; `symmetric` (aliases `closed`, `no_flux`, `reflective`) imposes zero normal mass flux."
+    Description: "Transport boundary at the left x side: `zero` (alias `open`) assumes zero exterior ice and permits outflow; `symmetric` (aliases `closed`, `no_flux`, `reflective`) imposes zero normal mass flux; `periodic` connects to the right side and requires boundary.right=periodic. Explicit supports zero and symmetric; implicit_x supports zero and symmetric in x; implicit supports all three modes."
   right:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the right x side, with the same choices as boundary.left."
+    Description: "Transport boundary at the right x side, with the same choices as boundary.left. This may differ from the left side except that periodic boundaries must be paired."
   top:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the first row of the y dimension, with the same choices as boundary.left."
+    Description: "Transport boundary at the first row of the y dimension, with the same zero/open, symmetric/no-flux, and paired-periodic choices."
   bottom:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the last row of the y dimension, with the same choices as boundary.left."
+    Description: "Transport boundary at the last row of the y dimension. This may differ from the top side except that periodic boundaries must be paired."
+implicit:
+  theta:
+    Type: float
+    Units: dimless
+    Description: "Theta-method weight in [0.5, 1.0] for `implicit` and `implicit_x`. The default 1.0 is backward Euler; 0.5 is Crank-Nicolson."
+  solver:
+    tol:
+      Type: float
+      Units: dimless
+      Description: "Requested relative residual tolerance for the implicit BiCGSTAB solve. The effective tolerance includes a small roundoff floor proportional to machine epsilon times the largest operator diagonal; use float64 when a tighter high-CFL solve is required."
+    max_iter:
+      Type: integer
+      Units: dimless
+      Description: "Maximum number of implicit BiCGSTAB iterations per thickness step."
+    max_restarts:
+      Type: integer
+      Units: dimless
+      Description: "Maximum low-memory BiCGSTAB residual-replacement restarts after numerical breakdown or recursive-residual drift."
+    failure_policy:
+      Type: string
+      Units: dimless
+      Description: "Action when the implicit solver does not converge: `stop` retains the old thickness, sets state.thk_step_accepted=false, and stops the run without a host synchronization; `accept` uses the best available iterate."
 slope_type:
   Type: string
   Units: dimless
@@ -35,4 +57,4 @@ divflux_smooth_sigma:
 ratio_density:
   Type: float
   Units: dimless
-  Description: "Density of ice divided by density of water, used by the flotation term. If iceflow densities are configured, thickness initialization verifies that their ratio is consistent with this value."
+  Description: "Density of ice divided by density of water, used by the flotation term. If iceflow densities are configured, initialization verifies that their ratio is consistent with this value."
