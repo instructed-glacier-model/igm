@@ -2,6 +2,10 @@ output_file:
   Type: string
   Units: dimless
   Description: "Output ncdf data file."
+keep_open:
+  Type: boolean
+  Units: dimless
+  Description: "Keep the NetCDF file open between saves and close it after the final save."
 vars_to_save:
   Type: list
   Units: dimless

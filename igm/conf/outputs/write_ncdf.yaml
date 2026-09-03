@@ -1,5 +1,6 @@
 write_ncdf:
   output_file: output.nc
+  keep_open: false
   vars_to_save:
     - topg
     - usurf

@@ -4,7 +4,6 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
 from netCDF4 import Dataset
 
@@ -65,6 +64,27 @@ def initialize(cfg, state):
     state.var_info_ncdf_ex["E_s"] = ["Surface enthalpy BC", "J kg-1"]
     state.var_info_ncdf_ex["T_s"] = ["Surface temperature", "K"]
 
+    # Opening a NETCDF4/HDF5 file is relatively expensive for short GPU
+    # timesteps.  An output may opt into reusing the handle between saves;
+    # run() closes it on the final saved step.
+    state._write_ncdf_handle = None
+
+
+def _finish_write(cfg, state, nc):
+    keep_open = bool(getattr(cfg.outputs.write_ncdf, "keep_open", False))
+    if keep_open and getattr(state, "continue_run", False):
+        state._write_ncdf_handle = nc
+    else:
+        nc.close()
+        state._write_ncdf_handle = None
+
+
+def _close_open_handle(state):
+    nc = getattr(state, "_write_ncdf_handle", None)
+    if nc is not None:
+        nc.close()
+        state._write_ncdf_handle = None
+
 
 def run(cfg, state):
     if state.saveresult:
@@ -91,7 +111,7 @@ def run(cfg, state):
             E.units = "yr"
             E.long_name = "time"
             E.axis = "T"
-            E[0] = str(getattr(state, "t", tf.constant(0)).numpy())
+            E[0] = getattr(state, "t", tf.constant(0)).numpy()
 
             nc.createDimension("y", len(state.y))
             E = nc.createVariable("y", np.dtype("float32").char, ("y",))
@@ -123,21 +143,21 @@ def run(cfg, state):
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
-                    val = getattr(state, var)
-                    if val.numpy().ndim == 2:
+                    val = getattr(state, var).numpy()
+                    if val.ndim == 2:
                         E = nc.createVariable(
                             var, np.dtype("float32").char, ("time", "y", "x")
                         )
-                        E[0, :, :] = val.numpy()
-                    elif val.numpy().ndim == 3:
+                        E[0, :, :] = val
+                    elif val.ndim == 3:
                         E = nc.createVariable(
                             var, np.dtype("float32").char, ("time", "z", "y", "x")
                         )
-                        E[0, :, :, :] = val.numpy()
+                        E[0, :, :, :] = val
                     if var in state.var_info_ncdf_ex.keys():
                         E.long_name = state.var_info_ncdf_ex[var][0]
                         E.units = state.var_info_ncdf_ex[var][1]
-            nc.close()
+            _finish_write(cfg, state, nc)
 
         else:
             if hasattr(state, "logger"):
@@ -145,17 +165,24 @@ def run(cfg, state):
                     "Write NCDF ex file at time : " + str(state.t.numpy())
                 )
 
-            nc = Dataset(cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4")
+            nc = state._write_ncdf_handle
+            if nc is None:
+                nc = Dataset(
+                    cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4"
+                )
 
-            d = nc.variables["time"][:].shape[0]
+            d = len(nc.dimensions["time"])
             nc.variables["time"][d] = state.t.numpy()
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
-                    val = getattr(state, var)
-                    if val.numpy().ndim == 2:
-                        nc.variables[var][d, :, :] = val.numpy()
-                    elif val.numpy().ndim == 3:
-                        nc.variables[var][d, :, :, :] = val.numpy()
+                    val = getattr(state, var).numpy()
+                    if val.ndim == 2:
+                        nc.variables[var][d, :, :] = val
+                    elif val.ndim == 3:
+                        nc.variables[var][d, :, :, :] = val
 
-            nc.close()
+            _finish_write(cfg, state, nc)
+
+    elif not getattr(state, "continue_run", False):
+        _close_open_handle(state)
