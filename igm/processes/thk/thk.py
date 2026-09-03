@@ -3,116 +3,192 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-"""
-thk  (user module, shadows built-in IGM thk)
-============================================
+"""Evolve ice thickness and the ice surfaces by mass conservation.
 
-Three modes selected by cfg.processes.thk:
+Thickness transport and calving-front tracking are separate extension points,
+each resolved by its own package (``transport.get_transport``,
+``fronts.get_front``, ``domains.get_domain_constraints``). This module selects
+them once, checks that the combination can actually run, and stores the result
+on ``state.thk_components`` for the update to use.
 
-  calving_front: false
-      Stock mass-conservation thk update (same shape as igm.processes.thk).
-
-  calving_front: true, method: level_set    (Bondzio 2016)
-      Delegates to cf_level_set.update.
-
-  calving_front: true, method: sub_grid     (Albrecht 2011 / PISM)
-      Delegates to cf_sub_grid.update.
-
-Sibling files in this folder:
-  utils.py         shared helpers (neighbour ops, surface update, stock advect)
-  cf_level_set.py  TO BE DONE
-  cf_sub_grid.py   Albrecht 2011 / PISM sub-grid calving front parameterization.
+A front declares how it composes with transport through its ``update_mode``.
+``replace_transport`` means it owns mass transport itself, which accommodates
+IGM's existing sub-grid front code while making that non-composability
+explicit instead of silently ignoring the selected transport scheme;
+``after_transport`` means it runs right after the transport step.
 """
 
-import os
-import sys
+from dataclasses import dataclass
 
-import tensorflow as tf
+from . import boundary
+from .domains import (
+    get_domain_constraints,
+    initialize_active_domain,
+    update_active_domain,
+)
+from .fronts import get_front
+from .surfaces import update_surfaces, validate_density_ratio
+from .transport import get_transport
 
-from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
 
-# IGM loads this file under the bare name "thk" via SourceFileLoader, so the
-# folder it lives in is not on sys.path. Add it so the sibling modules are
-# importable.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
+@dataclass
+class ThkComponents:
+    """Container for the components that evolve the ice thickness.
 
-import cf_level_set
-import cf_sub_grid
-from utils import update_surfaces
+    The selected components are attached here by :func:`_select_components`.
+    A component may also park its own per-run bookkeeping on the container
+    (``initial_ice_mask``, ``psi_built``, ...) rather than on ``state``, which
+    keeps such private values out of the field namespace that the output
+    modules write.
+    """
+
+    transport_name: str
+    transport: object
+    front_name: str | None
+    front: object | None
+    mass_transport_name: str
+    mass_transport: object
+    front_after_transport: object | None
+    domain_constraints: tuple
+    boundaries: boundary.BoundaryConditions
+    initialized_components: tuple
+    transport_options: object | None = None
+    initial_ice_mask: object | None = None
+    psi_built: bool = False
+    steps_since_reinit: int = 0
+
+
+def _check_component(name, module, kind):
+    """Reject a dispatch-table entry that cannot act as a component."""
+    missing = [
+        callback
+        for callback in ("initialize", "update")
+        if not callable(getattr(module, callback, None))
+    ]
+    if missing:
+        raise TypeError(
+            f"{kind} {name!r} is missing callable(s): {', '.join(missing)}."
+        )
+
+
+def _select_components(cfg):
+    """Resolve the configuration into a validated set of components.
+
+    Selection, composition, and the checks are one step because they depend on
+    each other: the front is only compatible with certain transport schemes,
+    and which component ends up owning mass transport decides which one has to
+    support active domains.
+    """
+
+    # Select
+    transport_name, transport = get_transport(cfg)
+    front_name, front_method = get_front(cfg, transport_name)
+    front = None if front_method is None else front_method.backend
+    constraints = get_domain_constraints(cfg)
+
+    _check_component(transport_name, transport, "Thickness transport")
+    if front is not None:
+        _check_component(front_name, front, "Front method")
+
+    # Compose: a "replace_transport" front owns mass transport itself, so the
+    # selected transport scheme does not run at all; an "after_transport"
+    # front instead runs right after it.
+    replaces_transport = (
+        front_method is not None
+        and front_method.update_mode == "replace_transport"
+    )
+    mass_transport_name = front_name if replaces_transport else transport_name
+    mass_transport = front if replaces_transport else transport
+
+    # Check the combination
+    boundaries = boundary.get_boundary_conditions(cfg)
+    boundary.validate_backend(boundaries, transport, transport_name)
+    if front is not None:
+        boundary.validate_backend(boundaries, front, front_name)
+    if constraints and not getattr(mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False):
+        raise ValueError(
+            f"Thickness backend {mass_transport_name!r} does not support "
+            "active-domain constraints."
+        )
+    smooth_sigma = float(getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0))
+    if smooth_sigma != 0.0 and not getattr(
+        mass_transport, "SUPPORTS_DIVFLUX_SMOOTHING", False
+    ):
+        raise ValueError(
+            f"Thickness backend {mass_transport_name!r} cannot apply "
+            "cfg.processes.thk.divflux_smooth_sigma, which is "
+            "available only with scheme: explicit."
+        )
+
+    front_after_transport = (
+        None if front is None or replaces_transport else front
+    )
+    initialized_components = (
+        (front,)
+        if replaces_transport
+        else ((transport,) if front is None else (transport, front))
+    )
+    return ThkComponents(
+        transport_name=transport_name,
+        transport=transport,
+        front_name=front_name,
+        front=front,
+        mass_transport_name=mass_transport_name,
+        mass_transport=mass_transport,
+        front_after_transport=front_after_transport,
+        domain_constraints=constraints,
+        boundaries=boundaries,
+        initialized_components=initialized_components,
+    )
 
 
 def initialize(cfg, state):
-
     if not hasattr(state, "topg"):
         raise ValueError(
             "The 'thk' module requires an initial topography ('state.topg')."
         )
 
-    p = cfg.processes.thk
+    # Select and check everything before any component touches the state.
+    validate_density_ratio(cfg)
+    components = _select_components(cfg)
+    state.thk_components = components
 
-    if p.calving_front and p.method == "level_set":
-        cf_level_set.initialize(cfg, state)
-        raise ValueError(
-            f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
-            f"Please use 'sub_grid' instead."
-        )
-    elif p.calving_front and p.method == "sub_grid":
-        cf_sub_grid.initialize(cfg, state)
-    elif p.calving_front:
-        raise ValueError(
-            f"cfg.processes.thk.method must be 'level_set' " f"got: {p.method!r}"
-        )
+    for component in components.initialized_components:
+        component.initialize(cfg, state)
+    initialize_active_domain(cfg, state, components.domain_constraints)
 
     update_surfaces(cfg, state)
 
 
 def update(cfg, state):
+    if state.it < 0:
+        return
 
-    if state.it >= 0:
-        if hasattr(state, "logger"):
-            state.logger.info(
-                "Ice thickness equation at time : " + str(state.t.numpy())
-            )
+    if hasattr(state, "logger"):
+        # Do not materialize state.t on the host: the implicit solve and the
+        # surrounding update can otherwise remain fully asynchronous.
+        state.logger.info("Ice thickness equation")
 
-        p = cfg.processes.thk
+    components = state.thk_components
 
-        if not p.calving_front:
-            # Stock IGM thk update, inlined to match igm.processes.thk shape.
-            state.divflux = compute_divflux_slope_limiter(
-                state.ubar,
-                state.vbar,
-                state.thk,
-                state.dx,
-                state.dx,
-                state.dt,
-                slope_type=p.slope_type,
-                smooth_sigma=float(getattr(p, "divflux_smooth_sigma", 0.0)),
-            )
-            if not hasattr(state, "smb"):
-                state.smb = tf.zeros_like(state.thk)
-            state.thk = tf.maximum(
-                state.thk + state.dt * (state.smb - state.divflux), 0
-            )
+    # The active domain is refreshed on both sides of the update so that
+    # transport sees the mask implied by the current geometry, and the
+    # published mask matches the geometry the step produced.
+    if components.domain_constraints:
+        update_active_domain(cfg, state, components.domain_constraints)
+    components.mass_transport.update(cfg, state)
+    if components.front_after_transport is not None:
+        components.front_after_transport.update(cfg, state)
+    if components.domain_constraints:
+        update_active_domain(cfg, state, components.domain_constraints)
 
-        elif p.method == "level_set":
-            cf_level_set.update(cfg, state)
-            raise ValueError(
-                f"cfg.processes.thk.method 'level_set' is not currently implemented in IGM. "
-                f"Please use 'sub_grid' instead."
-            )
-
-        elif p.method == "sub_grid":
-            cf_sub_grid.update(cfg, state)
-
-        else:
-            raise ValueError(
-                f"cfg.processes.thk.method must be 'level_set' " f"got: {p.method!r}"
-            )
-
-        update_surfaces(cfg, state)
+    update_surfaces(cfg, state)
 
 
 def finalize(cfg, state):
-    pass
+    """Run the optional finalize callback of each selected component."""
+    components = state.thk_components
+    for component in reversed(components.initialized_components):
+        callback = getattr(component, "finalize", None)
+        if callable(callback):
+            callback(cfg, state)

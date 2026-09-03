@@ -3,21 +3,18 @@
 # Copyright (C) 2021-2025 IGM authors
 
 
-"""
-# Implements the level-set calving-front scheme of Bondzio et al. (2016),
-# The Cryosphere 10, 497-510, as implmented in ISSM
-"""
+"""Level-set calving-front scheme of Bondzio et al. (2016), The Cryosphere
+10, 497-510, as implemented in ISSM."""
 
 import tensorflow as tf
 
-from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
-
-from utils import (
+from .utils import (
+    advect_thickness_standard,
+    blended_divflux,
+    extend_thk_for_iceflow,
+    marine_calving_rate,
     neighbour_bool_any,
     neighbour_mean,
-    dilate_bool,
-    bulk_mask_5x5,
-    advect_thickness_standard,
 )
 
 # ---------------------------------------------------------------------------
@@ -105,14 +102,12 @@ def _advect_psi(cfg, state):
     adv_x = tf.maximum(u, 0.0) * Dxm + tf.minimum(u, 0.0) * Dxp
     adv_y = tf.maximum(v, 0.0) * Dym + tf.minimum(v, 0.0) * Dyp
 
-    c = tf.cast(state.calving_rate, dtype)
+    # Both restrictions are multiplicative factors on the calving rate, so
+    # their order does not matter.
+    c = marine_calving_rate(cfg, state, dtype)
     if ls.only_near_front:
         band = tf.cast(ls.band_cells, dtype) * dx
         c = c * tf.exp(-((state.psi / band) ** 2))
-    if p.only_marine and hasattr(state, "water_level"):
-        c = c * tf.cast(state.topg < state.water_level, dtype)
-    elif p.only_marine:
-        c = tf.zeros_like(c)
 
     grad_plus = tf.sqrt(
         tf.square(tf.maximum(Dxm, 0.0))
@@ -142,29 +137,7 @@ def _advect_mass(cfg, state, phi_old, phi_new):
 
     M_old = state.thk * phi_old
 
-    divflux_front = compute_divflux_slope_limiter(
-        state.ubar,
-        state.vbar,
-        M_old,
-        state.dx,
-        state.dx,
-        state.dt,
-        slope_type=p.front_slope_type,
-    )
-    if p.interior_slope_type == p.front_slope_type:
-        state.divflux = divflux_front
-    else:
-        divflux_interior = compute_divflux_slope_limiter(
-            state.ubar,
-            state.vbar,
-            M_old,
-            state.dx,
-            state.dx,
-            state.dt,
-            slope_type=p.interior_slope_type,
-        )
-        bulk = bulk_mask_5x5(phi_old > (1.0 - eps), dtype)
-        state.divflux = bulk * divflux_interior + (1.0 - bulk) * divflux_front
+    state.divflux = blended_divflux(cfg, state, M_old, phi_old > (1.0 - eps))
     if not hasattr(state, "smb"):
         state.smb = tf.zeros_like(state.thk)
 
@@ -175,8 +148,7 @@ def _advect_mass(cfg, state, phi_old, phi_new):
     )
 
     if ls.cap_partial:
-        partial_mask = phi_new < (1.0 - eps)
-        full_mask = (phi_new >= (1.0 - eps)) & (thk_new > 0.0)
+        partial_mask, full_mask = _partial_and_full_masks(cfg, phi_new, thk_new)
         thk_cap = neighbour_mean(thk_new, full_mask)
         has_ref = neighbour_bool_any(full_mask)
         thk_capped = tf.where(
@@ -193,43 +165,20 @@ def _advect_mass(cfg, state, phi_old, phi_new):
     state.thk = thk_new
 
 
-def _extend_thk_for_iceflow(cfg, state, phi_new):
-    """Pad partial cells (phi < 1) and optionally a thin-front halo up to
-    the mean thk of their fully-iced 4-neighbours, for the iceflow read."""
-    p = cfg.processes.thk
-    ls = p.level_set
-    dtype = state.thk.dtype
-    eps = tf.cast(ls.phi_eps, dtype)
-    thk = state.thk
-
-    partial_mask = phi_new < (1.0 - eps)
-    full_mask = (phi_new >= (1.0 - eps)) & (thk > 0.0)
-    thk_ref = neighbour_mean(thk, full_mask)
-
-    extend_mask = partial_mask
-    halo_steps = int(p.extend_halo)
-    if halo_steps > 0:
-        thresh = tf.cast(p.extend_thresh, dtype)
-        halo_band = dilate_bool(partial_mask, halo_steps)
-        halo_lo = (
-            halo_band
-            & tf.logical_not(partial_mask)
-            & full_mask
-            & (thk < thk_ref * thresh)
-        )
-        extend_mask = partial_mask | halo_lo
-
-    has_ref = thk_ref > 0.0
-    return tf.where(extend_mask & has_ref, thk_ref, thk)
+def _partial_and_full_masks(cfg, phi, thk):
+    """Split cells by ice-area fraction: partially and fully covered."""
+    eps = tf.cast(cfg.processes.thk.level_set.phi_eps, thk.dtype)
+    return phi < (1.0 - eps), (phi >= (1.0 - eps)) & (thk > 0.0)
 
 
 def _reinit_maybe(cfg, state):
     ls = cfg.processes.thk.level_set
-    state._cf_steps_since_reinit += 1
-    if ls.reinit_freq > 0 and state._cf_steps_since_reinit >= int(ls.reinit_freq):
+    components = state.thk_components
+    components.steps_since_reinit += 1
+    if ls.reinit_freq > 0 and components.steps_since_reinit >= int(ls.reinit_freq):
         s0 = state.psi / tf.sqrt(state.psi * state.psi + state.dx * state.dx)
         state.psi.assign(_reinitialise(state.psi, s0, state.dx, ls.reinit_iter))
-        state._cf_steps_since_reinit = 0
+        components.steps_since_reinit = 0
 
 
 # ---------------------------------------------------------------------------
@@ -238,11 +187,12 @@ def _reinit_maybe(cfg, state):
 
 
 def initialize(cfg, state):
-    state._cf_steps_since_reinit = 0
-    state._cf_psi_built = False
+    components = state.thk_components
+    components.steps_since_reinit = 0
+    components.psi_built = False
     if hasattr(state, "calving_rate"):
         _build_initial_psi(cfg, state)
-        state._cf_psi_built = True
+        components.psi_built = True
 
     if not hasattr(state, "cf_capped_volume"):
         state.cf_capped_volume = tf.Variable(0.0, trainable=False)
@@ -259,9 +209,9 @@ def update(cfg, state):
         advect_thickness_standard(cfg, state)
         return
 
-    if not state._cf_psi_built:
+    if not state.thk_components.psi_built:
         _build_initial_psi(cfg, state)
-        state._cf_psi_built = True
+        state.thk_components.psi_built = True
 
     # Recover the true (M/phi) thk from last step; state.thk may have been
     # overwritten with the extended version for iceflow.
@@ -274,4 +224,5 @@ def update(cfg, state):
     _reinit_maybe(cfg, state)
 
     state.thk_true.assign(state.thk)
-    state.thk = _extend_thk_for_iceflow(cfg, state, phi_new)
+    partial_mask, full_mask = _partial_and_full_masks(cfg, phi_new, state.thk)
+    state.thk = extend_thk_for_iceflow(cfg, state.thk, partial_mask, full_mask)

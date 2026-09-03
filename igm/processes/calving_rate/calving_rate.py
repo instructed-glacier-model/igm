@@ -115,7 +115,7 @@ def _compute_field(cfg, state):
     elif law == "thickness_threshold":
         # threshold rule: cells thinner than Hcr at the calving front
         # are removed. We implement this as c = c_max where thk < Hcr,
-        # which drives _apply_calving (cf_sub_grid.py) to drain the
+        # which drives fronts/sub_grid.py to drain the
         # cell quickly. Acts on partial cells via Href and on adjacent
         # cliff cells via thk drain (calve_cliff).
         Hcr = tf.cast(p.Hcr, dtype)

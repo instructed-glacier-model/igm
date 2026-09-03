@@ -1,12 +1,38 @@
+scheme:
+  Type: string
+  Units: dimless
+  Description: "Thickness transport backend. `explicit` is the production-default slope-limited forward-Euler method. A front backend may compose with or explicitly replace transport."
+domain:
+  constraints:
+    Type: list
+    Units: dimless
+    Description: "Active-cell constraints intersected before thickness transport. Each entry has a `method`: `grounded` recomputes flotation from live geometry; `initial_ice` retains cells above its optional `min_thickness` at initialization; `interior` retains the four-neighbour interior of a named state `field`; `state_mask` uses a named state `field` directly. An empty list evolves the full grid. Internal active/inactive faces carry zero flux, and inactive thickness is held fixed."
+boundary:
+  left:
+    Type: string
+    Units: dimless
+    Description: "Transport boundary at the left x side: `zero` (alias `open`) assumes zero exterior ice and permits outflow; `symmetric` (aliases `closed`, `no_flux`, `reflective`) imposes zero normal mass flux."
+  right:
+    Type: string
+    Units: dimless
+    Description: "Transport boundary at the right x side, with the same choices as boundary.left."
+  top:
+    Type: string
+    Units: dimless
+    Description: "Transport boundary at the first row of the y dimension, with the same choices as boundary.left."
+  bottom:
+    Type: string
+    Units: dimless
+    Description: "Transport boundary at the last row of the y dimension, with the same choices as boundary.left."
 slope_type:
   Type: string
   Units: dimless
-  Description: "Type of slope limiter for the ice thickness equation (godunov or superbee). Used in stock mode (`calving_front: false`)."
+  Description: "Type of slope limiter for the explicit ice-thickness equation (`godunov`, `minmod`, or `superbee`)."
 divflux_smooth_sigma:
   Type: float
   Units: dimless
-  Description: "If > 0, Gaussian-filter the staggered fluxes Qx/Qy (std in grid cells) before taking the divergence in the thickness transport. Conservative flux smoothing: the filtered flux is the transport operator, so mass is exactly conserved; slightly smears the flux at the ice margin. Stock mode only; 0 disables."
+  Description: "If > 0, Gaussian-filter the staggered fluxes Qx/Qy (std in grid cells) before taking the divergence in the explicit thickness transport. The filtered flux remains conservative; 0 disables filtering."
 ratio_density:
   Type: float
   Units: dimless
-  Description: "Density of ice divided by density of water (used by the flotation term)."
+  Description: "Density of ice divided by density of water, used by the flotation term. If iceflow densities are configured, thickness initialization verifies that their ratio is consistent with this value."

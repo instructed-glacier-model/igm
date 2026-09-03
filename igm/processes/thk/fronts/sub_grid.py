@@ -28,13 +28,12 @@ See Albrecht et al. (2011), TC 5, 35-44 and PISM (https://www.pism.io/).
 
 import tensorflow as tf
 
-from igm.utils.grad.compute_divflux_slope_limiter import compute_divflux_slope_limiter
-
-from utils import (
+from .utils import (
+    blended_divflux,
+    extend_thk_for_iceflow,
+    marine_calving_rate,
     neighbour_bool_any,
     neighbour_mean,
-    dilate_bool,
-    bulk_mask_5x5,
 )
 
 
@@ -67,30 +66,7 @@ def _threshold_thickness(cfg, state, is_ice):
 
 
 def _advect_and_route(cfg, state, is_partial):
-    p = cfg.processes.thk
-    divflux_front = compute_divflux_slope_limiter(
-        state.ubar,
-        state.vbar,
-        state.thk,
-        state.dx,
-        state.dx,
-        state.dt,
-        slope_type=p.front_slope_type,
-    )
-    if p.interior_slope_type == p.front_slope_type:
-        state.divflux = divflux_front
-    else:
-        divflux_interior = compute_divflux_slope_limiter(
-            state.ubar,
-            state.vbar,
-            state.thk,
-            state.dx,
-            state.dx,
-            state.dt,
-            slope_type=p.interior_slope_type,
-        )
-        bulk = bulk_mask_5x5(state.thk > 0.0, state.thk.dtype)
-        state.divflux = bulk * divflux_interior + (1.0 - bulk) * divflux_front
+    state.divflux = blended_divflux(cfg, state, state.thk, state.thk > 0.0)
     if not hasattr(state, "smb"):
         state.smb = tf.zeros_like(state.thk)
 
@@ -135,32 +111,6 @@ def _promote_and_cap(cfg, state):
         state.Href.assign(state.Href - gained)
 
 
-def _extend_thk_for_iceflow(cfg, state):
-    """Pad partial cells (thk=0, next to ice) and optionally a
-    halo of recently-promoted thin cells up to the interior-mean thk, so
-    the iceflow solver sees a continuous thickness field. The true
-    step-function column is preserved in state.thk_true."""
-    p = cfg.processes.thk
-    thk = state.thk
-
-    is_ice = thk > 0.0
-    is_partial = _partial_mask(state)
-    thk_ref = neighbour_mean(thk, is_ice)
-
-    extend_mask = is_partial
-    halo_steps = int(p.extend_halo)
-    if halo_steps > 0:
-        thresh = tf.cast(p.extend_thresh, thk.dtype)
-        halo_band = dilate_bool(is_partial, halo_steps)
-        halo_lo = (
-            halo_band & tf.logical_not(is_partial) & is_ice & (thk < thk_ref * thresh)
-        )
-        extend_mask = tf.logical_or(is_partial, halo_lo)
-
-    has_ref = thk_ref > 0.0
-    return tf.where(extend_mask & has_ref, thk_ref, thk)
-
-
 def _apply_calving(cfg, state):
     """Apply state.calving_rate as a mass sink on Href, then
     optionally on the adjacent cliff (calve_cliff).
@@ -172,18 +122,12 @@ def _apply_calving(cfg, state):
     The dx scaling converts a cliff-retreat speed into the right
     Href-units sink: a column of width c*dt at full height H_ref,
     spread over a cell of size dx. With it, the net front velocity
-    becomes (flux-driven advance) - c, mirroring cf_level_set.py.
+    becomes (flux-driven advance) - c, mirroring level_set.py.
     """
-    p = cfg.processes.thk
-    sg = p.sub_grid
+    sg = cfg.processes.thk.sub_grid
     dtype = state.thk.dtype
     dx = tf.cast(state.dx, dtype)
-    c = tf.cast(state.calving_rate, dtype)
-
-    if p.only_marine and hasattr(state, "water_level"):
-        c = c * tf.cast(state.topg < state.water_level, dtype)
-    elif p.only_marine:
-        c = tf.zeros_like(c)
+    c = marine_calving_rate(cfg, state, dtype)
 
     # Interior-neighbour mean thickness: the H that appears in the c * H / dx
     # retreat-mass-flux. At partial cells state.thk = 0, so take the mean over
@@ -232,4 +176,7 @@ def update(cfg, state):
         _apply_calving(cfg, state)
 
     state.thk_true.assign(state.thk)
-    state.thk = _extend_thk_for_iceflow(cfg, state)
+    # Partial cells carry Href rather than thk, so they read as ice-free here.
+    state.thk = extend_thk_for_iceflow(
+        cfg, state.thk, _partial_mask(state), state.thk > 0.0
+    )
