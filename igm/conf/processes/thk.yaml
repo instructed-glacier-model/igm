@@ -1,8 +1,8 @@
 thk:
 
-  scheme: explicit                     # production default; implicit is opt-in, implicit_x is for flowlines
-  slope_type: superbee                 # limiter for scheme: explicit
-  divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter the staggered fluxes before the divergence (explicit only)
+  scheme: explicit                     # production default; ffsl/implicit are opt-in, implicit_x is for flowlines
+  slope_type: superbee                 # limiter for scheme: explicit; ffsl uses its monotone Superbee reconstruction
+  divflux_smooth_sigma: 0.0            # if > 0, Gaussian-filter (std in cells) the staggered fluxes before the divergence (conservative flux smoothing; explicit only)
   ratio_density: 0.910                 # rho_ice / rho_water for flotation
 
   domain:
@@ -21,6 +21,11 @@ thk:
       max_iter: 1000                   # matrix-free BiCGSTAB iteration limit
       max_restarts: 8                  # low-memory residual replacements after breakdown or residual drift
       failure_policy: stop             # stop the run and retain old H on failure | accept the best iterate
+
+  ffsl:                                # used only with scheme: ffsl
+    max_deformation: 0.5               # internal substeps limit dt*||grad(velocity)||; independent of uniform-flow CFL
+    max_substeps: 128                  # safety cap for deformation-controlled internal substeps
+    limit_policy: stop                 # stop the run and retain old H if the requested count exceeds max_substeps | accept
 
   calving_front: false                 # optional front evolution
   method: sub_grid                     # sub_grid (Albrecht/PISM) | level_set
