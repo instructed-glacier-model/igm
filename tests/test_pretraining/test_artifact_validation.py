@@ -80,3 +80,12 @@ def test_u_ref_mismatch_raises():
     model = _artifact(2, _INPUTS, u_ref=100.0)
     with pytest.raises(ValueError, match=r"u_ref"):
         validate_emulator_artifact(model, _cfg(2, _INPUTS, u_ref=1.0), _INPUTS)
+
+
+@pytest.mark.unit
+def test_legacy_missing_u_ref_means_historical_unit_reference_speed():
+    model = _artifact(2, _INPUTS, u_ref=None)
+    validate_emulator_artifact(model, _cfg(2, _INPUTS, u_ref=1.0), _INPUTS)
+
+    with pytest.raises(ValueError, match=r"u_ref"):
+        validate_emulator_artifact(model, _cfg(2, _INPUTS, u_ref=100.0), _INPUTS)
