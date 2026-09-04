@@ -17,6 +17,12 @@ from .utils import (
     neighbour_mean,
 )
 
+
+UPDATE_MODE = "replace_transport"
+COMPATIBLE_TRANSPORTS = ("explicit",)
+AVAILABLE = False
+UNAVAILABLE_REASON = "the level-set implementation is not production-ready"
+
 # ---------------------------------------------------------------------------
 # Level-set kernels
 # ---------------------------------------------------------------------------
@@ -173,12 +179,15 @@ def _partial_and_full_masks(cfg, phi, thk):
 
 def _reinit_maybe(cfg, state):
     ls = cfg.processes.thk.level_set
-    components = state.thk_components
-    components.steps_since_reinit += 1
-    if ls.reinit_freq > 0 and components.steps_since_reinit >= int(ls.reinit_freq):
+    runtime = state.thk_components.component_state["level_set"]
+    runtime["steps_since_reinit"] += 1
+    if (
+        ls.reinit_freq > 0
+        and runtime["steps_since_reinit"] >= int(ls.reinit_freq)
+    ):
         s0 = state.psi / tf.sqrt(state.psi * state.psi + state.dx * state.dx)
         state.psi.assign(_reinitialise(state.psi, s0, state.dx, ls.reinit_iter))
-        components.steps_since_reinit = 0
+        runtime["steps_since_reinit"] = 0
 
 
 # ---------------------------------------------------------------------------
@@ -187,12 +196,12 @@ def _reinit_maybe(cfg, state):
 
 
 def initialize(cfg, state):
-    components = state.thk_components
-    components.steps_since_reinit = 0
-    components.psi_built = False
+    runtime = state.thk_components.component_state.setdefault("level_set", {})
+    runtime["steps_since_reinit"] = 0
+    runtime["psi_built"] = False
     if hasattr(state, "calving_rate"):
         _build_initial_psi(cfg, state)
-        components.psi_built = True
+        runtime["psi_built"] = True
 
     if not hasattr(state, "cf_capped_volume"):
         state.cf_capped_volume = tf.Variable(0.0, trainable=False)
@@ -209,9 +218,10 @@ def update(cfg, state):
         advect_thickness_standard(cfg, state)
         return
 
-    if not state.thk_components.psi_built:
+    runtime = state.thk_components.component_state["level_set"]
+    if not runtime["psi_built"]:
         _build_initial_psi(cfg, state)
-        state.thk_components.psi_built = True
+        runtime["psi_built"] = True
 
     # Recover the true (M/phi) thk from last step; state.thk may have been
     # overwritten with the extended version for iceflow.

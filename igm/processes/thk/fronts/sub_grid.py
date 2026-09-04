@@ -37,6 +37,12 @@ from .utils import (
 )
 
 
+UPDATE_MODE = "replace_transport"
+COMPATIBLE_TRANSPORTS = ("explicit",)
+AVAILABLE = True
+UNAVAILABLE_REASON = ""
+
+
 def _ocean(state):
     is_ice = state.thk > 0.0
     if hasattr(state, "water_level"):

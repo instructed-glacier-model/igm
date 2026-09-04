@@ -48,18 +48,6 @@ class FFSLStepResult(NamedTuple):
     step_accepted: tf.Tensor
 
 
-class FFSLOptions(NamedTuple):
-    """Static transport options cached once during initialization."""
-
-    deformation_limit: float
-    max_substeps: int
-    limit_policy: str
-    left: str
-    right: str
-    top: str
-    bottom: str
-
-
 # The helpers below are intentionally undecorated.  They are traced inline in
 # _ffsl_step, leaving a single graph/XLA compilation boundary for the backend.
 def _minimum_modulus(left, right):
@@ -381,13 +369,13 @@ def _solve_with_options(state, smb, options):
         tf.cast(state.dt, dtype),
         tf.cast(smb, dtype),
         tf.cast(state.it, tf.int32),
-        tf.cast(options.deformation_limit, dtype),
-        tf.cast(options.max_substeps, tf.int32),
-        options.left,
-        options.right,
-        options.top,
-        options.bottom,
-        options.limit_policy,
+        tf.cast(options["deformation_limit"], dtype),
+        tf.cast(options["max_substeps"], tf.int32),
+        options["left"],
+        options["right"],
+        options["top"],
+        options["bottom"],
+        options["limit_policy"],
     )
 
 
@@ -395,22 +383,23 @@ def solve(state, cfg, smb):
     """Solve one step, parsing configuration for direct/test callers."""
     deformation_limit, max_substeps, limit_policy = _options(cfg)
     boundaries = boundary.get_boundary_conditions(cfg)
-    options = FFSLOptions(
-        deformation_limit,
-        max_substeps,
-        limit_policy,
-        boundaries.left,
-        boundaries.right,
-        boundaries.top,
-        boundaries.bottom,
-    )
+    options = {
+        "deformation_limit": deformation_limit,
+        "max_substeps": max_substeps,
+        "limit_policy": limit_policy,
+        "left": boundaries.left,
+        "right": boundaries.right,
+        "top": boundaries.top,
+        "bottom": boundaries.bottom,
+    }
     return _solve_with_options(state, smb, options)
 
 
-def _validate_config(cfg):
+def _validate_config(cfg, boundaries=None):
     """Validate options relevant to the FFSL backend."""
     p = cfg.processes.thk
-    boundaries = boundary.get_boundary_conditions(cfg)
+    if boundaries is None:
+        boundaries = boundary.get_boundary_conditions(cfg)
     boundary.validate_backend(boundaries, SUPPORTED_BOUNDARY_MODES, "ffsl")
     if str(getattr(p, "slope_type", "superbee")).strip().lower() != "superbee":
         raise ValueError(
@@ -432,22 +421,25 @@ def _validate_config(cfg):
             "cfg.processes.thk.ffsl.limit_policy must be 'stop' or 'accept'; "
             f"got {limit_policy!r}."
         )
+    return boundaries
 
 
 def initialize(cfg, state):
     """Validate the flux-form semi-Lagrangian backend configuration."""
-    _validate_config(cfg)
-    deformation_limit, max_substeps, limit_policy = _options(cfg)
-    boundaries = state.thk_components.boundaries
-    state.thk_components.transport_options = FFSLOptions(
-        deformation_limit,
-        max_substeps,
-        limit_policy,
-        boundaries.left,
-        boundaries.right,
-        boundaries.top,
-        boundaries.bottom,
+    components = getattr(state, "thk_components", None)
+    boundaries = _validate_config(
+        cfg, None if components is None else components.boundaries
     )
+    deformation_limit, max_substeps, limit_policy = _options(cfg)
+    components.transport_options = {
+        "deformation_limit": deformation_limit,
+        "max_substeps": max_substeps,
+        "limit_policy": limit_policy,
+        "left": boundaries.left,
+        "right": boundaries.right,
+        "top": boundaries.top,
+        "bottom": boundaries.bottom,
+    }
     state.thk_step_accepted = tf.constant(True)
 
 
@@ -467,7 +459,7 @@ def update(cfg, state):
     state.ffsl_substep_limit_reached = result.substep_limit_reached
     state.ffsl_source_limiter_volume = result.source_limiter_volume
     state.thk_step_accepted = result.step_accepted
-    if options.limit_policy == "stop":
+    if options["limit_policy"] == "stop":
         state.continue_run = tf.logical_and(
             tf.cast(getattr(state, "continue_run", True), tf.bool),
             result.step_accepted,

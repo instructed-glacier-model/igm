@@ -6,7 +6,6 @@
 """Slope-limited forward-Euler thickness evolution backend."""
 
 import math
-from typing import NamedTuple
 
 import tensorflow as tf
 
@@ -21,18 +20,6 @@ from ..domains import face_masks
 SUPPORTED_BOUNDARY_MODES = ("zero", "symmetric")
 SUPPORTS_ACTIVE_DOMAIN = True
 SUPPORTS_DIVFLUX_SMOOTHING = True
-
-
-class ExplicitOptions(NamedTuple):
-    """Python-static options cached once for the explicit update."""
-
-    slope_type: str
-    smooth_sigma: float
-    has_symmetric_boundary: bool
-    left_symmetric: bool
-    right_symmetric: bool
-    top_symmetric: bool
-    bottom_symmetric: bool
 
 
 def initialize(cfg, state):
@@ -51,15 +38,15 @@ def initialize(cfg, state):
             "nonnegative."
         )
     boundaries = state.thk_components.boundaries
-    state.thk_components.transport_options = ExplicitOptions(
-        slope_type=slope_type,
-        smooth_sigma=smooth_sigma,
-        has_symmetric_boundary="symmetric" in boundaries,
-        left_symmetric=boundaries.left == "symmetric",
-        right_symmetric=boundaries.right == "symmetric",
-        top_symmetric=boundaries.top == "symmetric",
-        bottom_symmetric=boundaries.bottom == "symmetric",
-    )
+    state.thk_components.transport_options = {
+        "slope_type": slope_type,
+        "smooth_sigma": smooth_sigma,
+        "has_symmetric_boundary": "symmetric" in boundaries,
+        "left_symmetric": boundaries.left == "symmetric",
+        "right_symmetric": boundaries.right == "symmetric",
+        "top_symmetric": boundaries.top == "symmetric",
+        "bottom_symmetric": boundaries.bottom == "symmetric",
+    }
 
 
 def update(cfg, state):
@@ -75,7 +62,7 @@ def update(cfg, state):
     else:
         x_face_mask, y_face_mask = face_masks(active_mask)
 
-    if options.has_symmetric_boundary:
+    if options["has_symmetric_boundary"]:
         state.divflux = compute_divflux_slope_limiter_symmetric(
             state.ubar,
             state.vbar,
@@ -83,14 +70,14 @@ def update(cfg, state):
             state.dx,
             state.dx,
             state.dt,
-            slope_type=options.slope_type,
-            smooth_sigma=options.smooth_sigma,
+            slope_type=options["slope_type"],
+            smooth_sigma=options["smooth_sigma"],
             x_face_mask=x_face_mask,
             y_face_mask=y_face_mask,
-            left=options.left_symmetric,
-            right=options.right_symmetric,
-            top=options.top_symmetric,
-            bottom=options.bottom_symmetric,
+            left=options["left_symmetric"],
+            right=options["right_symmetric"],
+            top=options["top_symmetric"],
+            bottom=options["bottom_symmetric"],
         )
     else:
         state.divflux = compute_divflux_slope_limiter(
@@ -100,8 +87,8 @@ def update(cfg, state):
             state.dx,
             state.dx,
             state.dt,
-            slope_type=options.slope_type,
-            smooth_sigma=options.smooth_sigma,
+            slope_type=options["slope_type"],
+            smooth_sigma=options["smooth_sigma"],
             x_face_mask=x_face_mask,
             y_face_mask=y_face_mask,
         )

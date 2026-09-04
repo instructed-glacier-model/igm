@@ -28,31 +28,34 @@ an IGM process module follows, so no wrapper type is needed.
 dictionaries remain beside their implementations, in the same direct style as
 `iceflow.vertical.VerticalDiscrs`. `_select_components(cfg)` turns the
 configuration into a validated set of components and `initialize` stores it on
-`state.thk_components`, following the `state.iceflow` container used by the
-iceflow module. `update` then only reads that container, so the configuration
-is parsed once per run rather than once per timestep:
+`state.thk_components`, following the process-owned container pattern used by
+the iceflow module. This deliberately small dataclass contains run-level
+orchestration data, not spatial model fields. `update` only reads that
+container, so the configuration is parsed once per run rather than once per
+timestep:
 
 ```python
 state.thk_components.transport_name         # configured transport name
 state.thk_components.transport              # selected transport module
 state.thk_components.front                  # selected front module, or None
-state.thk_components.mass_transport         # whichever of the two moves mass
-state.thk_components.front_after_transport  # a front that runs after transport
+state.thk_components.pipeline               # ordered modules that actually run
 state.thk_components.domain_constraints     # resolved active-domain constraints
 state.thk_components.boundaries             # normalized four-side boundary data
-state.thk_components.transport_options      # backend-owned cached static data
+state.thk_components.transport_options      # backend-owned static option dictionary
+state.thk_components.component_state        # namespaced non-spatial bookkeeping
 ```
 
-A component parks its own per-run bookkeeping on that container too, rather
-than on `state` (`initial_ice_mask` for the `initial_ice` constraint,
-`psi_built` and `steps_since_reinit` for the level-set front). Only genuine
-fields and diagnostics — `thk`, `divflux`, `thk_active_mask`, the solver
-counters — belong directly on `state`, where the output modules can write
-them.
+Spatial fields and diagnostics — `thk`, `divflux`, `thk_active_mask`,
+`thk_initial_ice_mask`, and solver counters — belong directly on `state`.
+This lets IGM's generic state slicing, memory reporting, and explicitly
+configured outputs recognize them. Small Python-only backend state is kept in
+the component's namespaced entry of `component_state`.
 
 Only components that actually execute are initialized. In particular, a
 front that owns transport does not initialize an otherwise unused transport
-backend. Finalization runs over the same components in reverse order.
+backend. The same ordered `pipeline` drives initialization and updates, and
+finalization traverses it in reverse. This avoids maintaining parallel
+`mass_transport`, `front_after_transport`, and initialization records.
 
 ## Backend status
 
@@ -96,9 +99,11 @@ mass transport — so a `replace_transport` front is held to the same contract
 as a transport scheme.
 
 Tensor-only numerical work belongs in a small number of compiled kernels. The
-transport adapters cache Python configuration at initialization and pass
-tensors plus static boundary strings to compiled `tf.function` kernels. FFSL
-and implicit iteration uses `tf.while_loop`, without host convergence checks.
+transport adapters cache Python configuration in a plain dictionary at
+initialization and unpack it before passing tensors plus static boundary
+strings to compiled `tf.function` kernels; dictionaries never cross a tracing
+boundary. FFSL and implicit iteration uses `tf.while_loop`, without host
+convergence checks.
 
 ## Active domains
 
@@ -114,8 +119,10 @@ edges or fixed cells.
 
 ## Adding front evolution
 
-A front backend also exposes `initialize` and `update`. Add a `FrontMethod`
-value to `fronts.FrontMethods`. Its `update_mode` is explicit:
+A front backend also exposes `initialize` and `update`. Add its module directly
+to `fronts.FrontMethods`, then declare `UPDATE_MODE`,
+`COMPATIBLE_TRANSPORTS`, `AVAILABLE`, and `UNAVAILABLE_REASON` beside the
+backend implementation. `UPDATE_MODE` is explicit:
 
 - `after_transport`: run the selected transport backend, then evolve the front.
 - `replace_transport`: the front backend owns mass transport as well as front

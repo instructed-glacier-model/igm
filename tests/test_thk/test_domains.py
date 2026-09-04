@@ -72,6 +72,9 @@ def test_constraints_are_intersected_and_published_on_state():
     expected[2, 2] = True
     np.testing.assert_array_equal(state.thk_active_mask, expected)
     np.testing.assert_array_equal(state.groundedmask, np.ones((5, 5)))
+    np.testing.assert_array_equal(
+        state.thk_initial_ice_mask, np.ones((5, 5), dtype=bool)
+    )
 
 
 def test_empty_constraints_leave_no_mask_or_default_path_allocation():

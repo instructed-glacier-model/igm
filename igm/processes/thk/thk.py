@@ -11,14 +11,14 @@ each resolved by its own package (``transport.get_transport``,
 them once, checks that the combination can actually run, and stores the result
 on ``state.thk_components`` for the update to use.
 
-A front declares how it composes with transport through its ``update_mode``.
+A front declares how it composes with transport through its ``UPDATE_MODE``.
 ``replace_transport`` means it owns mass transport itself, which accommodates
 IGM's existing sub-grid front code while making that non-composability
 explicit instead of silently ignoring the selected transport scheme;
 ``after_transport`` means it runs right after the transport step.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from . import boundary
 from .domains import (
@@ -33,29 +33,22 @@ from .transport import get_transport
 
 @dataclass
 class ThkComponents:
-    """Container for the components that evolve the ice thickness.
+    """Run-level orchestration data for thickness evolution.
 
-    The selected components are attached here by :func:`_select_components`.
-    A component may also park its own per-run bookkeeping on the container
-    (``initial_ice_mask``, ``psi_built``, ...) rather than on ``state``, which
-    keeps such private values out of the field namespace that the output
-    modules write.
+    Spatial fields and published diagnostics stay directly on ``state`` so
+    IGM's generic state utilities can see them. Small non-spatial bookkeeping
+    owned by a backend belongs in the namespaced ``component_state`` mapping.
     """
 
     transport_name: str
     transport: object
     front_name: str | None
     front: object | None
-    mass_transport_name: str
-    mass_transport: object
-    front_after_transport: object | None
+    pipeline: tuple
     domain_constraints: tuple
     boundaries: boundary.BoundaryConditions
-    initialized_components: tuple
-    transport_options: object | None = None
-    initial_ice_mask: object | None = None
-    psi_built: bool = False
-    steps_since_reinit: int = 0
+    transport_options: dict = field(default_factory=dict)
+    component_state: dict = field(default_factory=dict)
 
 
 def _check_component(name, module, kind):
@@ -82,8 +75,7 @@ def _select_components(cfg):
 
     # Select
     transport_name, transport = get_transport(cfg)
-    front_name, front_method = get_front(cfg, transport_name)
-    front = None if front_method is None else front_method.backend
+    front_name, front = get_front(cfg, transport_name)
     constraints = get_domain_constraints(cfg)
 
     _check_component(transport_name, transport, "Thickness transport")
@@ -94,23 +86,31 @@ def _select_components(cfg):
     # selected transport scheme does not run at all; an "after_transport"
     # front instead runs right after it.
     replaces_transport = (
-        front_method is not None
-        and front_method.update_mode == "replace_transport"
+        front is not None and front.UPDATE_MODE == "replace_transport"
     )
     mass_transport_name = front_name if replaces_transport else transport_name
     mass_transport = front if replaces_transport else transport
+    pipeline = (
+        (front,)
+        if replaces_transport
+        else ((transport,) if front is None else (transport, front))
+    )
 
     # Check the combination
     boundaries = boundary.get_boundary_conditions(cfg)
     boundary.validate_backend(boundaries, transport, transport_name)
     if front is not None:
         boundary.validate_backend(boundaries, front, front_name)
-    if constraints and not getattr(mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False):
+    if constraints and not getattr(
+        mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False
+    ):
         raise ValueError(
             f"Thickness backend {mass_transport_name!r} does not support "
             "active-domain constraints."
         )
-    smooth_sigma = float(getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0))
+    smooth_sigma = float(
+        getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0)
+    )
     if smooth_sigma != 0.0 and not getattr(
         mass_transport, "SUPPORTS_DIVFLUX_SMOOTHING", False
     ):
@@ -120,25 +120,14 @@ def _select_components(cfg):
             "available only with scheme: explicit."
         )
 
-    front_after_transport = (
-        None if front is None or replaces_transport else front
-    )
-    initialized_components = (
-        (front,)
-        if replaces_transport
-        else ((transport,) if front is None else (transport, front))
-    )
     return ThkComponents(
         transport_name=transport_name,
         transport=transport,
         front_name=front_name,
         front=front,
-        mass_transport_name=mass_transport_name,
-        mass_transport=mass_transport,
-        front_after_transport=front_after_transport,
+        pipeline=pipeline,
         domain_constraints=constraints,
         boundaries=boundaries,
-        initialized_components=initialized_components,
     )
 
 
@@ -153,7 +142,7 @@ def initialize(cfg, state):
     components = _select_components(cfg)
     state.thk_components = components
 
-    for component in components.initialized_components:
+    for component in components.pipeline:
         component.initialize(cfg, state)
     initialize_active_domain(cfg, state, components.domain_constraints)
 
@@ -176,9 +165,8 @@ def update(cfg, state):
     # published mask matches the geometry the step produced.
     if components.domain_constraints:
         update_active_domain(cfg, state, components.domain_constraints)
-    components.mass_transport.update(cfg, state)
-    if components.front_after_transport is not None:
-        components.front_after_transport.update(cfg, state)
+    for component in components.pipeline:
+        component.update(cfg, state)
     if components.domain_constraints:
         update_active_domain(cfg, state, components.domain_constraints)
 
@@ -188,7 +176,7 @@ def update(cfg, state):
 def finalize(cfg, state):
     """Run the optional finalize callback of each selected component."""
     components = state.thk_components
-    for component in reversed(components.initialized_components):
+    for component in reversed(components.pipeline):
         callback = getattr(component, "finalize", None)
         if callable(callback):
             callback(cfg, state)

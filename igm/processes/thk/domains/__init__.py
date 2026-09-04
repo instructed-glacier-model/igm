@@ -6,8 +6,6 @@ list is plain data, so it is read once by ``get_domain_constraints`` and then
 passed to the two functions that use it.
 """
 
-from typing import NamedTuple
-
 import tensorflow as tf
 
 from . import grounded, initial_ice, interior, state_mask
@@ -19,14 +17,6 @@ DomainConstraints = {
     "interior": interior,
     "state_mask": state_mask,
 }
-
-
-class DomainConstraint(NamedTuple):
-    """Resolved constraint backend and its configuration."""
-
-    name: str
-    backend: object
-    options: object
 
 
 def get_domain_constraints(cfg):
@@ -53,7 +43,7 @@ def get_domain_constraints(cfg):
             raise TypeError(
                 f"Thickness domain constraint {name!r} must define get_mask()."
             )
-        constraints.append(DomainConstraint(name, backend, entry))
+        constraints.append((name, backend, entry))
     return tuple(constraints)
 
 
@@ -67,10 +57,10 @@ def initialize_active_domain(cfg, state, constraints):
             del state.thk_active_mask
         return
 
-    for constraint in constraints:
-        callback = getattr(constraint.backend, "initialize", None)
+    for _, backend, options in constraints:
+        callback = getattr(backend, "initialize", None)
         if callable(callback):
-            callback(constraint.options, cfg, state)
+            callback(options, cfg, state)
     update_active_domain(cfg, state, constraints)
 
 
@@ -80,16 +70,14 @@ def update_active_domain(cfg, state, constraints):
         return
 
     mask = tf.ones_like(state.thk, dtype=tf.bool)
-    for constraint in constraints:
-        component = tf.cast(
-            constraint.backend.get_mask(constraint.options, cfg, state), tf.bool
-        )
+    for name, backend, options in constraints:
+        component = tf.cast(backend.get_mask(options, cfg, state), tf.bool)
         tf.debugging.assert_equal(
             tf.shape(component),
             tf.shape(mask),
             message=(
                 "Thickness active-domain constraint "
-                f"{constraint.name!r} returned a mask with the wrong shape."
+                f"{name!r} returned a mask with the wrong shape."
             ),
         )
         mask = tf.logical_and(mask, component)

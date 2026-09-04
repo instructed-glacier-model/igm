@@ -50,20 +50,6 @@ class ImplicitStepResult(NamedTuple):
     step_accepted: tf.Tensor
 
 
-class ImplicitOptions(NamedTuple):
-    """Static solver options cached once during initialization."""
-
-    theta: float
-    tolerance: float
-    max_iter: int
-    max_restarts: int
-    failure_policy: str
-    left: str
-    right: str
-    top: str
-    bottom: str
-
-
 class _OperatorCoefficients(NamedTuple):
     """Five-point coefficients of ``I + dt * theta * D_upwind``.
 
@@ -611,23 +597,24 @@ def _solve_with_options(state, smb, options):
         tf.cast(state.dx, dtype),
         tf.cast(state.dt, dtype),
         tf.cast(smb, dtype),
-        tf.cast(options.theta, dtype),
-        tf.cast(options.tolerance, dtype),
-        tf.cast(options.max_iter, tf.int32),
-        tf.cast(options.max_restarts, tf.int32),
-        options.left,
-        options.right,
-        options.top,
-        options.bottom,
+        tf.cast(options["theta"], dtype),
+        tf.cast(options["tolerance"], dtype),
+        tf.cast(options["max_iter"], tf.int32),
+        tf.cast(options["max_restarts"], tf.int32),
+        options["left"],
+        options["right"],
+        options["top"],
+        options["bottom"],
         getattr(state, "thk_active_mask", None),
-        options.failure_policy,
+        options["failure_policy"],
     )
 
 
-def _options(cfg):
+def _options(cfg, boundaries=None):
     """Validate and return the static options owned by this backend."""
     p = cfg.processes.thk
-    boundaries = boundary.get_boundary_conditions(cfg)
+    if boundaries is None:
+        boundaries = boundary.get_boundary_conditions(cfg)
     boundary.validate_backend(
         boundaries, SUPPORTED_BOUNDARY_MODES, "implicit"
     )
@@ -664,17 +651,17 @@ def _options(cfg):
             "cfg.processes.thk.implicit.solver.failure_policy must be "
             f"'stop' or 'accept'; got {failure_policy!r}."
         )
-    return ImplicitOptions(
-        theta,
-        tolerance,
-        max_iter,
-        max_restarts,
-        failure_policy,
-        boundaries.left,
-        boundaries.right,
-        boundaries.top,
-        boundaries.bottom,
-    )
+    return {
+        "theta": theta,
+        "tolerance": tolerance,
+        "max_iter": max_iter,
+        "max_restarts": max_restarts,
+        "failure_policy": failure_policy,
+        "left": boundaries.left,
+        "right": boundaries.right,
+        "top": boundaries.top,
+        "bottom": boundaries.bottom,
+    }
 
 
 def solve(state, cfg, smb):
@@ -684,7 +671,9 @@ def solve(state, cfg, smb):
 
 def initialize(cfg, state):
     """Validate the scheme and initialize device-resident diagnostics."""
-    state.thk_components.transport_options = _options(cfg)
+    state.thk_components.transport_options = _options(
+        cfg, state.thk_components.boundaries
+    )
     state.thk_solver_iterations = tf.zeros([], dtype=tf.int32)
     state.thk_solver_restarts = tf.zeros([], dtype=tf.int32)
     state.thk_solver_relative_residual = tf.zeros([], dtype=state.thk.dtype)
@@ -719,7 +708,7 @@ def update(cfg, state):
     state.thk_solver_converged = result.converged
     state.thk_solver_breakdown = result.breakdown
     state.thk_step_accepted = result.step_accepted
-    if options.failure_policy == "stop":
+    if options["failure_policy"] == "stop":
         state.continue_run = tf.logical_and(
             tf.cast(getattr(state, "continue_run", True), tf.bool),
             result.step_accepted,

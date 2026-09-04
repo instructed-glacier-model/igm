@@ -36,14 +36,6 @@ class ImplicitXStepResult(NamedTuple):
     nonnegative_correction_volume: tf.Tensor
 
 
-class ImplicitXOptions(NamedTuple):
-    """Static flowline options cached once during initialization."""
-
-    theta: float
-    left: str
-    right: str
-
-
 class _XCoefficients(NamedTuple):
     """Positive magnitudes of a first-order upwind x-divergence stencil."""
 
@@ -126,15 +118,16 @@ def _solve_with_options(state, smb, options):
         tf.cast(state.dx, dtype),
         tf.cast(state.dt, dtype),
         tf.cast(smb, dtype),
-        tf.cast(options.theta, dtype),
-        options.left,
-        options.right,
+        tf.cast(options["theta"], dtype),
+        options["left"],
+        options["right"],
     )
 
 
-def _options(cfg, state):
+def _options(cfg, state, boundaries=None):
     p = cfg.processes.thk
-    boundaries = boundary.get_boundary_conditions(cfg)
+    if boundaries is None:
+        boundaries = boundary.get_boundary_conditions(cfg)
     boundary.validate_backend(boundaries, SUPPORTED_BOUNDARY_MODES, "implicit_x")
     theta = float(p.implicit.theta)
     if not 0.5 <= theta <= 1.0:
@@ -144,7 +137,11 @@ def _options(cfg, state):
         )
     if state.thk.shape.rank != 2:
         raise ValueError("scheme: implicit_x requires a rank-two thickness field.")
-    return ImplicitXOptions(theta, boundaries.left, boundaries.right)
+    return {
+        "theta": theta,
+        "left": boundaries.left,
+        "right": boundaries.right,
+    }
 
 
 def solve(state, cfg, smb):
@@ -154,7 +151,9 @@ def solve(state, cfg, smb):
 
 def initialize(cfg, state):
     """Validate the x-flowline backend and initialize its diagnostics."""
-    state.thk_components.transport_options = _options(cfg, state)
+    state.thk_components.transport_options = _options(
+        cfg, state, state.thk_components.boundaries
+    )
     state.thk_transport_divflux = tf.zeros_like(state.thk)
     state.thk_nonnegative_correction_volume = tf.zeros([], dtype=state.thk.dtype)
 
