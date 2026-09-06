@@ -12,6 +12,9 @@ logdir/
 # hide output files and data
 .vscode/
 data
+# `data` above matches any directory of that name at any depth, including
+# source subpackages. Keep the smb_inference one tracked.
+!igm/assimilations/smb_inference/data/
 *.dat
 .history/
 output/

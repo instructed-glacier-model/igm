@@ -35,6 +35,16 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
     if method == "unified":
         if not hasattr(state, "tau_ref"):
             state.tau_ref = tf.ones(shape_2d) * cfg_physics.sliding.tau_ref
+        # Emulators trained before the slidingco -> tau_ref migration take a
+        # `slidingco` input channel -- every pinnbp emulator bundled with IGM
+        # declares it in its fieldin.dat. Provide that field when the network
+        # asks for it, so those emulators stay usable on the unified stack;
+        # tau_ref cannot stand in for it, since the two differ by u_ref^(1/n)
+        # and the emulator's input statistics are fitted to slidingco.
+        if "slidingco" in cfg.processes.iceflow.unified.inputs and not hasattr(
+            state, "slidingco"
+        ):
+            state.slidingco = tf.ones(shape_2d) * cfg_physics.sliding.slidingco
     else:
         if not hasattr(state, "slidingco"):
             state.slidingco = tf.ones(shape_2d) * cfg_physics.sliding.slidingco
