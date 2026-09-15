@@ -1050,6 +1050,19 @@ unified:
           Type: string
           Description: "Default type of norm for the absolute-change criterion."
           Units: dimless
+      abs_change:
+        tol:
+          Type: float
+          Description: "Absolute threshold for the change in a metric between two sampled optimizer iterates. With metric u, its units are m yr^-1."
+          Units: metric dependent
+        reduction:
+          Type: string
+          Description: "Reduction of pointwise vector changes: max for the largest vector magnitude or rmse for the root mean squared vector magnitude."
+          Units: dimless
+        consecutive:
+          Type: integer
+          Description: "Number of consecutive sampled changes that must satisfy the threshold before halting."
+          Units: dimless
       patience:
         patience:
           Type: integer

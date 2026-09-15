@@ -336,6 +336,10 @@ iceflow:
         abs_tol:
           tol: 1e-3
           ord: l2_weighted
+        abs_change:
+          tol: 1.0
+          reduction: max
+          consecutive: 1
         patience: 
           patience: 100
         inf: {}

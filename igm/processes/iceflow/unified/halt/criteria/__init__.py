@@ -1,5 +1,6 @@
 from .criterion import Criterion
 from .abs_tol import CriterionAbsTol
+from .abs_change import CriterionAbsChange
 from .rel_tol import CriterionRelTol
 from .rel_initial import CriterionRelInitial
 from .patience import CriterionPatience
@@ -10,6 +11,7 @@ from .log_burst_patience import CriterionLogBurstPatience
 
 Criteria = {
     "abs_tol": CriterionAbsTol,
+    "abs_change": CriterionAbsChange,
     "rel_tol": CriterionRelTol,
     "rel_initial": CriterionRelInitial,
     "patience": CriterionPatience,
