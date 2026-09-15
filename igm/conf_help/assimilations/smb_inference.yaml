@@ -1,0 +1,167 @@
+ttot:
+  Type: float
+  Description: "End time of the forward run — the epoch of the surface the inversion is scored against."
+  Units: y
+t_start:
+  Type: float
+  Description: "Start time of the forward run — the epoch of the initial geometry."
+  Units: y
+dtmax:
+  Type: float
+  Description: "Maximum time step of the forward run; the actual step is CFL-limited."
+  Units: y
+cfl:
+  Type: float
+  Description: "CFL number limiting the forward time step."
+  Units: dimless
+emulator:
+  from_state:
+    Type: boolean
+    Description: "Use the ice flow emulator already on state (state.iceflow_model) rather than loading an artifact from disk."
+    Units: dimless
+  model_path:
+    Type: string
+    Description: "Path to the ice flow emulator artifact directory; used only when from_state is false."
+    Units: dimless
+  Nz:
+    Type: integer
+    Description: "Number of vertical levels of the emulator; used only when loading an artifact from disk."
+    Units: dimless
+initial_state:
+  usurf_variable:
+    Type: string
+    Description: "State/NetCDF variable holding the surface the forward run starts from. Empty means start from state.thk as produced by the data assimilation. Set it (e.g. usurfstart) to re-anchor the run onto the assimilated bed when the assimilation targeted the end-of-period surface."
+    Units: dimless
+observations:
+  geology_file:
+    Type: string
+    Description: "NetCDF file holding the observed surfaces. Empty means read the target from the state variable named by state_variable."
+    Units: dimless
+  state_variable:
+    Type: string
+    Description: "State variable used as the inversion target when geology_file is empty."
+    Units: dimless
+  smb_points_file:
+    Type: string
+    Description: "Optional CSV of point mass-balance observations (columns Alt and 'Annual_SMB (m w.e.)'), overlaid on the SMB profile plots and optionally used to initialise the profile."
+    Units: dimless
+  observation_years:
+    Type: list
+    Description: "Names of the surface variables in geology_file, in chronological order."
+    Units: dimless
+inversion:
+  method:
+    Type: string
+    Description: "Inversion method. 'profile' fits a 1-D elevation-dependent SMB profile."
+    Units: dimless
+  dz:
+    Type: float
+    Description: "Elevation bin spacing of the SMB profile."
+    Units: m
+  smb_init_low:
+    Type: float
+    Description: "Initial SMB at the lowest elevation bin, used when init_from_obs is false or no point observations are available."
+    Units: m ice eq y^-1
+  smb_init_high:
+    Type: float
+    Description: "Initial SMB at the highest elevation bin, used when init_from_obs is false or no point observations are available."
+    Units: m ice eq y^-1
+  init_from_obs:
+    Type: boolean
+    Description: "Initialise the SMB profile from smb_points_file by piecewise-linear interpolation with linear extrapolation at the tails; falls back to the linspace between smb_init_low and smb_init_high when the file is absent."
+    Units: dimless
+optimization:
+  optimizer:
+    Type: string
+    Description: "Optimiser driving the inversion: 'adam' or 'lbfgs'."
+    Units: dimless
+  nbitmax:
+    Type: integer
+    Description: "Maximum number of outer optimisation iterations."
+    Units: dimless
+  learning_rate:
+    Type: float
+    Description: "Adam learning rate; ignored when optimizer is lbfgs."
+    Units: dimless
+  regularisation:
+    Type: float
+    Description: "Weight of the smoothness penalty on the curvature of the SMB profile."
+    Units: dimless
+  early_stop_patience:
+    Type: integer
+    Description: "Stop after this many iterations without improvement; 0 disables early stopping. Adam only."
+    Units: dimless
+  early_stop_threshold:
+    Type: float
+    Description: "Relative loss improvement below which an iteration counts as no improvement."
+    Units: dimless
+  loss_threshold:
+    Type: float
+    Description: "Absolute loss value below which the inversion stops."
+    Units: dimless
+  retrain_emulator:
+    Type: boolean
+    Description: "Retrain the ice flow emulator during the forward run."
+    Units: dimless
+  retrain_interval:
+    Type: float
+    Description: "Retrain the emulator every N simulated years inside the forward loop."
+    Units: y
+  retrain_emulator_freq:
+    Type: integer
+    Description: "Retrain the emulator every N outer optimisation iterations; 0 retrains only on the first iteration."
+    Units: dimless
+  early_retrain_iters:
+    Type: integer
+    Description: "Retrain the emulator at every iteration for the first N outer iterations."
+    Units: dimless
+  lbfgs_memory:
+    Type: integer
+    Description: "Number of correction pairs kept by L-BFGS."
+    Units: dimless
+  lbfgs_tolerance:
+    Type: float
+    Description: "Gradient-norm convergence tolerance for L-BFGS."
+    Units: dimless
+  lbfgs_x_tolerance:
+    Type: float
+    Description: "Position-step convergence tolerance for L-BFGS; 0 disables it."
+    Units: dimless
+  lbfgs_f_relative_tolerance:
+    Type: float
+    Description: "Relative objective-change convergence tolerance for L-BFGS; 0 disables it."
+    Units: dimless
+  lbfgs_line_search:
+    Type: str
+    Description: "Line search used by L-BFGS, taken from IGM's iceflow line-search package. Use 'armijo': it is the only one that behaves correctly here, because this objective forces the search to run eagerly and 'wolfe'/'hager-zhang' rely on autograph control flow that only holds inside tf.function."
+    Units: dimless
+physics:
+  dx:
+    Type: float
+    Description: "Fallback grid spacing in x, used only when it cannot be derived from state.x."
+    Units: m
+  dy:
+    Type: float
+    Description: "Fallback grid spacing in y, used only when it cannot be derived from state.y."
+    Units: m
+output:
+  vis_freq:
+    Type: float
+    Description: "Interval between visualisation frames during the forward run."
+    Units: y
+  visualize:
+    Type: boolean
+    Description: "Plot the forward run while it advances. Disables gradient-based inversion, because a Python-level loop replaces tf.while_loop."
+    Units: dimless
+  outdir:
+    Type: string
+    Description: "Directory the inversion writes its figures and result arrays to."
+    Units: dimless
+  plot_loss:
+    Type: boolean
+    Description: "Write the loss-curve figure at the end of the inversion."
+    Units: dimless
+  save_results:
+    Type: boolean
+    Description: "Write the optimised thickness, SMB profile and SMB field to disk."
+    Units: dimless

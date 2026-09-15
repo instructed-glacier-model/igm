@@ -1,0 +1,6 @@
+description: Infer a 1-D elevation-dependent surface mass balance profile by matching a differentiable forward run to an observed surface
+category: assimilations
+type: community #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Kejdi Lleshi, Guillaume Jouvet]
+needs: [topg, thk, usurf, icemask]
+updates: [thk, usurf, smb, smb_vec, smb_z_min, smb_dz]
