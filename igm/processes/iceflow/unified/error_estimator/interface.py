@@ -166,7 +166,7 @@ class InterfaceErrorEstimator:
             "preconditioner": str(_cfg_get(cfg_est, "preconditioner", "barotropic_multigrid")),
             "preconditioner_options": preconditioner_options,
             "damping": float(_cfg_get(cfg_est, "damping", 1.0e-16)),
-            "operator_update_freq": int(_cfg_get(cfg_est, "operator_update_freq", 4)),
+            "operator_update_freq": int(_cfg_get(cfg_est, "operator_update_freq", 0)),
             "operator_refresh_rel_change": float(_cfg_get(cfg_est, "operator_refresh_rel_change", 0.05)),
             "newton_steps": int(_cfg_get(cfg_est, "newton_steps", 2)),
             "disable_xla": bool(_cfg_get(cfg_est, "disable_xla", True)),

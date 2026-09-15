@@ -154,7 +154,7 @@ iceflow:
         smoother_steps: 1
         coarse_size: 8
       damping: 1.0e-16
-      operator_update_freq: 4
+      operator_update_freq: 0
       operator_refresh_rel_change: 0.05
       newton_steps: 2
       disable_xla: true

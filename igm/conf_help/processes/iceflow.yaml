@@ -557,11 +557,11 @@ unified:
       Units: dimless
     operator_update_freq:
       Type: integer
-      Description: "Upper bound on the number of estimates between refreshes of the frozen banded Hessian and preconditioner (1 = refresh at every estimate). Between refreshes the stencil is reused at the new gradient, which removes ~85 % of the per-estimate cost; the refresh is also triggered early by operator_refresh_rel_change."
+      Description: "Optional upper bound on the number of estimates between refreshes of the frozen banded Hessian and preconditioner. Zero relies on the velocity- and input-change guards without a count cap; one rebuilds at every estimate. Between refreshes the stencil is reused at the new gradient, which removes ~85 % of the per-estimate cost."
       Units: dimless
     operator_refresh_rel_change:
       Type: float
-      Description: "Refresh the frozen Hessian as soon as the RMS relative change of the velocity since the last refresh exceeds this value (only matters when operator_update_freq > 1). A Hessian frozen at an early, near-zero iterate is useless a few hundred iterations later, so a count alone is unsafe."
+      Description: "Refresh the frozen Hessian as soon as the RMS relative change of the velocity since the last refresh exceeds this value. Any change in the energy inputs also forces a refresh. A Hessian frozen at an early, near-zero iterate is useless a few hundred iterations later, so a count alone is unsafe."
       Units: dimless
     newton_steps:
       Type: integer

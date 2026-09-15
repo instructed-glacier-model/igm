@@ -73,7 +73,7 @@ class ErrorEstimator:
         preconditioner: str = "barotropic_multigrid",
         preconditioner_options: Optional[dict] = None,
         damping: float = 1.0e-16,
-        operator_update_freq: int = 4,
+        operator_update_freq: int = 0,
         operator_refresh_rel_change: float = 0.05,
         disable_xla: bool = True,
         record_path: Optional[str] = "error_estimate.jsonl",
@@ -102,7 +102,9 @@ class ErrorEstimator:
         self.newton_steps = max(1, int(newton_steps))
         self.freq = int(freq)
         self.estimate_at_start = bool(estimate_at_start)
-        self.operator_update_freq = max(1, int(operator_update_freq))
+        self.operator_update_freq = int(operator_update_freq)
+        if self.operator_update_freq < 0:
+            raise ValueError("operator_update_freq must be non-negative.")
         self.operator_refresh_rel_change = float(operator_refresh_rel_change)
         self.disable_xla = bool(disable_xla)
         self.record_path = record_path
@@ -155,6 +157,7 @@ class ErrorEstimator:
 
         # Refresh bookkeeping for the frozen Hessian.
         self._u_prepared: Optional[Tuple[tf.Tensor, tf.Tensor]] = None
+        self._inputs_prepared: Optional[tf.Tensor] = None
         self._calls_since_prepare = 0
         self._last_rel_change = 0.0
         self._last_fields: Optional[Dict[str, np.ndarray]] = None
@@ -173,26 +176,47 @@ class ErrorEstimator:
     # Frozen Hessian                                                      #
     # ------------------------------------------------------------------ #
 
-    def _needs_prepare(self, U: tf.Tensor, V: tf.Tensor) -> bool:
-        """Refresh when the iterate moved, or when the count cap is reached.
+    def _needs_prepare(
+        self,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        inputs: tf.Tensor,
+    ) -> bool:
+        """Refresh when inputs or velocity moved, or at an optional age cap.
 
         A Hessian frozen at an early iterate (an untrained network sits at the
         strain-rate regularisation floor) is useless a few hundred iterations
         later, so a fixed count alone is unsafe: the operator is rebuilt as soon
         as the RMS relative change of ``(U, V)`` since the last refresh exceeds
-        ``operator_refresh_rel_change``, and at the latest every
-        ``operator_update_freq`` estimates.
+        ``operator_refresh_rel_change``. Any change in the energy inputs also
+        rebuilds it. ``operator_update_freq > 0`` additionally sets a maximum
+        operator age; zero disables that redundant cap for snapshot solves.
         """
-        if self._u_prepared is None or self.operator_update_freq == 1:
+        if self._u_prepared is None or self._inputs_prepared is None:
             return True
-        if self._calls_since_prepare + 1 >= self.operator_update_freq:
+        if self.operator_update_freq == 1:
+            return True
+        inputs_changed = tf.reduce_any(tf.not_equal(inputs, self._inputs_prepared))
+        if bool(inputs_changed.numpy()):
+            return True
+        if (
+            self.operator_update_freq > 1
+            and self._calls_since_prepare + 1 >= self.operator_update_freq
+        ):
             return True
         U0, V0 = self._u_prepared
-        change = tf.sqrt(tf.reduce_sum(tf.square(U - U0)) + tf.reduce_sum(tf.square(V - V0)))
-        scale = tf.sqrt(tf.reduce_sum(tf.square(U0)) + tf.reduce_sum(tf.square(V0)))
+        change = tf.sqrt(
+            tf.reduce_sum(tf.square(U - U0)) + tf.reduce_sum(tf.square(V - V0))
+        )
+        scale = tf.sqrt(
+            tf.reduce_sum(tf.square(U0)) + tf.reduce_sum(tf.square(V0))
+        )
         tiny = tf.cast(1e-30, self.dtype)
         self._last_rel_change = float((change / tf.maximum(scale, tiny)).numpy())
-        return self._last_rel_change > self.operator_refresh_rel_change
+        return (
+            not np.isfinite(self._last_rel_change)
+            or self._last_rel_change > self.operator_refresh_rel_change
+        )
 
     def _prepare(self, U: tf.Tensor, V: tf.Tensor, inputs: tf.Tensor) -> None:
         """Assign the iterate and rebuild the frozen Hessian and preconditioner.
@@ -361,12 +385,13 @@ class ErrorEstimator:
         inputs = tf.cast(inputs, self.dtype)
         first = self.n_calls == 0
 
-        refreshed = self._needs_prepare(U, V)
+        refreshed = self._needs_prepare(U, V, inputs)
         if refreshed:
             if first and self.verbose:
                 print("[error_estimator] tracing Hessian probing and preconditioner ...", flush=True)
             self._prepare(U, V, inputs)
             self._u_prepared = (tf.identity(U), tf.identity(V))
+            self._inputs_prepared = tf.identity(inputs)
             self._calls_since_prepare = 0
         else:
             self._calls_since_prepare += 1
