@@ -6,11 +6,13 @@ Usage:
     igm_viz
     igm_viz --output_folder path/to/outputs
 
-With no arguments, igm_viz looks for "outputs/*/*/" in the current directory
-(the default igm_run layout). --output_folder points it at a different
-top-level "outputs" folder instead. Either way, every run found under it is
-listed in a dropdown in the app, and the exact netCDF file to view is always
-chosen there.
+With no arguments, igm_viz looks for netCDF output anywhere under "outputs/"
+in the current directory (the default igm_run layout is "outputs/<date>/
+<time>/"; a custom hydra.run.dir that skips the date/time nesting, e.g.
+"outputs/my_run/", is also picked up). --output_folder points it at a
+different top-level "outputs" folder instead. Either way, every run found
+under it is listed in a dropdown in the app, and the exact netCDF file to
+view is always chosen there.
 """
 
 import argparse, copy, glob, os, threading, webbrowser
@@ -43,7 +45,16 @@ SLIDER_ACCENT = "#1a6faf"  # highlighted track/handle color for every dcc.Slider
 
 # Colorscales cycled across any output.nc variable that isn't one of the
 # curated physical quantities below (thickness, velocity, smb, sliding).
-EXTRA_COLORSCALES = ["Viridis", "Cividis", "Turbo", "YlOrBr", "PuBuGn", "YlGnBu", "OrRd", "Greens"]
+EXTRA_COLORSCALES = [
+    "Viridis",
+    "Cividis",
+    "Turbo",
+    "YlOrBr",
+    "PuBuGn",
+    "YlGnBu",
+    "OrRd",
+    "Greens",
+]
 
 # Variables used to build the 3-D geometry itself (bedrock, ice surface,
 # grid coordinates) or otherwise not offered as something to color the
@@ -51,9 +62,27 @@ EXTRA_COLORSCALES = ["Viridis", "Cividis", "Turbo", "YlOrBr", "PuBuGn", "YlGnBu"
 # with the velocity magnitude already offered under "velocity"; icemask:
 # a 0/1 mask, not a physical quantity worth its own colorbar).
 _GEOMETRY_VARS = {
-    "topg", "usurf", "thk", "smb", "velsurf_mag", "velbar_mag", "slidingco", "tau_ref",
-    "uvelsurf", "vvelsurf", "icemask",
-    "x", "y", "z", "time", "dx", "dy", "X", "Y", "dX", "dY",
+    "topg",
+    "usurf",
+    "thk",
+    "smb",
+    "velsurf_mag",
+    "velbar_mag",
+    "slidingco",
+    "tau_ref",
+    "uvelsurf",
+    "vvelsurf",
+    "icemask",
+    "x",
+    "y",
+    "z",
+    "time",
+    "dx",
+    "dy",
+    "X",
+    "Y",
+    "dX",
+    "dY",
 }
 
 # Colorscale overrides for extras whose name alone should decide their
@@ -96,7 +125,11 @@ def build_property_catalog(ds: xr.Dataset) -> dict:
     }
 
     if "velsurf_mag" in ds or "velbar_mag" in ds:
-        catalog["velocity (m a\u207b\u00b9)"] = ("velocity", "velocity (m a\u207b\u00b9)", "magma")
+        catalog["velocity (m a\u207b\u00b9)"] = (
+            "velocity",
+            "velocity (m a\u207b\u00b9)",
+            "magma",
+        )
         catalog["log velocity (m a\u207b\u00b9)"] = (
             "log_velocity",
             "log\u2081\u2080 velocity (m a\u207b\u00b9)",
@@ -133,46 +166,74 @@ def build_property_catalog(ds: xr.Dataset) -> dict:
 
     # Prefix every dropdown entry with a map emoji; the axis/colorbar label
     # stored alongside it (the tuple's second element) is left unprefixed.
-    return {f"\U0001F5FA️ {label}": value for label, value in catalog.items()}
+    return {f"\U0001f5fa️ {label}": value for label, value in catalog.items()}
+
 
 # ── data helpers ──────────────────────────────────────────────────────────────
 
 
 def discover_output_tree(outputs_dir: str) -> dict:
-    """Find every netCDF file under <outputs_dir>/<date>/<time>/, grouped
+    """Find every netCDF file anywhere under <outputs_dir>, grouped
     date -> time -> [{"label": filename, "value": path}, ...].
 
-    Matches the run-directory layout Hydra creates for igm_run (see
-    igm/conf/config.yaml, which leaves hydra.run.dir at its default
-    "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"), and every kind of output a
-    run can drop there (output.nc from a forward run, optimize.nc from data
-    assimilation, ...) so the UI can browse it like a small file explorer.
-    Skips "*_ts.nc" companions: scalar time series only, not the gridded
-    fields this viewer plots.
+    Matches the run-directory layout Hydra creates for igm_run by default
+    (see igm/conf/config.yaml, which leaves hydra.run.dir at
+    "outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}"): the file's two innermost
+    parent directories become "date" and "time". A custom hydra.run.dir
+    with fewer path segments below <outputs_dir> (e.g. "outputs/my_run",
+    landing files directly in outputs/my_run/) still works: whichever of
+    "date"/"time" has no real directory to take its name from falls back to
+    "" (rendered as "(root)" in the UI), so there's always a two-level tree
+    to feed the "model run" picker even when the run itself isn't nested
+    two folders deep.
+
+    Every kind of output a run can drop there (output.nc from a forward
+    run, optimize.nc from data assimilation, ...) is picked up so the UI
+    can browse it like a small file explorer. Skips "*_ts.nc" companions:
+    scalar time series only, not the gridded fields this viewer plots.
     """
-    pattern = os.path.join(outputs_dir, "*", "*", "*.nc")
-    paths = sorted(p for p in glob.glob(pattern) if not p.endswith("_ts.nc"))
+    pattern = os.path.join(outputs_dir, "**", "*.nc")
+    paths = sorted(
+        p for p in glob.glob(pattern, recursive=True) if not p.endswith("_ts.nc")
+    )
     tree = {}
     for path in paths:
-        time_dir = os.path.basename(os.path.dirname(path))
-        date_dir = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        rel_dir = os.path.relpath(os.path.dirname(path), outputs_dir)
+        parts = [] if rel_dir == "." else rel_dir.split(os.sep)
+        if len(parts) >= 2:
+            date_dir, time_dir = parts[-2], parts[-1]
+        elif len(parts) == 1:
+            date_dir, time_dir = "", parts[0]
+        else:
+            date_dir, time_dir = "", ""
         tree.setdefault(date_dir, {}).setdefault(time_dir, []).append(
             {"label": os.path.basename(path), "value": path}
         )
     return tree
 
 
-def _pick_default_file(tree: dict, preferred_filename: str | None = None) -> str:
+def _dir_label(name: str, folder_emoji: str, root_name: str) -> str:
+    """Dropdown label for a date/time directory: the "(root)" fallback
+    (name == "", used when a run isn't nested two folders deep) is labeled
+    with `root_name` (the outputs folder's own name) and gets its own emoji
+    distinct from a real folder's."""
+    return f"{folder_emoji} {name}" if name else f"🏠 {root_name} (root)"
+
+
+def _pick_default_file(
+    tree: dict, preferred_filename: str | None = None
+) -> tuple[str, str, str]:
     """The latest date, latest time, preferring `preferred_filename` among
-    that time folder's files if present, else the first file there."""
+    that time folder's files if present, else the first file there.
+    Returns (date, time, path)."""
     date = sorted(tree)[-1]
     time = sorted(tree[date])[-1]
     files = tree[date][time]
     if preferred_filename:
         for f in files:
             if f["label"] == preferred_filename:
-                return f["value"]
-    return files[0]["value"]
+                return date, time, f["value"]
+    return date, time, files[0]["value"]
 
 
 _NETCDF_LOCK = threading.Lock()  # netCDF4's HDF5 backend is not thread-safe;
@@ -666,7 +727,9 @@ def build_stats_figure(ds) -> go.Figure:
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(220,232,248,0.4)",
         font=dict(family=FONT_FAMILY, size=11),
-        xaxis=dict(title=frame_label, showgrid=True, gridcolor="#c8d8e8", zeroline=False),
+        xaxis=dict(
+            title=frame_label, showgrid=True, gridcolor="#c8d8e8", zeroline=False
+        ),
         yaxis=dict(
             title="volume (km\u00b3)",
             title_font_color="#1a6faf",
@@ -698,16 +761,28 @@ def build_stats_figure(ds) -> go.Figure:
 # ── Dash app ──────────────────────────────────────────────────────────────────
 
 
-def finalize(tree: dict, default_run: str, title_base: str):
+def finalize(
+    tree: dict,
+    default_date: str,
+    default_time: str,
+    default_run: str,
+    title_base: str,
+    root_name: str,
+):
     ds = load_ds(default_run)
 
     # tree is date -> time -> [{"label": filename, "value": path}, ...],
     # mirroring outputs/<date>/<time>/<file>.nc so the "model run" picker
     # behaves like a small file browser: folder, then folder, then file.
-    default_time = os.path.basename(os.path.dirname(default_run))
-    default_date = os.path.basename(os.path.dirname(os.path.dirname(default_run)))
-    date_options = [{"label": f"📁 {d}", "value": d} for d in sorted(tree)]
-    time_options = [{"label": f"🕐 {t}", "value": t} for t in sorted(tree[default_date])]
+    # date/time fall back to "" (shown as "<root_name> (root)") when the run
+    # folder isn't nested two levels deep under outputs_dir.
+    date_options = [
+        {"label": _dir_label(d, "📁", root_name), "value": d} for d in sorted(tree)
+    ]
+    time_options = [
+        {"label": _dir_label(t, "📂", root_name), "value": t}
+        for t in sorted(tree[default_date])
+    ]
     file_options = [
         {"label": f"📄 {f['label']}", "value": f["value"]}
         for f in tree[default_date][default_time]
@@ -880,7 +955,10 @@ def finalize(tree: dict, default_run: str, title_base: str):
                                         value=2,
                                         id="z_exag",
                                         marks={i: str(i) for i in range(1, 21, 4)},
-                                        tooltip={"placement": "bottom", "always_visible": False},
+                                        tooltip={
+                                            "placement": "bottom",
+                                            "always_visible": False,
+                                        },
                                     ),
                                 ],
                                 style={**CTRL, "flex": "2 1 260px"},
@@ -895,9 +973,13 @@ def finalize(tree: dict, default_run: str, title_base: str):
                                         value=1.0,
                                         id="opacity",
                                         marks={
-                                            v: f"{int(v*100)}%" for v in (0.25, 0.5, 0.75, 1.0)
+                                            v: f"{int(v*100)}%"
+                                            for v in (0.25, 0.5, 0.75, 1.0)
                                         },
-                                        tooltip={"placement": "bottom", "always_visible": False},
+                                        tooltip={
+                                            "placement": "bottom",
+                                            "always_visible": False,
+                                        },
                                     ),
                                 ],
                                 style={**CTRL, "flex": "2 1 260px"},
@@ -907,7 +989,10 @@ def finalize(tree: dict, default_run: str, title_base: str):
                                     dcc.Checklist(
                                         id="show_ocean",
                                         options=[
-                                            {"label": "  ocean (z = 0)", "value": "ocean"}
+                                            {
+                                                "label": "  ocean (z = 0)",
+                                                "value": "ocean",
+                                            }
                                         ],
                                         value=[],
                                         style={"marginBottom": "8px"},
@@ -915,7 +1000,10 @@ def finalize(tree: dict, default_run: str, title_base: str):
                                     dcc.Checklist(
                                         id="show_calving",
                                         options=[
-                                            {"label": "  calving front", "value": "calving"}
+                                            {
+                                                "label": "  calving front",
+                                                "value": "calving",
+                                            }
                                         ],
                                         value=[],
                                     ),
@@ -944,7 +1032,10 @@ def finalize(tree: dict, default_run: str, title_base: str):
                                     step=(hi0 - lo0) / 200,
                                     value=[lo0, hi0],
                                     allowCross=False,
-                                    tooltip={"placement": "bottom", "always_visible": False},
+                                    tooltip={
+                                        "placement": "bottom",
+                                        "always_visible": False,
+                                    },
                                 ),
                                 style={"flex": "1"},
                             ),
@@ -979,7 +1070,7 @@ def finalize(tree: dict, default_run: str, title_base: str):
     )
     def update_time_options(date):
         times = sorted(tree[date])
-        options = [{"label": f"🕐 {t}", "value": t} for t in times]
+        options = [{"label": _dir_label(t, "📂", root_name), "value": t} for t in times]
         return options, times[-1]  # most recent time in that date
 
     @app.callback(
@@ -1098,7 +1189,6 @@ def finalize(tree: dict, default_run: str, title_base: str):
 
     port = 8050
 
-
     app.run(debug=True, host="127.0.0.1", port=port)
 
 
@@ -1111,17 +1201,20 @@ def _resolve(output_folder: str | None):
     directory (the layout igm_run produces); the exact netCDF file to view
     is always chosen afterward in the dashboard's "model run" picker."""
     outputs_dir = (
-        os.path.abspath(output_folder) if output_folder else os.path.join(os.getcwd(), "outputs")
+        os.path.abspath(output_folder)
+        if output_folder
+        else os.path.join(os.getcwd(), "outputs")
     )
     tree = discover_output_tree(outputs_dir)
     if not tree:
         raise FileNotFoundError(
-            f"No netCDF output found under {outputs_dir}/*/*/. "
+            f"No netCDF output found under {outputs_dir}. "
             "Run igm_run first, or pass --output_folder."
         )
-    default_run = _pick_default_file(tree, "output.nc")
+    default_date, default_time, default_run = _pick_default_file(tree, "output.nc")
     title_base = os.path.basename(os.path.normpath(os.path.dirname(outputs_dir)))
-    return tree, default_run, title_base
+    root_name = os.path.basename(os.path.normpath(outputs_dir))
+    return tree, default_date, default_time, default_run, title_base, root_name
 
 
 def main():
@@ -1134,8 +1227,10 @@ def main():
     )
     args = parser.parse_args()
 
-    tree, default_run, title_base = _resolve(args.output_folder)
-    finalize(tree, default_run, title_base)
+    tree, default_date, default_time, default_run, title_base, root_name = _resolve(
+        args.output_folder
+    )
+    finalize(tree, default_date, default_time, default_run, title_base, root_name)
 
 
 if __name__ == "__main__":
