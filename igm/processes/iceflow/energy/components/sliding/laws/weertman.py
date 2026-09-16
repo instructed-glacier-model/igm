@@ -62,8 +62,9 @@ def cost_weertman(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    from ..sliding import get_friction_field
+    from ..sliding import get_friction_field, get_water_level
 
+    wl = get_water_level(fieldin)
     tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
 
@@ -86,6 +87,7 @@ def cost_weertman(
         V,
         h,
         s,
+        wl,
         tau_ref,
         N,
         dx,

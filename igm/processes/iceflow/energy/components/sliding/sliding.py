@@ -16,10 +16,19 @@ class SlidingComponent(EnergyComponent):
     pass
 
 
-def mask_gr(h: tf.Tensor, topg: tf.Tensor, rho_ratio: tf.Tensor) -> tf.Tensor:
+def mask_gr(
+    h: tf.Tensor, topg: tf.Tensor, wl: tf.Tensor, rho_ratio: tf.Tensor
+) -> tf.Tensor:
     """Compute grounding mask: 1 where grounded, 0 where floating."""
-    phi = h + rho_ratio * topg
+    phi = h + rho_ratio * (topg - wl)
     return tf.cast(phi > 0.0, dtype=h.dtype)
+
+
+def get_water_level(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
+    """Return the water-level field from a fieldin dict, zero if absent."""
+    if "water_level" in fieldin:
+        return fieldin["water_level"]
+    return tf.zeros_like(fieldin["thk"])
 
 
 def get_friction_field(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:

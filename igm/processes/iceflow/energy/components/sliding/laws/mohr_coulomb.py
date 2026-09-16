@@ -32,7 +32,7 @@ import numpy as np
 import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent, mask_gr
+from ..sliding import SlidingComponent, mask_gr, get_water_level
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 
@@ -98,6 +98,7 @@ def cost_mohr_coulomb(
     s = fieldin["usurf"]
     N = fieldin["effective_pressure"]
     dx = fieldin["dX"]
+    wl = get_water_level(fieldin)
 
     topg = s - h
 
@@ -130,7 +131,7 @@ def cost_mohr_coulomb(
 
     # Apply grounding mask on the reference stress
     if use_mask_gr:
-        tauc = tauc * mask_gr(h, topg, rho_ratio)
+        tauc = tauc * mask_gr(h, topg, wl, rho_ratio)
 
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # (batch, Nq_h, Nz, Ny-1, Nx-1)

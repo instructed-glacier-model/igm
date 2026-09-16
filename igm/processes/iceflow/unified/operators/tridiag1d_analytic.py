@@ -425,6 +425,11 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         name = "tau_ref" if "tau_ref" in self._input_indices else "slidingco"
         return self._field(inputs, name)
 
+    def _water_level(self, inputs: tf.Tensor) -> tf.Tensor:
+        if "water_level" in self._input_indices:
+            return self._field(inputs, "water_level")
+        return tf.zeros_like(self._field(inputs, "thk"))
+
     def _interp_q1(self, field: tf.Tensor) -> tf.Tensor:
         """Q1 interpolation, squeezed to ``(B,4,Nx-1)`` for ``Ny=2``."""
         sw = field[:, :-1, :-1]
@@ -556,7 +561,8 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
             stress = self._friction_field(inputs)
 
         if bool(params.use_mask_gr):
-            grounded = h + tf.cast(params.rho_ratio, dtype) * bed > 0.0
+            wl = self._water_level(inputs)
+            grounded = h + tf.cast(params.rho_ratio, dtype) * (bed - wl) > 0.0
             stress *= tf.cast(grounded, dtype)
 
         coefficient = self._interp_q1(stress) / tf.pow(
@@ -624,7 +630,10 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
             if bool(params.use_mask_gr):
                 h = self._field(inputs, "thk")
                 bed_nodes = self._field(inputs, "usurf") - h
-                grounded = h + tf.cast(params.rho_ratio, dtype) * bed_nodes > 0.0
+                wl = self._water_level(inputs)
+                grounded = (
+                    h + tf.cast(params.rho_ratio, dtype) * (bed_nodes - wl) > 0.0
+                )
                 friction = self._interp_q1(
                     self._friction_field(inputs) * tf.cast(grounded, dtype)
                 )

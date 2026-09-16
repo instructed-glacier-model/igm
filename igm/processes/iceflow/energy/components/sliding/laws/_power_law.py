@@ -33,6 +33,7 @@ def power_law_cost(
     V: tf.Tensor,
     h: tf.Tensor,
     s: tf.Tensor,
+    wl: tf.Tensor,
     tau_ref: tf.Tensor,
     N: tf.Tensor,
     dx: tf.Tensor,
@@ -52,6 +53,7 @@ def power_law_cost(
     ----------
     U, V : (batch, Nz, Ny, Nx)  horizontal velocities (m/yr)
     h, s : (batch, Ny, Nx)      thickness & upper-surface elevation (m)
+    wl      : (batch, Ny, Nx)   water-level elevation (m)
     tau_ref : (batch, Ny, Nx)   reference basal shear stress (MPa)
     N       : (batch, Ny, Nx)   effective pressure (any consistent unit;
                                 pass ones for Weertman)
@@ -76,7 +78,7 @@ def power_law_cost(
     # Apply grounding mask to basal shear stress
     if use_mask_gr:
         topg = s - h
-        tau_ref = tau_ref * mask_gr(h, topg, rho_ratio)
+        tau_ref = tau_ref * mask_gr(h, topg, wl, rho_ratio)
 
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # (batch, Nq_h, Nz, Ny-1, Nx-1)

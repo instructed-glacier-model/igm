@@ -54,8 +54,9 @@ def cost_regu_coulomb(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    from ..sliding import get_friction_field
+    from ..sliding import get_friction_field, get_water_level
 
+    wl = get_water_level(fieldin)
     tau_ref = get_friction_field(fieldin)
     dx = fieldin["dX"]
     N = fieldin["effective_pressure"]
@@ -76,6 +77,7 @@ def cost_regu_coulomb(
         h,
         N,
         s,
+        wl,
         tau_ref,
         dx,
         m,
@@ -96,6 +98,7 @@ def _cost(
     h: tf.Tensor,
     N: tf.Tensor,
     s: tf.Tensor,
+    wl: tf.Tensor,
     tau_ref: tf.Tensor,
     dx: tf.Tensor,
     m: tf.Tensor,
@@ -125,6 +128,8 @@ def _cost(
         Effective pressure (MPa)
     s : tf.Tensor
         Upper-surface elevation (m)
+    wl : tf.Tensor
+        Water-level elevation (m)
     tau_ref : tf.Tensor
         Reference basal shear stress (MPa)
     u_ref : tf.Tensor
@@ -155,7 +160,7 @@ def _cost(
     # Apply grounding mask to basal shear stress
     if use_mask_gr:
         topg = s - h
-        tau_ref = tau_ref * mask_gr(h, topg, rho_ratio)
+        tau_ref = tau_ref * mask_gr(h, topg, wl, rho_ratio)
 
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
