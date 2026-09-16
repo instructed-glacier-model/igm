@@ -45,9 +45,9 @@ def get_tidewater_termini(gdir, RGI_product, path_RGI):
             NumEntities = np.max(ds.sub_entities.values)+1
             for i in range(1,NumEntities+1):
                 if gdf.loc[i-1].term_type == 1:
-                    tidewatermask.values[tidewatermask.values==i] = 1
+                    tidewatermask.values[tidewatermask.values==i-1] = 1
                 else:
-                    tidewatermask.values[tidewatermask.values==i] = 0
+                    tidewatermask.values[tidewatermask.values==i-1] = 0
         else:
             tidewatermask = ds.glacier_mask.copy(deep=True)
             gdf = gdir.read_shapefile('outlines')

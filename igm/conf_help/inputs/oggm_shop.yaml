@@ -30,21 +30,17 @@ incl_glathida:
   Type: boolean
   Description: "Set this to True for retrieving the GlaThiDa ice thickness profiles for the inversion."
   Units: dimless
-path_glathida:
-  Type: string
-  Description: "Path where the Glathida Folder is stored, so that you don't need to redownload it at every use of the script, if empty it will be in the home directory (only relevant for RGI6.0)."
-  Units: dimless
 filename:
   Type: string
   Units: dimless
   Description: "NetCDF input data file created by OGGM."
 remove_RGI_folder:
   Type: boolean
-  Description: "Remove RGI folder."
+  Description: "Remove downloaded RGI folder."
   Units: dimless
 sub_entity_mask:
   Type: boolean
-  Description: "Ice mask shows individual RGI 7.0G entities within each larger RGI 7.0C complex."
+  Description: "Ice mask shows individual RGI 7.0G entities within each larger RGI 7.0C complex. Also produces a mask of glaciers with tidewater termini (RGI7.0C or G only)"
   Units: dimless
 smooth_obs_vel:
   Type: boolean
@@ -53,4 +49,20 @@ smooth_obs_vel:
 highres:
   Type: boolean
   Description: "Use high resolution data."
+  Units: dimless
+OGGM_server_v7:
+  Type: string
+  Description: "The address of the OGGM server for RGI7.0 directories (if highres = False)"
+  Units: dimless
+OGGM_server_v7_hr:
+  Type: string
+  Description: "The address of the OGGM server for RGI7.0 high-resolution directories (if highres = True)"
+  Units: dimless
+OGGM_server_v6:
+  Type: string
+  Description: "The address of the OGGM server for RGI6.0 directories."
+  Units: dimless
+glathida_server:
+  Type: string
+  Description: "The address of the GlaThiDa server to download thickness profiles from."
   Units: dimless
