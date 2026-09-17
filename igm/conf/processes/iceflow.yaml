@@ -248,24 +248,28 @@ iceflow:
     line_search: hager-zhang
     inputs: [thk, usurf, arrhenius, tau_ref, dX]
     normalization:
-      method: adaptive
-      fixed:
+      method: fixed              
+      fixed:                     # glacier / ice-cap scales; offsets 0 keep the CNN's zero padding meaning "no ice"
         inputs_offsets:
           thk: 0.0
-          usurf: 0.0
-          arrhenius: 0.0
-          tau_ref: 0.0
-          dX: 0.0
+          usurf: 1500.0
+          arrhenius: 78.0
+          tau_ref: 0.15          # MPa at u_ref = 100
+          slidingco: 0.05
+          dX: 100.0
+          water_level: 0.0
           X: 0.0
           Y: 0.0
-        inputs_variances:
-          thk: 1.0
-          usurf: 1.0
-          arrhenius: 1.0
-          tau_ref: 1.0
-          dX: 1.0
-          X: 1.0
-          Y: 1.0
+        inputs_variances:        # (std)^2
+          thk: 4.0e4             # 200 m
+          usurf: 1.0e6           # 1000 m
+          arrhenius: 1600.0      # 40
+          tau_ref: 4.0e-3        # 0.063 MPa
+          slidingco: 1.0e-3      # 0.03
+          dX: 1.0e4              # 100 m
+          water_level: 2.5e5     # 500 m
+          X: 2.5e9               # 50 km
+          Y: 2.5e9
     network:
       debug_mode: false
       debug_freq: 100

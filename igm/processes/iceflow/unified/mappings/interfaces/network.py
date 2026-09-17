@@ -118,9 +118,10 @@ class InterfaceNetwork(InterfaceMapping):
                 if method == "adaptive":
                     normalizing_layer = normalizing_class(nb_inputs)
                 elif method == "fixed":
+                    fixed = cfg_unified.normalization.fixed
                     normalizing_layer = normalizing_class(
-                        cfg_unified.normalization.fixed.inputs_offsets,
-                        cfg_unified.normalization.fixed.inputs_variances,
+                        {k: fixed.inputs_offsets[k] for k in cfg_unified.inputs},
+                        {k: fixed.inputs_variances[k] for k in cfg_unified.inputs},
                     )
                 else:
                     normalizing_layer = normalizing_class()
