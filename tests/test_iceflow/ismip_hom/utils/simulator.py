@@ -6,8 +6,12 @@
 import os
 import pytest
 import sys
+import tensorflow as tf
 from igm.igm_run import main
 from typing import Optional
+
+RANDOM_SEED = 0
+tf.config.experimental.enable_op_determinism()
 
 
 def run_igm(
@@ -69,6 +73,7 @@ def _run_unified(
         argv.append("processes.iceflow.unified.adam.lr_init=0.9")
 
     monkeypatch.setattr(sys, "argv", argv)
+    tf.random.set_seed(RANDOM_SEED)
     main()
 
     return path_run_dir

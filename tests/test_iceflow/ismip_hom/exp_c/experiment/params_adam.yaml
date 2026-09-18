@@ -34,7 +34,7 @@ processes:
           - criterion: patience
             metric: cost
             patience:
-              patience: 100
+              patience: 1000
         failure:
           - criterion: nan
             metric: u
