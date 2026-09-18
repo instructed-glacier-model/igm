@@ -50,7 +50,9 @@ def run_experiment_test(
     x_ref, v_ref = _load_reference(experiment, length)
 
     # Validate results
-    is_valid, error = validate_results(x_ref, v_ref, x_igm, v_igm, experiment)
+    is_valid, error = validate_results(
+        x_ref, v_ref, x_igm, v_igm, experiment, mapping, optimizer
+    )
 
     # Create plot
     title, filename = _get_plot_info(experiment, length, method, mapping, optimizer)
@@ -58,7 +60,7 @@ def run_experiment_test(
 
     # Display error in terminal
     if error is not None:
-        tolerance = get_tolerance(experiment)
+        tolerance = get_tolerance(experiment, mapping, optimizer)
         error_pct = error * 100
         tol_pct = tolerance * 100
         status = "✅" if is_valid else "❌"
