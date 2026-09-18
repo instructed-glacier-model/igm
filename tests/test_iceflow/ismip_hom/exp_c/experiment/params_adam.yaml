@@ -25,7 +25,7 @@ processes:
     unified:
       bcs: [periodic_ns, periodic_we]
       optimizer: adam
-      nbit_init: 10000
+      nbit_init: 15000
       network:
         pretrained: False
       halt:
