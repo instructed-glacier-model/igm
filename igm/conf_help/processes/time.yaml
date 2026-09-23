@@ -21,4 +21,4 @@ step_max:
 cfl_percentile:
   Type: float
   Units: "%"
-  Description: "Percentile of |velocity| used in the CFL condition in place of the maximum (100 = exact maximum, default). Values below 100 ignore the fastest (100 - p)% of grid cells, so that a few outlier cells do not collapse the time step; the CFL guarantee then no longer holds in those cells. The percentile is taken over all grid cells, including ice-free ones: keep it close to 100 (e.g. 99.9)."
+  Description: "Percentile of |velocity| used in the CFL condition in place of the maximum (100 = exact maximum, default). Values below 100 ignore the fastest (100 - p)% of grid cells, so that a few outlier cells do not collapse the time step; the CFL guarantee then no longer holds in those cells. The percentile is taken over the active (ice-covered) cells when available, otherwise over all grid cells."
