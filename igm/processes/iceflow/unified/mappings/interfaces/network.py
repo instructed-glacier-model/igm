@@ -119,6 +119,16 @@ class InterfaceNetwork(InterfaceMapping):
                     normalizing_layer = normalizing_class(nb_inputs)
                 elif method == "fixed":
                     fixed = cfg_unified.normalization.fixed
+                    missing = [
+                        k for k in cfg_unified.inputs
+                        if k not in fixed.inputs_offsets or k not in fixed.inputs_variances
+                    ]
+                    if missing:
+                        raise ValueError(
+                            f"Fixed normalization has no scale for input(s) {missing}; add them "
+                            "to processes.iceflow.unified.normalization.fixed.inputs_offsets "
+                            "and inputs_variances."
+                        )
                     normalizing_layer = normalizing_class(
                         {k: fixed.inputs_offsets[k] for k in cfg_unified.inputs},
                         {k: fixed.inputs_variances[k] for k in cfg_unified.inputs},
