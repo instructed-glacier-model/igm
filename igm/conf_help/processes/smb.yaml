@@ -2,6 +2,10 @@ method:
   Type: string
   Units: dimless
   Description: "SMB implementation to use: `simple`, `oggm`, or `accpdd`."
+smb_outside_icemask:
+  Type: float
+  Units: m yr^{-1} ice eq.
+  Description: "SMB imposed outside the icemask (if an icemask is provided) where the computed SMB is positive, to prevent ice build-up in masked-out areas, which results from accumulation plus incoming ice flux. Lower it (e.g. -50) if ice still builds up outside the mask."
 simple:
   update_freq:
     Type: float
