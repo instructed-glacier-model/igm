@@ -11,6 +11,7 @@ from igm.common import State
 from igm.utils.math.precision import normalize_precision
 
 from igm.processes.iceflow.utils.data_preprocessing import fieldin_to_X_2d
+from igm.processes.thk.masks import compute_grounded_mask
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
     get_velsurf,
@@ -25,6 +26,7 @@ class EvaluatorParams(tf.experimental.ExtensionType):
 
     Nz: int
     force_max_velbar: float
+    rho_ratio: float
 
 
 def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
@@ -35,6 +37,10 @@ def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
     return {
         "Nz": cfg_numerics.Nz,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
+        "rho_ratio": (
+            cfg.processes.iceflow.physics.water_density
+            / cfg.processes.iceflow.physics.ice_density
+        ),
     }
 
 
@@ -43,6 +49,8 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
+        "usurf": state.usurf,
+        "water_level": state.water_level,
         "mapping": state.iceflow.mapping,
         "V_bar": state.iceflow.discr_v.V_bar,
         "V_b": state.iceflow.discr_v.V_b,
@@ -78,7 +86,14 @@ def evaluator_iceflow(
     U, V = U[0], V[0]
 
     # Post-processing of velocity fields
-    node_mask = tf.expand_dims(compute_node_ice_mask(kwargs["thk"]), axis=0)
+    grounded = compute_grounded_mask(
+        kwargs["thk"],
+        kwargs["usurf"] - kwargs["thk"],
+        kwargs["water_level"],
+        parameters.rho_ratio,
+    )
+    node_mask = compute_node_ice_mask(kwargs["thk"], grounded)
+    node_mask = tf.expand_dims(node_mask, axis=0)
     U = tf.where(node_mask, U, 0.0)
     V = tf.where(node_mask, V, 0.0)
 

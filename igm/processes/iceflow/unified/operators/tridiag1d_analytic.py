@@ -71,6 +71,8 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         )
 
         numerics = cfg.processes.iceflow.numerics
+        physics = cfg.processes.iceflow.physics
+        self._rho_ratio = physics.water_density / physics.ice_density
         if str(numerics.basis_horizontal).lower() != "q1":
             raise ValueError(
                 "Analytic tridiag_newton assembly requires "
@@ -112,7 +114,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
                 "makes gravity nonlinear in velocity."
             )
 
-        required = {"thk"}
+        required = {"thk", "usurf"}
         if self._viscosity is not None:
             required.update(("arrhenius", "dX"))
         if self._gravity is not None:
@@ -377,7 +379,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
             grad_left += terms[1]
             grad_right += terms[2]
 
-        cell_mask = compute_cell_ice_mask(self._field(inputs, "thk"))[:, 0, :]
+        cell_mask = self._cell_mask(inputs)[:, 0, :]
         cell_weight = tf.cast(cell_mask, self.precision) * self._energy_normalization
         cost = tf.reduce_sum(cell_weight * energy)
         gradient = tf.pad(cell_weight * grad_left, [[0, 0], [0, 1]])
@@ -423,6 +425,14 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         return water_level_from_inputs(
             inputs, tuple(self._input_indices), self._field(inputs, "thk")
         )
+
+    def _cell_mask(self, inputs: tf.Tensor) -> tf.Tensor:
+        thk = self._field(inputs, "thk")
+        topg = self._field(inputs, "usurf") - thk
+        grounded = compute_grounded_mask(
+            thk, topg, self._water_level(inputs), self._rho_ratio
+        )
+        return compute_cell_ice_mask(thk, grounded)
 
     def _interp_q1(self, field: tf.Tensor) -> tf.Tensor:
         """Q1 interpolation, squeezed to ``(B,4,Nx-1)`` for ``Ny=2``."""
@@ -683,7 +693,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         u = U[:, 0, 0, :]
         v = V[:, 0, 0, :]
 
-        cell_mask = compute_cell_ice_mask(self._field(inputs, "thk"))[:, 0, :]
+        cell_mask = self._cell_mask(inputs)[:, 0, :]
         cell_weight = tf.cast(cell_mask, self.precision) * self._energy_normalization
         zeros = tf.zeros((self.B, 2, 2, self.Nx - 1), self.precision)
         ll = lr = rl = rr = zeros
