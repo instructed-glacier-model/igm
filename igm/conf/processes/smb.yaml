@@ -2,6 +2,9 @@ smb:
   # Choose the surface mass-balance implementation: simple | oggm | accpdd
   method: simple
 
+  # SMB imposed outside the icemask (if any) where the computed SMB is positive [m ice eq. yr-1]
+  smb_outside_icemask: -10.0
+
   # ------------------------------------------------------------------
   # simple — gradient-based SMB from a time-series of (gradabl, gradacc,
   # ela, maxacc). Mirrors the legacy `smb_simple` module.
