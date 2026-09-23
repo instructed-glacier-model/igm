@@ -9,4 +9,4 @@ keep_open:
 vars_to_save:
   Type: list
   Units: dimless
-  Description: "List of variables to be recorded in the ncdf file."
+  Description: "List of variables to be recorded in the ncdf file. Any 2D or 3D state variable can be saved; see the full list at https://igm-model.org/latest/modules/variables/igm/"
