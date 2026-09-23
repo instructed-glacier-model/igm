@@ -17,6 +17,7 @@ from omegaconf import OmegaConf
 from igm.inputs.complete_data import complete_data
 from igm.inputs.local import complete_data as complete_local_data
 from igm.processes.thk.fronts.sub_grid import _ocean
+from igm.processes.thk.rigid_body import remove_rigid_body_modes
 from igm.processes.thk.surfaces import update_surfaces
 from igm.processes.thk.masks import (
     WATER_LEVEL_NO_OCEAN,
@@ -98,6 +99,10 @@ def test_no_ocean_keeps_a_sub_zero_bed_grounded_everywhere():
         state.thk, state.usurf - state.thk, state.water_level, RHO_RATIO
     )
     assert bool(tf.reduce_all(grounded))
+
+    thk_before = state.thk
+    remove_rigid_body_modes(state, RHO_RATIO)
+    np.testing.assert_array_equal(state.thk, thk_before)  # nothing calved
 
 
 def test_sea_level_floats_the_same_sub_zero_bed():

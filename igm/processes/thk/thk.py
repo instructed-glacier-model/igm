@@ -27,7 +27,8 @@ from .domains import (
     update_active_domain,
 )
 from .fronts import get_front
-from .surfaces import update_surfaces, validate_density_ratio
+from .rigid_body import remove_rigid_body_modes
+from .surfaces import get_density_ratio, update_surfaces, validate_density_ratio
 from .transport import get_transport
 
 
@@ -47,6 +48,8 @@ class ThkComponents:
     pipeline: tuple
     domain_constraints: tuple
     boundaries: boundary.BoundaryConditions
+    remove_rigid_body_modes: bool
+    rho_ratio: float
     transport_options: dict = field(default_factory=dict)
     component_state: dict = field(default_factory=dict)
 
@@ -114,6 +117,13 @@ def _select_components(cfg):
             "available only with scheme: explicit."
         )
 
+    # Unanchored floating ice (icebergs) may be calved off after each update;
+    # use the same canonical flotation ratio as the surface reconstruction.
+    remove_rigid_body_modes = bool(
+        getattr(cfg.processes.thk, "remove_rigid_body_modes", False)
+    )
+    rho_ratio = 1.0 / get_density_ratio(cfg)
+
     return ThkComponents(
         transport_name=transport_name,
         transport=transport,
@@ -122,6 +132,8 @@ def _select_components(cfg):
         pipeline=pipeline,
         domain_constraints=constraints,
         boundaries=boundaries,
+        remove_rigid_body_modes=remove_rigid_body_modes,
+        rho_ratio=rho_ratio,
     )
 
 
@@ -143,6 +155,9 @@ def initialize(cfg, state):
     for component in components.pipeline:
         component.initialize(cfg, state)
     initialize_active_domain(cfg, state, components.domain_constraints)
+
+    if components.remove_rigid_body_modes:
+        remove_rigid_body_modes(state, components.rho_ratio)
 
     update_surfaces(cfg, state)
 
@@ -167,6 +182,9 @@ def update(cfg, state):
         component.update(cfg, state)
     if components.domain_constraints:
         update_active_domain(cfg, state, components.domain_constraints)
+
+    if components.remove_rigid_body_modes:
+        remove_rigid_body_modes(state, components.rho_ratio)
 
     update_surfaces(cfg, state)
 
