@@ -95,8 +95,8 @@ glacialindex:
     Description: "Standard deviation of daily air temperature, used when a climate file has no `air_temp_sd` variable."
   temporal_resampling:
     Type: integer
-    Units: dimless
-    Description: "Number of sub-steps per model time step for temporal resampling of the glacial index signal."
+    Units: yr^{-1}
+    Description: "Number of samples per year used to represent the seasonal cycle: the monthly fields of the climate files are linearly interpolated onto this many sub-annual steps (12 = monthly, 52 = weekly). Independent of update_freq, which only sets how often (in years) the climate is recomputed. Must be >= the number of time records in the climate files. Memory grows linearly with it (52 uses ~4x the memory of 12)."
 station:
   update_freq:
     Type: float
