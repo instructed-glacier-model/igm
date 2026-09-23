@@ -72,23 +72,27 @@ glacialindex:
   climate_0_file:
     Type: string
     Units: dimless
-    Description: "NetCDF file for the modern (warm) end-member climate."
+    Description: "NetCDF file for the GI=0 end-member climate (warm state, e.g. modern or interglacial)."
   climate_1_file:
     Type: string
     Units: dimless
-    Description: "NetCDF file for the glacial (cold) end-member climate."
+    Description: "NetCDF file for the GI=1 end-member climate (cold state, e.g. glacial maximum)."
   signal_file:
     Type: string
     Units: dimless
     Description: "File containing the glacial index signal (time, index) used to interpolate between end members."
   vertical_lapse_rate_0:
     Type: float
-    Units: °C (100 m)^{-1}
-    Description: "Vertical lapse rate applied to the modern end-member temperature field."
+    Units: °C km^{-1}
+    Description: "Adiabatic lapse rate of air temperature applied to the GI=0 end-member temperature field."
   vertical_lapse_rate_1:
     Type: float
-    Units: °C (100 m)^{-1}
-    Description: "Vertical lapse rate applied to the glacial end-member temperature field."
+    Units: °C km^{-1}
+    Description: "Adiabatic lapse rate of air temperature applied to the GI=1 end-member temperature field."
+  temp_std:
+    Type: float
+    Units: °C
+    Description: "Standard deviation of daily air temperature, used when a climate file has no `air_temp_sd` variable."
   temporal_resampling:
     Type: integer
     Units: dimless
