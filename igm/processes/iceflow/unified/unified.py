@@ -11,6 +11,7 @@ from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .error_estimator import ErrorEstimator, InterfaceErrorEstimator
 from .solver import solve_iceflow
+from .solver.solver import should_normalize
 from .utils import get_cost_fn
 from ..utils.data_preprocessing import fieldin_state_to_X, X_to_fieldin
 
@@ -19,6 +20,16 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     """Initialize iceflow module in unified mode."""
 
     cfg_unified = cfg.processes.iceflow.unified
+
+    # Drift detection needs running input statistics; otherwise it is never computed.
+    cfg_at = getattr(cfg_unified, "adaptive_time", None)
+    at_method = str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    if at_method == "shift_distribution" and not should_normalize(cfg):
+        raise ValueError(
+            "adaptive_time.method=shift_distribution needs running input statistics "
+            "(normalization.method=adaptive with an untrained network mapping); with the "
+            "current settings the distribution shift is never computed."
+        )
 
     # Initialize mapping
     mapping_name = cfg_unified.mapping
