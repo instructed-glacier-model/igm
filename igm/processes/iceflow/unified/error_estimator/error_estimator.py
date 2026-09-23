@@ -34,12 +34,13 @@ import tensorflow as tf
 
 from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.utils.velocities import compute_node_ice_mask, get_velsurf
+from igm.processes.thk.masks import compute_grounded_mask, no_ocean_like
 
 from ..mappings.identity import MappingIdentity
 from ..operators import build_energy_operator
 from ..optimizers.utils.pcg import pcg_init, pcg_relres, pcg_run
 from ..preconditioners import build_preconditioner
-from .metrics import grounded_mask, summarize_velocity_error
+from .metrics import summarize_velocity_error
 
 
 class ErrorEstimator:
@@ -56,12 +57,11 @@ class ErrorEstimator:
         precision: str = "double",
         basis_vertical: str = "molho",
         idx_usurf: Optional[int] = None,
-        idx_water_level: Optional[int] = None,
         topg: Optional[np.ndarray] = None,
         basin_mask: Optional[np.ndarray] = None,
         rho_ice: float = 910.0,
         rho_water: float = 1000.0,
-        water_level: float = 0.0,
+        water_level: Optional[np.ndarray] = None,
         freq: int = 250,
         estimate_at_start: bool = True,
         cg_iters: Sequence[int] = (10,),
@@ -115,10 +115,15 @@ class ErrorEstimator:
 
         self.idx_thk = int(idx_thk)
         self.idx_usurf = None if idx_usurf is None else int(idx_usurf)
-        self.idx_water_level = None if idx_water_level is None else int(idx_water_level)
         self.rho_ice = float(rho_ice)
         self.rho_water = float(rho_water)
-        self.water_level = tf.constant(float(water_level), self.dtype)
+        # Like topg, the water level is static input data taken from state;
+        # None means no ocean (see igm.processes.thk.masks).
+        self._water_level = (
+            None
+            if water_level is None
+            else tf.constant(np.asarray(water_level), self.dtype)
+        )
         self.V_s = tf.cast(V_s, self.dtype)
         self._damping = tf.constant(float(damping), self.dtype)
         self._topg = None if topg is None else tf.constant(np.asarray(topg), self.dtype)
@@ -253,11 +258,12 @@ class ErrorEstimator:
             topg = inputs[0, :, :, self.idx_usurf] - thk
         else:
             return None
-        if self.idx_water_level is not None:
-            water_level = inputs[0, :, :, self.idx_water_level]
-        else:
-            water_level = self.water_level
-        return grounded_mask(thk, topg, water_level, self.rho_ice, self.rho_water)
+        water_level = (
+            self._water_level if self._water_level is not None else no_ocean_like(thk)
+        )
+        return compute_grounded_mask(
+            thk, topg, water_level, self.rho_water / self.rho_ice
+        )
 
     def _delta_metrics(
         self,

@@ -160,7 +160,6 @@ iceflow:
       disable_xla: true
       precision: double
       use_basin_mask: true
-      water_level: 0.0
       record_path: error_estimate.jsonl
       save_fields_dir: null
       publish_field: true

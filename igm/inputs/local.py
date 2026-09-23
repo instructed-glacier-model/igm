@@ -2,6 +2,8 @@ import xarray as xr
 import numpy as np
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
+
 from .include_icemask import include_icemask
 
 
@@ -102,10 +104,10 @@ def complete_data(ds: xr.Dataset, water_level=None) -> xr.Dataset:
     """Post-process an xarray Dataset loaded from NetCDF or TIFFs.
 
     ``water_level`` is an optional sub-config with fields ``include`` and
-    ``value``. When ``include`` is True and ``water_level`` is not already
-    a variable of ``ds``, a uniform 2D DataArray equal to ``value`` is
-    added; it then flows to ``state.water_level`` alongside topg, thk,
-    etc. when the caller pushes ``ds`` onto state.
+    ``value``. Unless ``water_level`` is already a variable of ``ds``, a
+    uniform 2D DataArray is added: ``value`` when ``include`` is True,
+    otherwise the "no ocean" level (see ``igm.processes.thk.masks``).
+    It then flows to ``state.water_level`` alongside topg, thk, etc.
     """
 
     # ? Are units automatically included in some of these or not? I think no...
@@ -132,15 +134,11 @@ def complete_data(ds: xr.Dataset, water_level=None) -> xr.Dataset:
     elif "usurf" not in ds.data_vars:
         ds["usurf"] = ds["topg"] + ds["thk"]
 
-    # water_level: only populate when explicitly requested and not already
-    # present (loaded from NetCDF).
-    if (
-        water_level is not None
-        and getattr(water_level, "include", False)
-        and "water_level" not in ds.data_vars
-    ):
-        ds["water_level"] = xr.DataArray(
-            np.ones_like(X) * float(water_level.value), dims=["y", "x"]
-        )
+    # water_level: a uniform sea/lake level when requested, else "no ocean";
+    # a variable loaded from the input file is kept.
+    if "water_level" not in ds.data_vars:
+        include = water_level is not None and getattr(water_level, "include", False)
+        level = float(water_level.value) if include else WATER_LEVEL_NO_OCEAN
+        ds["water_level"] = xr.DataArray(np.ones_like(X) * level, dims=["y", "x"])
 
     return ds

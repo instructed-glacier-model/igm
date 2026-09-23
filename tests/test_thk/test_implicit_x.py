@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk.transport import implicit, implicit_x
 from igm.processes.thk import thk as thk_module
 
@@ -53,6 +54,7 @@ def _state(seed=23, ny=7, nx=31, dx=2.0, dt=1.0):
     return SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=4.0 * generator.normal((ny, nx)),
         vbar=20.0 * generator.normal((ny, nx)),
         smb=0.1 * generator.normal((ny, nx)),

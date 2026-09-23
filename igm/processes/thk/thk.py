@@ -130,6 +130,10 @@ def initialize(cfg, state):
         raise ValueError(
             "The 'thk' module requires an initial topography ('state.topg')."
         )
+    if not hasattr(state, "water_level"):
+        raise ValueError(
+            "The 'thk' module requires a water level ('state.water_level')."
+        )
 
     # Select and check everything before any component touches the state.
     validate_density_ratio(cfg)

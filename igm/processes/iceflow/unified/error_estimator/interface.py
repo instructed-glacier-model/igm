@@ -110,6 +110,7 @@ class InterfaceErrorEstimator:
             topg = np.asarray(
                 state.topg.numpy() if hasattr(state.topg, "numpy") else state.topg
             )
+        water_level = np.asarray(state.water_level)
 
         basin_mask = None
         if bool(_cfg_get(cfg_est, "use_basin_mask", True)) and hasattr(
@@ -160,12 +161,11 @@ class InterfaceErrorEstimator:
             "V_s": discr_v.V_s,
             "idx_thk": inputs.index("thk"),
             "idx_usurf": _optional_index(inputs, "usurf"),
-            "idx_water_level": _optional_index(inputs, "water_level"),
             "topg": topg,
             "basin_mask": basin_mask,
             "rho_ice": float(cfg_physics.ice_density),
             "rho_water": float(cfg_physics.water_density),
-            "water_level": float(_cfg_get(cfg_est, "water_level", 0.0)),
+            "water_level": water_level,
             "freq": int(_cfg_get(cfg_est, "freq", 250)),
             "estimate_at_start": bool(_cfg_get(cfg_est, "estimate_at_start", True)),
             "cg_iters": cg_iters,

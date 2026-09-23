@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk.transport import ffsl
 from igm.processes.thk import thk as thk_module
 
@@ -43,6 +44,7 @@ def _state(thickness, ubar=None, vbar=None, dx=1.0, dt=1.0, smb=None):
     return SimpleNamespace(
         thk=thickness,
         topg=zeros,
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=zeros if ubar is None else tf.cast(ubar, thickness.dtype),
         vbar=zeros if vbar is None else tf.cast(vbar, thickness.dtype),
         smb=zeros if smb is None else tf.cast(smb, thickness.dtype),

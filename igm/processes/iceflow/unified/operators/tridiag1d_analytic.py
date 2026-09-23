@@ -21,6 +21,7 @@ from typing import Dict, Iterable, Tuple
 import tensorflow as tf
 
 from igm.processes.iceflow.utils.velocities import compute_cell_ice_mask
+from igm.processes.thk.masks import compute_grounded_mask, water_level_from_inputs
 
 from .tridiag1d import Tridiag1DADOperator
 
@@ -419,9 +420,9 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         return self._field(inputs, name)
 
     def _water_level(self, inputs: tf.Tensor) -> tf.Tensor:
-        if "water_level" in self._input_indices:
-            return self._field(inputs, "water_level")
-        return tf.zeros_like(self._field(inputs, "thk"))
+        return water_level_from_inputs(
+            inputs, tuple(self._input_indices), self._field(inputs, "thk")
+        )
 
     def _interp_q1(self, field: tf.Tensor) -> tf.Tensor:
         """Q1 interpolation, squeezed to ``(B,4,Nx-1)`` for ``Ny=2``."""
@@ -546,7 +547,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
 
         if bool(params.use_mask_gr):
             wl = self._water_level(inputs)
-            grounded = h + tf.cast(params.rho_ratio, dtype) * (bed - wl) > 0.0
+            grounded = compute_grounded_mask(h, bed, wl, params.rho_ratio)
             stress *= tf.cast(grounded, dtype)
 
         coefficient = self._interp_q1(stress) / tf.pow(
@@ -609,7 +610,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
                 h = self._field(inputs, "thk")
                 bed_nodes = self._field(inputs, "usurf") - h
                 wl = self._water_level(inputs)
-                grounded = h + tf.cast(params.rho_ratio, dtype) * (bed_nodes - wl) > 0.0
+                grounded = compute_grounded_mask(h, bed_nodes, wl, params.rho_ratio)
                 friction = self._interp_q1(
                     self._friction_field(inputs) * tf.cast(grounded, dtype)
                 )

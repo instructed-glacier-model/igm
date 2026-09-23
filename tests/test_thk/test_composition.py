@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk import fronts, transport
 from igm.processes.thk import thk as thk_module
 
@@ -49,6 +50,7 @@ def _state():
     return SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         it=0,
     )
 

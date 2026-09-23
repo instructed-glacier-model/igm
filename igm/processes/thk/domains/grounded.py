@@ -2,12 +2,15 @@
 
 import tensorflow as tf
 
+from ..masks import compute_grounded_mask
+from ..surfaces import get_density_ratio
+
 
 def get_mask(options, cfg, state):
     """Return cells whose ice base is below the bed rather than floating."""
-    dtype = state.thk.dtype
-    water_level = tf.cast(getattr(state, "water_level", 0.0), dtype)
-    ratio_density = tf.cast(cfg.processes.thk.ratio_density, dtype)
-    grounded = state.topg + ratio_density * state.thk > water_level
-    state.groundedmask = tf.cast(grounded, dtype)
+    rho_ratio = 1.0 / get_density_ratio(cfg)
+    grounded = compute_grounded_mask(
+        state.thk, state.topg, state.water_level, rho_ratio
+    )
+    state.groundedmask = tf.cast(grounded, state.thk.dtype)
     return grounded

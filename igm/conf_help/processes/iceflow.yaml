@@ -579,10 +579,6 @@ unified:
       Type: boolean
       Description: "Restrict the error statistics to state.basinmask > 0.5 when that field exists (matches the ASE scoring convention)."
       Units: dimless
-    water_level:
-      Type: float
-      Description: "Water level used in the flotation criterion for the grounded/floating split when water_level is not among unified.inputs."
-      Units: m
     record_path:
       Type: string
       Description: "Path (relative to the run directory) of the JSONL file receiving one line per estimate."

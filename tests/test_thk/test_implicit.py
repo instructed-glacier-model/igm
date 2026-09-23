@@ -13,6 +13,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk.transport import implicit
 from igm.processes.thk import thk as thk_module
 from igm.utils.grad.compute_divflux import compute_divflux
@@ -51,6 +52,7 @@ def _state(seed=1, ny=30, nx=40, dx=200.0, dt=1.0):
     return SimpleNamespace(
         thk=50.0 + 300.0 * generator.uniform((ny, nx)),
         topg=tf.zeros((ny, nx), dtype=tf.float32),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=30.0 * generator.normal((ny, nx)),
         vbar=30.0 * generator.normal((ny, nx)),
         smb=0.2 * generator.normal((ny, nx)),

@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk import thk as thk_module
 from igm.processes.thk import transport
 from igm.processes.thk.domains import update_active_domain
@@ -37,6 +38,7 @@ def _state(ny=5, nx=6):
     return SimpleNamespace(
         thk=thickness,
         topg=tf.ones_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=tf.ones_like(thickness),
         vbar=tf.zeros_like(thickness),
         smb=tf.ones_like(thickness) * 2.0,
@@ -123,6 +125,7 @@ def test_grounded_constraint_tracks_live_geometry():
     state = _state(ny=1, nx=3)
     state.topg = tf.constant([[-20.0, -5.0, 1.0]])
     state.thk = tf.constant([[10.0, 10.0, 10.0]])
+    state.water_level = tf.zeros_like(state.topg)  # sea level at 0 m
     cfg = _cfg([{"method": "grounded"}])
 
     thk_module.initialize(cfg, state)

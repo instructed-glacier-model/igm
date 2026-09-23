@@ -42,18 +42,6 @@ def masked_rmse(values: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
     return tf.where(n_valid > 0, tf.sqrt(mean_sq), nan)
 
 
-def grounded_mask(
-    thk: tf.Tensor,
-    topg: tf.Tensor,
-    water_level: tf.Tensor,
-    rho_ice: float,
-    rho_water: float,
-) -> tf.Tensor:
-    """Flotation criterion ``topg + (rho_i / rho_w) thk > water_level``."""
-    ratio = tf.cast(rho_ice / rho_water, thk.dtype)
-    return topg + ratio * thk > tf.cast(water_level, thk.dtype)
-
-
 def relative_error_percent(
     du: tf.Tensor,
     dv: tf.Tensor,

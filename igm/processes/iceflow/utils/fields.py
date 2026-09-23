@@ -3,14 +3,17 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import warnings
+
 import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 
 
 def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
-    """Initialize iceflow fields: arrhenius, slidingco/tau_ref, U, V.
+    """Initialize iceflow fields: arrhenius, slidingco/tau_ref, U, V, water_level.
 
     Basal-friction field: the legacy stack (emulated/solved/diagnostic
     + data_assimilation) uses `state.slidingco` initialised from
@@ -46,3 +49,17 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
 
     if not hasattr(state, "V"):
         state.V = tf.zeros(shape_3d)
+
+    if not hasattr(state, "water_level"):
+        state.water_level = tf.ones(shape_2d) * WATER_LEVEL_NO_OCEAN
+    else:
+        # The solve reads the water level from its input channels and falls
+        # back to "no ocean", so an unlisted ocean makes floating ice grounded.
+        if "water_level" not in cfg.processes.iceflow.unified.inputs and bool(
+            tf.reduce_any(state.water_level != WATER_LEVEL_NO_OCEAN)
+        ):
+            warnings.warn(
+                "The domain has an ocean (state.water_level) but 'water_level' "
+                "is not listed in processes.iceflow.unified.inputs: ice flow "
+                "will treat floating ice as grounded."
+            )
