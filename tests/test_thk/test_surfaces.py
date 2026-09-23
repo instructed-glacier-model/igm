@@ -56,9 +56,7 @@ def test_consistent_iceflow_density_ratio_is_accepted():
 
     thk_module.initialize(cfg, state)
 
-    expected_lower = np.maximum(
-        np.asarray(state.topg), -0.893 * np.asarray(state.thk)
-    )
+    expected_lower = np.maximum(np.asarray(state.topg), -0.893 * np.asarray(state.thk))
     np.testing.assert_allclose(state.lsurf, expected_lower)
     np.testing.assert_allclose(state.usurf, expected_lower + state.thk)
 
@@ -85,8 +83,6 @@ def test_nonpositive_thickness_density_ratio_is_rejected_without_iceflow():
 def test_nonpositive_iceflow_densities_are_rejected(
     ice_density, water_density, message
 ):
-    cfg = _cfg(
-        0.9, ice_density=ice_density, water_density=water_density
-    )
+    cfg = _cfg(0.9, ice_density=ice_density, water_density=water_density)
     with pytest.raises(ValueError, match=message):
         thk_module.initialize(cfg, _state())

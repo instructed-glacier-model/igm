@@ -36,9 +36,7 @@ def validate_density_ratio(cfg):
     ice_density = float(ice_density)
     water_density = float(water_density)
     if not math.isfinite(ice_density) or ice_density <= 0.0:
-        raise ValueError(
-            "cfg.processes.iceflow.physics.ice_density must be positive."
-        )
+        raise ValueError("cfg.processes.iceflow.physics.ice_density must be positive.")
     if not math.isfinite(water_density) or water_density <= 0.0:
         raise ValueError(
             "cfg.processes.iceflow.physics.water_density must be positive."

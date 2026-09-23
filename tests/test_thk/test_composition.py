@@ -96,9 +96,7 @@ def test_after_transport_front_composes_without_changing_thk_dispatch(monkeypatc
         finalize=finalize_front,
     )
 
-    monkeypatch.setitem(
-        transport.TransportSchemes, "test_scheme", test_scheme
-    )
+    monkeypatch.setitem(transport.TransportSchemes, "test_scheme", test_scheme)
     monkeypatch.setitem(fronts.FrontMethods, "test_front", test_front)
 
     state = _state()

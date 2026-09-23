@@ -22,9 +22,7 @@ from igm.processes.iceflow.utils.velocities import (
 
 
 def test_ice_masks_exclude_nodes_without_active_cell_support():
-    thk = tf.constant(
-        [[[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
-    )
+    thk = tf.constant([[[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
 
     np.testing.assert_array_equal(
         compute_cell_ice_mask(thk).numpy(),
@@ -32,9 +30,7 @@ def test_ice_masks_exclude_nodes_without_active_cell_support():
     )
     np.testing.assert_array_equal(
         compute_node_ice_mask(thk).numpy(),
-        np.array(
-            [[[True, True, False], [True, True, False], [False, False, False]]]
-        ),
+        np.array([[[True, True, False], [True, True, False], [False, False, False]]]),
     )
 
 
@@ -60,14 +56,10 @@ def test_unified_cost_excludes_cells_with_an_ice_free_corner(monkeypatch):
     monkeypatch.setattr(
         utils, "get_energy_components", lambda cfg: [CellSumComponent()]
     )
-    cfg = OmegaConf.create(
-        {"processes": {"iceflow": {"unified": {"inputs": ["thk"]}}}}
-    )
+    cfg = OmegaConf.create({"processes": {"iceflow": {"unified": {"inputs": ["thk"]}}}})
     state = SimpleNamespace(iceflow=SimpleNamespace(discr_h=None, discr_v=None))
     cost_fn = utils.get_cost_fn(cfg, state)
-    thk = tf.constant(
-        [[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]]]
-    )
+    thk = tf.constant([[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]]])
     inputs = thk[..., tf.newaxis]
     U = tf.Variable(tf.ones((1, 1, 3, 3)))
     V = tf.Variable(tf.ones((1, 1, 3, 3)))
@@ -120,9 +112,7 @@ def test_rel_initial_is_available_from_halt_configuration():
                                 }
                             ],
                             "failure": [],
-                            "criteria": {
-                                "rel_initial": {"tol": 0.1, "ord": "l2"}
-                            },
+                            "criteria": {"rel_initial": {"tol": 0.1, "ord": "l2"}},
                             "metrics": {"grad_u_norm": {}},
                         }
                     },

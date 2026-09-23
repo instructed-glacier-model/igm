@@ -227,9 +227,9 @@ def test_explicit_symmetric_boundary_remains_no_flux_with_flux_smoothing():
     )
     cfg = _cfg(
         scheme="explicit",
-        boundary_value={name: "symmetric" for name in (
-            "left", "right", "top", "bottom"
-        )},
+        boundary_value={
+            name: "symmetric" for name in ("left", "right", "top", "bottom")
+        },
     )
     cfg.processes.thk.divflux_smooth_sigma = 0.8
 

@@ -78,9 +78,7 @@ def test_new_scheme_needs_only_one_dictionary_entry(monkeypatch):
             state.divflux = tf.zeros_like(state.thk)
             state.thk = state.thk + 2.0
 
-    monkeypatch.setitem(
-        transport.TransportSchemes, "test_scheme", TestScheme
-    )
+    monkeypatch.setitem(transport.TransportSchemes, "test_scheme", TestScheme)
 
     cfg = _cfg("TEST_SCHEME")
     state = _state()

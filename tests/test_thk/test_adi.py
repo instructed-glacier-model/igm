@@ -50,9 +50,7 @@ def _state(seed=4, ny=12, nx=15, dx=200.0, dt=1.0, dtype=tf.float32):
 
 def test_directional_operators_sum_to_existing_upwind_divergence():
     state = _state()
-    coefficients = adi._build_directional_coefficients(
-        state.ubar, state.vbar, state.dx
-    )
+    coefficients = adi._build_directional_coefficients(state.ubar, state.vbar, state.dx)
 
     actual = adi._apply_x(state.thk, coefficients) + adi._apply_y(
         state.thk, coefficients
@@ -71,22 +69,16 @@ def test_directional_operators_sum_to_existing_upwind_divergence():
 
 def test_batched_tridiagonal_solves_satisfy_directional_systems():
     state = _state(dt=17.0)
-    coefficients = adi._build_directional_coefficients(
-        state.ubar, state.vbar, state.dx
-    )
+    coefficients = adi._build_directional_coefficients(state.ubar, state.vbar, state.dx)
     half_dt = 0.5 * state.dt
 
     x_solution = adi._solve_x(state.thk, coefficients, half_dt)
     x_residual = (
-        x_solution
-        + half_dt * adi._apply_x(x_solution, coefficients)
-        - state.thk
+        x_solution + half_dt * adi._apply_x(x_solution, coefficients) - state.thk
     )
     y_solution = adi._solve_y(state.thk, coefficients, half_dt)
     y_residual = (
-        y_solution
-        + half_dt * adi._apply_y(y_solution, coefficients)
-        - state.thk
+        y_solution + half_dt * adi._apply_y(y_solution, coefficients) - state.thk
     )
 
     assert float(tf.norm(x_residual) / tf.norm(state.thk)) < 2.0e-6
@@ -116,9 +108,7 @@ def _dense_divergence_matrix(ubar, vbar, dx):
     columns = []
     for index in range(ny * nx):
         basis = tf.reshape(tf.one_hot(index, ny * nx, dtype=ubar.dtype), (ny, nx))
-        applied = adi._apply_x(basis, coefficients) + adi._apply_y(
-            basis, coefficients
-        )
+        applied = adi._apply_x(basis, coefficients) + adi._apply_y(basis, coefficients)
         columns.append(tf.reshape(applied, (-1,)).numpy())
     return np.stack(columns, axis=1)
 

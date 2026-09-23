@@ -91,9 +91,7 @@ def test_empty_constraints_leave_no_mask_or_default_path_allocation():
 
 def test_explicit_transport_freezes_inactive_cells_and_blocks_internal_flux():
     state = _state(ny=3, nx=5)
-    state.active = tf.constant(
-        [[0, 1, 1, 1, 0]] * 3, dtype=tf.float32
-    )
+    state.active = tf.constant([[0, 1, 1, 1, 0]] * 3, dtype=tf.float32)
     cfg = _cfg([{"method": "state_mask", "field": "active"}])
     thickness_old = tf.identity(state.thk)
 
@@ -115,9 +113,8 @@ def test_explicit_transport_freezes_inactive_cells_and_blocks_internal_flux():
     active_change = tf.reduce_sum(
         tf.boolean_mask(state.thk - thickness_old, state.thk_active_mask)
     )
-    expected_change = (
-        state.dt
-        * tf.reduce_sum(tf.boolean_mask(state.smb, state.thk_active_mask))
+    expected_change = state.dt * tf.reduce_sum(
+        tf.boolean_mask(state.smb, state.thk_active_mask)
     )
     np.testing.assert_allclose(active_change, expected_change, atol=2.0e-6)
 
@@ -129,15 +126,11 @@ def test_grounded_constraint_tracks_live_geometry():
     cfg = _cfg([{"method": "grounded"}])
 
     thk_module.initialize(cfg, state)
-    np.testing.assert_array_equal(
-        state.thk_active_mask, [[False, True, True]]
-    )
+    np.testing.assert_array_equal(state.thk_active_mask, [[False, True, True]])
 
     state.thk = tf.constant([[30.0, 1.0, 10.0]])
     update_active_domain(cfg, state, state.thk_components.domain_constraints)
-    np.testing.assert_array_equal(
-        state.thk_active_mask, [[True, False, True]]
-    )
+    np.testing.assert_array_equal(state.thk_active_mask, [[True, False, True]])
 
 
 def test_backend_must_explicitly_support_active_domains(monkeypatch):
@@ -150,9 +143,7 @@ def test_backend_must_explicitly_support_active_domains(monkeypatch):
         def update(cfg, state):
             pass
 
-    monkeypatch.setitem(
-        transport.TransportSchemes, "no_domain", NoDomainTransport
-    )
+    monkeypatch.setitem(transport.TransportSchemes, "no_domain", NoDomainTransport)
     cfg = _cfg([{"method": "grounded"}], scheme="no_domain")
     with pytest.raises(ValueError, match="does not support active-domain"):
         thk_module.initialize(cfg, _state())

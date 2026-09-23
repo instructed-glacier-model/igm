@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 
+
 def complete_data(state, water_level=None):
     """
     This function adds a postriori import fields such as X, Y, x, dx, ....
@@ -32,7 +33,9 @@ def complete_data(state, water_level=None):
 
     # if thickness is not defined in the netcdf, then it is set to zero
     if not hasattr(state, "thk"):
-        state.thk = tf.Variable(tf.zeros((state.y.shape[0], state.x.shape[0])), trainable=False)
+        state.thk = tf.Variable(
+            tf.zeros((state.y.shape[0], state.x.shape[0])), trainable=False
+        )
     else:
         # Clamp to non-negative: some input NetCDFs encode small negative thk
         # values near ice edges (interpolation/rounding artifacts). The legacy
@@ -54,12 +57,12 @@ def complete_data(state, water_level=None):
 
     # water_level: populate a uniform field only when explicitly requested
     # and not already loaded from the NetCDF.
-    if (water_level is not None
-            and getattr(water_level, "include", False)
-            and not hasattr(state, "water_level")):
+    if (
+        water_level is not None
+        and getattr(water_level, "include", False)
+        and not hasattr(state, "water_level")
+    ):
         state.water_level = tf.Variable(
-            tf.ones_like(state.topg)
-            * tf.cast(water_level.value, state.topg.dtype),
+            tf.ones_like(state.topg) * tf.cast(water_level.value, state.topg.dtype),
             trainable=False,
         )
-

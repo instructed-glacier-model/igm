@@ -85,9 +85,7 @@ def _select_components(cfg):
     # Compose: a "replace_transport" front owns mass transport itself, so the
     # selected transport scheme does not run at all; an "after_transport"
     # front instead runs right after it.
-    replaces_transport = (
-        front is not None and front.UPDATE_MODE == "replace_transport"
-    )
+    replaces_transport = front is not None and front.UPDATE_MODE == "replace_transport"
     mass_transport_name = front_name if replaces_transport else transport_name
     mass_transport = front if replaces_transport else transport
     pipeline = (
@@ -101,16 +99,12 @@ def _select_components(cfg):
     boundary.validate_backend(boundaries, transport, transport_name)
     if front is not None:
         boundary.validate_backend(boundaries, front, front_name)
-    if constraints and not getattr(
-        mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False
-    ):
+    if constraints and not getattr(mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False):
         raise ValueError(
             f"Thickness backend {mass_transport_name!r} does not support "
             "active-domain constraints."
         )
-    smooth_sigma = float(
-        getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0)
-    )
+    smooth_sigma = float(getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0))
     if smooth_sigma != 0.0 and not getattr(
         mass_transport, "SUPPORTS_DIVFLUX_SMOOTHING", False
     ):

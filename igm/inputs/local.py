@@ -1,29 +1,30 @@
 import xarray as xr
 import numpy as np
-import tensorflow as tf 
+import tensorflow as tf
 
 from .include_icemask import include_icemask
+
 
 def run(cfg, state):
 
     if cfg.inputs.local.type == "netcdf":
-        filepath = state.original_cwd.joinpath(cfg.core.folder_data, cfg.inputs.local.filename)
-        with xr.open_dataset(
-            filepath
-        ) as f:
+        filepath = state.original_cwd.joinpath(
+            cfg.core.folder_data, cfg.inputs.local.filename
+        )
+        with xr.open_dataset(filepath) as f:
             ds = f.load()
 
         if "time" in ds.dims:
-            if hasattr(state,'logger'):
+            if hasattr(state, "logger"):
                 state.logger.info(
                     f"Time dimension found. Selecting the first time step at {cfg.processes.time.start}"
                 )
-            ds = ds.sel(time=ds.time[ds.time==cfg.processes.time.start])
+            ds = ds.sel(time=ds.time[ds.time == cfg.processes.time.start])
 
     elif cfg.inputs.local.type == "tif":
         import rioxarray
         from pathlib import Path
- 
+
         # Base folder where the .tif files are stored
         data_folder = Path(state.original_cwd.joinpath(cfg.core.folder_data))
 
@@ -31,25 +32,29 @@ def run(cfg, state):
         tif_files = list(data_folder.glob("*.tif"))
 
         # Create dataset by reading each .tif and naming the variable after the file stem
-        ds = xr.Dataset({
-            tif.stem: rioxarray.open_rasterio(tif).squeeze("band")
-            for tif in tif_files
-        })
+        ds = xr.Dataset(
+            {
+                tif.stem: rioxarray.open_rasterio(tif).squeeze("band")
+                for tif in tif_files
+            }
+        )
 
     else:
         raise ValueError(f"Unknown type {cfg.inputs.local.type}")
 
-    ds = ds.sortby(['x', 'y']) # Sort by x and y to ensure that the data is in the correct order
+    ds = ds.sortby(
+        ["x", "y"]
+    )  # Sort by x and y to ensure that the data is in the correct order
 
     # Mask fill values (>1e35) -> NaN, but only on numeric variables. A dataset-wide
     # `ds > 1e35` throws on non-numeric vars such as the CF grid-mapping dummy
     # (e.g. `transverse_mercator`, dtype |S1), which carry projection metadata only.
     num = [k for k, v in ds.data_vars.items() if np.issubdtype(v.dtype, np.number)]
-    ds[num] = xr.where(ds[num] > 1.0e+35, np.nan, ds[num])
+    ds[num] = xr.where(ds[num] > 1.0e35, np.nan, ds[num])
 
     crop = np.any(list(dict(cfg.inputs.local.crop).values()))
     if crop:
-        if hasattr(state,'logger'):
+        if hasattr(state, "logger"):
             state.logger.info("Cropping dataset")
         ds = ds.sel(
             x=slice(cfg.inputs.local.crop.xmin, cfg.inputs.local.crop.xmax),
@@ -57,7 +62,7 @@ def run(cfg, state):
         )
 
     if cfg.inputs.local.coarsening.ratio > 1:
-        if hasattr(state,'logger'):
+        if hasattr(state, "logger"):
             state.logger.info("Coarsening dataset")
         ds = ds.coarsen(
             x=cfg.inputs.local.coarsening.ratio,
@@ -70,26 +75,27 @@ def run(cfg, state):
 
     # Example on how to convert units with xarray! 'data' is an xarray dataset...
     # x = data.Geopotential_height_isobaric.metpy.x.metpy.convert_units('meter').values
- 
+
     ds = complete_data(ds, water_level=cfg.inputs.local.water_level)
 
     for variable, array in ds.data_vars.items():
-        if (array.ndim>0)|(variable in ["dx", "dy"]):
+        if (array.ndim > 0) | (variable in ["dx", "dy"]):
             setattr(state, variable, tf.Variable(np.squeeze(array).astype("float32")))
 
     for coord, array in ds.coords.items():
-        setattr(
-            state, coord, tf.constant(array.astype("float32"))
-        ) 
+        setattr(state, coord, tf.constant(array.astype("float32")))
 
     # This is to be used to forward meta data to the output
-    state.ds_meta_only = xr.Dataset(attrs=ds.attrs)  
+    state.ds_meta_only = xr.Dataset(attrs=ds.attrs)
 
     # dt = xr.DataTree(name="root", dataset=ds)
 
     if cfg.inputs.local.icemask.include:
-        include_icemask(state, mask_shapefile=cfg.inputs.local.icemask.shapefile, 
-                               mask_invert=cfg.inputs.local.icemask.invert)
+        include_icemask(
+            state,
+            mask_shapefile=cfg.inputs.local.icemask.shapefile,
+            mask_invert=cfg.inputs.local.icemask.invert,
+        )
 
 
 def complete_data(ds: xr.Dataset, water_level=None) -> xr.Dataset:
@@ -128,9 +134,11 @@ def complete_data(ds: xr.Dataset, water_level=None) -> xr.Dataset:
 
     # water_level: only populate when explicitly requested and not already
     # present (loaded from NetCDF).
-    if (water_level is not None
-            and getattr(water_level, "include", False)
-            and "water_level" not in ds.data_vars):
+    if (
+        water_level is not None
+        and getattr(water_level, "include", False)
+        and "water_level" not in ds.data_vars
+    ):
         ds["water_level"] = xr.DataArray(
             np.ones_like(X) * float(water_level.value), dims=["y", "x"]
         )

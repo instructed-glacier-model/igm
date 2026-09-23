@@ -134,9 +134,7 @@ def test_solid_body_rotation_retains_a_gaussian_at_large_cfl():
     thickness_initial = tf.constant(
         1000.0
         * np.exp(
-            -0.5
-            * ((xx - 0.2 * domain_size) ** 2 + yy**2)
-            / (0.06 * domain_size) ** 2
+            -0.5 * ((xx - 0.2 * domain_size) ** 2 + yy**2) / (0.06 * domain_size) ** 2
         ),
         tf.float32,
     )
@@ -144,9 +142,7 @@ def test_solid_body_rotation_retains_a_gaussian_at_large_cfl():
     target_dt = 4.0 * dx / maximum_speed
     steps = int(np.ceil(1000.0 / target_dt))
     dt = 1000.0 / steps
-    state = _state(
-        thickness_initial, ubar=ubar, vbar=vbar, dx=dx, dt=dt
-    )
+    state = _state(thickness_initial, ubar=ubar, vbar=vbar, dx=dx, dt=dt)
 
     thickness = state.thk
     for step in range(steps):
@@ -264,9 +260,7 @@ def test_scalar_parameters_do_not_retrace_the_compiled_kernel():
 def test_periodic_boundary_wraps_an_arbitrary_cfl_translation():
     ny, nx = 8, 80
     x = np.arange(nx, dtype=np.float32)
-    thickness = np.broadcast_to(
-        np.exp(-0.08 * (x - 73.0) ** 2), (ny, nx)
-    ).copy()
+    thickness = np.broadcast_to(np.exp(-0.08 * (x - 73.0) ** 2), (ny, nx)).copy()
     speed, dt = 4.0, 3.0
     state = _state(
         thickness,

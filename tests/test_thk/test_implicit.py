@@ -363,6 +363,4 @@ def test_implicit_supports_a_symmetric_left_and_open_right_side():
     np.testing.assert_allclose(
         tf.reduce_sum(mixed.thickness), tf.reduce_sum(state.thk), rtol=5.0e-6
     )
-    assert float(tf.reduce_sum(opened.thickness)) < float(
-        tf.reduce_sum(state.thk)
-    )
+    assert float(tf.reduce_sum(opened.thickness)) < float(tf.reduce_sum(state.thk))
