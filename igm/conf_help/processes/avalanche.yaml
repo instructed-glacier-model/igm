@@ -9,4 +9,4 @@ angleOfRepose:
 stop_redistribution_thk:
   Type: float
   Units: m
-  Description: "Stop redistribution if the mean thickness is below this value over the whole grid."
+  Description: "Stop the iterative redistribution when the thickness to redistribute in one iteration (ice in excess of the angle of repose, non-zero only where avalanching occurs), summed and divided by the total number of grid cells, falls below this value. The remaining excess is then redistributed at once."
