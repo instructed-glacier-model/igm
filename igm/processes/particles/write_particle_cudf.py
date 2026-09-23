@@ -16,7 +16,7 @@ def initialize_write_particle_cudf(cfg, state):
         shutil.rmtree(directory)
     os.mkdir(directory)
 
-    if cfg.processes.particles.add_topography:
+    if cfg.processes.particles.output.add_topography:
         ftt = os.path.join("trajectories", "topg.csv")
         array = tf.transpose(
             tf.stack(
@@ -80,7 +80,7 @@ def update_write_particle_cudf(cfg, state):
         # with open(ft, "a") as f:
         #     print(state.t.numpy(), file=f)
 
-        if cfg.processes.particles.add_topography:
+        if cfg.processes.particles.output.add_topography:
             filename_topography = os.path.join(
                 "trajectories",
                 "usurf-" + "{:06d}".format(int(state.t.numpy())),
