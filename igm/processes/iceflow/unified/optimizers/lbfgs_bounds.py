@@ -61,9 +61,27 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         p_sd = tf.where(mask, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
         return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask
 
+    def _arc_slope(
+        self,
+        grad_flat: tf.Tensor,
+        p_flat: tf.Tensor,
+        theta_proj: tf.Tensor,
+        theta_trial: tf.Tensor,
+    ) -> tf.Tensor:
+        """Right-hand derivative of phi(alpha) = f(P(theta + alpha p)).
+
+        Components clipped by the projection are pinned at their bound and no
+        longer move with alpha, so they contribute nothing to the slope.
+        """
+        moving = tf.equal(theta_proj, theta_trial)
+        p_eff = tf.where(moving, p_flat, tf.zeros_like(p_flat))
+        return self._dot(grad_flat, p_eff)
+
     def _apply_step(
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
+        # The step follows the projected arc P(theta + alpha p): feasibility comes
+        # from this projection, so alpha is never truncated at a breakpoint.
         L, U = self.map.get_box_bounds_flat()
         theta_trial = theta_flat + alpha * p_flat
         theta_proj = self._project(theta_trial, L, U)
@@ -79,29 +97,23 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         grad0_flat: Optional[tf.Tensor] = None,
     ) -> tf.Tensor:
         L, U = self.map.get_box_bounds_flat()
-        amax = self._alpha_max(theta_flat, p_flat, L, U)
 
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
-            alpha_eff = tf.minimum(alpha, amax)
-
             theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+            theta_alpha, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
 
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
             f, _, grad = self._get_grad(input)
             grad_flat = self.map.flatten_theta(grad)
 
-            mask = self._get_mask(theta_alpha, grad_flat, L, U)
-            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-            df = self._dot(grad_flat, p_masked)
+            df = self._arc_slope(grad_flat, p_flat, theta_alpha, theta_trial)
 
             self.map.set_theta(theta_backup)
-            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
+            return ValueAndGradient(x=alpha, f=f, df=tf.cast(df, grad_flat.dtype))
 
         def value_fn(alpha: tf.Tensor) -> tf.Tensor:
-            alpha_eff = tf.minimum(alpha, amax)
             theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+            theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
             f = self._get_cost(input)
             self.map.set_theta(theta_backup)
@@ -136,27 +148,35 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
 
         return super().minimize_impl(inputs)
 
-    @tf.function(reduce_retracing=True)
-    def _alpha_max(self, w: tf.Tensor, p: tf.Tensor, L: tf.Tensor, U: tf.Tensor) -> tf.Tensor:
-        # Maximum alpha such that w + alpha p stays within [L, U] componentwise
+    def _breakpoints(
+        self, w: tf.Tensor, p: tf.Tensor, L: tf.Tensor, U: tf.Tensor
+    ) -> tf.Tensor:
+        """Step length at which each component of w + alpha p reaches its bound.
+
+        Components not heading for a bound get +inf (Byrd, Lu, Nocedal & Zhu 1995).
+        """
         inf = tf.constant(float("inf"), dtype=w.dtype)
+        a_pos = tf.where(p > 0.0, (U - w) / p, inf)
+        a_neg = tf.where(p < 0.0, (L - w) / p, inf)
+        return tf.maximum(tf.minimum(a_pos, a_neg), tf.constant(0.0, dtype=w.dtype))
 
-        p_pos = p > 0.0
-        p_neg = p < 0.0
+    def _median_breakpoint(
+        self, w: tf.Tensor, p: tf.Tensor, L: tf.Tensor, U: tf.Tensor
+    ) -> tf.Tensor:
+        """Median of the finite breakpoints, +inf if no component reaches a bound.
 
-        a_pos = tf.where(p_pos, (U - w) / p, inf)
-        a_neg = tf.where(p_neg, (L - w) / p, inf)
+        Used as the Cauchy probe length: at the first breakpoint the probe barely
+        moves, so it predicts the free set at w itself and the active-set
+        prediction is inert.
+        """
+        a = self._breakpoints(w, p, L, U)
+        n = tf.reduce_sum(tf.cast(tf.math.is_finite(a), tf.int32))
+        return tf.cond(
+            n > 0,
+            lambda: tf.gather(tf.sort(a), (n - 1) // 2),  # +inf sorts last
+            lambda: tf.constant(float("inf"), dtype=w.dtype),
+        )
 
-        a = tf.minimum(a_pos, a_neg)
-        amax = tf.reduce_min(a)
-
-        return tf.maximum(amax, tf.constant(0.0, dtype=w.dtype))
-    
-    def _clip_alpha(self, alpha: tf.Tensor, theta_flat: tf.Tensor, p_flat: tf.Tensor) -> tf.Tensor:
-        L, U = self.map.get_box_bounds_flat()
-        amax = self._alpha_max(theta_flat, p_flat, L, U)
-        return tf.minimum(alpha, amax)
-    
     def _constrain_pair(
         self,
         s: tf.Tensor,
@@ -225,7 +245,7 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         """
         Lightweight Cauchy point approximation:
         d = projected steepest descent
-        t = min(step_scale, alpha_max(w, d, L, U))
+        t = min(step_scale, median finite breakpoint of w + t d)
         w_c = clip(w + t d)
         Returns (w_c, mask_c, t)
         """
@@ -237,8 +257,8 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             return w, mask_c, tf.cast(0.0, w.dtype)
 
         def do_move():
-            amax = self._alpha_max(w, d, L, U)
-            t = tf.minimum(tf.cast(step_scale, w.dtype), tf.cast(amax, w.dtype))
+            t_bp = self._median_breakpoint(w, d, L, U)
+            t = tf.minimum(tf.cast(step_scale, w.dtype), t_bp)
             w_c = self._project(w + t * d, L, U)
             # Still using g at w (cheap approximation); if you want, you can recompute g at w_c (not lightweight).
             mask_c = self._get_mask(w_c, g, L, U)

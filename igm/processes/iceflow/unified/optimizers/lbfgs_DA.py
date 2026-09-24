@@ -315,25 +315,20 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         grad0_flat: Optional[tf.Tensor] = None,
     ) -> LineSearchResult:
         L, U = self.map.get_box_bounds_flat()
-        amax = self._alpha_max(theta_flat, p_flat, L, U)
 
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
-            alpha_eff = tf.minimum(alpha, amax)
-
             theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+            theta_alpha, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
 
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
 
             f, grad_theta = self._get_grad_trial(input)
             grad_flat = self.map.flatten_theta(grad_theta)
 
-            mask = self._get_mask(theta_alpha, grad_flat, L, U)
-            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-            df = self._dot(grad_flat, p_masked)
+            df = self._arc_slope(grad_flat, p_flat, theta_alpha, theta_trial)
 
             self.map.set_theta(theta_backup)
-            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
+            return ValueAndGradient(x=alpha, f=f, df=tf.cast(df, grad_flat.dtype))
 
         # Value/slope at alpha = 0 are already known to the caller (cost and
         # gradient at the current iterate); hand them to the line search to
