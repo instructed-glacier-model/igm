@@ -329,6 +329,7 @@ iceflow:
       patches_per_batch: 1
     halt:
       freq: 1
+      raise_on_failure: false
       success: []
       failure: []
       criteria: 

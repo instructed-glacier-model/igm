@@ -31,6 +31,7 @@ class InterfaceHalt:
             "crit_failure": crit_failure,
             "freq": cfg_halt.freq,
             "dtype": cfg_numerics.precision,
+            "raise_on_failure": cfg_halt.raise_on_failure,
         }
 
     @staticmethod

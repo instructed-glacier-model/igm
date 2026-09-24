@@ -238,6 +238,7 @@ def test_rel_initial_is_available_from_halt_configuration():
                     "unified": {
                         "halt": {
                             "freq": 1,
+                            "raise_on_failure": False,
                             "success": [
                                 {
                                     "criterion": "rel_initial",
@@ -356,3 +357,55 @@ def test_abs_change_can_be_enabled_from_halt_configuration():
     cfg_halt.success = []
     halt_args = InterfaceHalt.get_halt_args(cfg)
     assert halt_args["crit_success"] == []
+
+
+def test_raise_on_failure_aborts_the_solve_on_a_nan_velocity():
+    from igm.processes.iceflow.unified.halt.criteria.nan import CriterionNaN
+    from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
+    from igm.processes.iceflow.unified.optimizers.cg_newton import OptimizerCGNewton
+
+    shape = (1, 1, 2, 2)
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
+    nan_cost = lambda U, V, inputs: tf.reduce_sum(U * U + V * V) * float("nan")
+    halt = Halt(
+        crit_failure=[CriterionNaN(metric=MetricU(), dtype="float32")],
+        dtype="float32",
+        raise_on_failure=True,
+    )
+    optimizer = OptimizerCGNewton(
+        cost_fn=nan_cost,
+        map=mapping,
+        halt=halt,
+        print_cost=False,
+        precision="single",
+        preconditioner="none",
+        iter_max=2,
+        damping=0.0,
+        cg_max_iter=4,
+        warm_start=False,
+    )
+    with pytest.raises(RuntimeError):
+        optimizer.minimize(tf.zeros([1, 2, 2, 1]))
+
+
+def test_raise_on_failure_works_with_a_compiled_optimizer():
+    from igm.processes.iceflow.unified.halt.criteria.nan import CriterionNaN
+    from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
+    from igm.processes.iceflow.unified.optimizers.adam import OptimizerAdam
+
+    shape = (1, 1, 2, 2)
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
+    halt = Halt(
+        crit_failure=[CriterionNaN(metric=MetricU(), dtype="float32")],
+        raise_on_failure=True,
+    )
+    optimizer = OptimizerAdam(
+        cost_fn=lambda U, V, inputs: tf.reduce_sum(U + V) * float("nan"),
+        map=mapping,
+        halt=halt,
+        print_cost=False,
+        iter_max=2,
+    )
+
+    with pytest.raises(RuntimeError):
+        optimizer.minimize(tf.zeros([1, 2, 2, 1]))

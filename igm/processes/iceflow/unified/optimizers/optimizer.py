@@ -114,6 +114,8 @@ class Optimizer(ABC):
         self.map.on_minimize_start(int(self.iter_max))
         self._estimate_error_at_start(inputs)
         costs = self.minimize_impl(inputs)
+        if self.halt:
+            self.halt.raise_if_failed(type(self).__name__)
         return costs
 
     @abstractmethod

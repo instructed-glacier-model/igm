@@ -1022,6 +1022,10 @@ unified:
       Type: list
       Description: "List of success criteria."
       Units: dimless
+    raise_on_failure:
+      Type: boolean
+      Description: "Raise RuntimeError after a failure criterion stops an optimizer instead of returning its last iterate."
+      Units: dimless
     failure:
       Type: list
       Description: "List of failure criteria."
