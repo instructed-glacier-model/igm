@@ -6,6 +6,10 @@ keep_open:
   Type: boolean
   Units: dimless
   Description: "Keep the NetCDF file open between saves and close it after the final save."
+complevel:
+  Type: integer
+  Units: dimless
+  Description: "Lossless zlib compression level (0-9, with byte shuffle) for the saved fields; 0 (default) disables compression. Level 1 typically makes files 2-5x smaller (most where much of the domain is ice-free); higher levels gain little. Costs roughly 0.35 s per save per million grid cells with the default variables, so consider 0 for large domains that save often."
 vars_to_save:
   Type: list
   Units: dimless

@@ -141,17 +141,33 @@ def run(cfg, state):
                         cfg.processes.iceflow.numerics.Nz
                     )  # TODO: fix this, that's not what we want
 
+            # one chunk per save, so each append compresses only the new slice
+            complevel = cfg.outputs.write_ncdf.complevel
+            compression_args = (
+                dict(zlib=True, complevel=complevel, shuffle=True)
+                if complevel > 0
+                else {}
+            )
+
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
                     val = getattr(state, var).numpy()
                     if val.ndim == 2:
                         E = nc.createVariable(
-                            var, np.dtype("float32").char, ("time", "y", "x")
+                            var,
+                            np.dtype("float32").char,
+                            ("time", "y", "x"),
+                            chunksizes=(1,) + val.shape,
+                            **compression_args,
                         )
                         E[0, :, :] = val
                     elif val.ndim == 3:
                         E = nc.createVariable(
-                            var, np.dtype("float32").char, ("time", "z", "y", "x")
+                            var,
+                            np.dtype("float32").char,
+                            ("time", "z", "y", "x"),
+                            chunksizes=(1,) + val.shape,
+                            **compression_args,
                         )
                         E[0, :, :, :] = val
                     if var in state.var_info_ncdf_ex.keys():
@@ -167,9 +183,7 @@ def run(cfg, state):
 
             nc = state._write_ncdf_handle
             if nc is None:
-                nc = Dataset(
-                    cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4"
-                )
+                nc = Dataset(cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4")
 
             d = len(nc.dimensions["time"])
             nc.variables["time"][d] = state.t.numpy()
