@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import compute_grounded_mask
 from igm.processes.thk import thk as thk_module
 
 
@@ -50,17 +51,28 @@ def _state():
     )
 
 
-def test_consistent_iceflow_density_ratio_is_accepted():
+def test_iceflow_density_ratio_is_canonical_for_surface_and_grounding():
     state = _state()
-    cfg = _cfg(0.893, ice_density=918.0, water_density=1028.0)
+    # This rounded ratio used to make the hydrostatic floating node appear
+    # weakly grounded under the strict ``phi > 0`` friction criterion.
+    cfg = _cfg(0.8929961, ice_density=918.0, water_density=1028.0)
 
     thk_module.initialize(cfg, state)
 
+    ratio_density = 918.0 / 1028.0
     expected_lower = np.maximum(
-        np.asarray(state.topg), -0.893 * np.asarray(state.thk)
+        np.asarray(state.topg), -ratio_density * np.asarray(state.thk)
     )
     np.testing.assert_allclose(state.lsurf, expected_lower)
     np.testing.assert_allclose(state.usurf, expected_lower + state.thk)
+
+    grounded = compute_grounded_mask(
+        state.thk,
+        state.usurf - state.thk,
+        state.water_level,
+        tf.constant(1028.0 / 918.0),
+    )
+    np.testing.assert_array_equal(grounded, [[False, True]])
 
 
 def test_inconsistent_iceflow_density_ratio_fails_before_tracing_transport():
@@ -68,6 +80,14 @@ def test_inconsistent_iceflow_density_ratio_fails_before_tracing_transport():
 
     with pytest.raises(ValueError, match="Inconsistent flotation densities"):
         thk_module.initialize(cfg, _state())
+
+
+def test_thickness_density_ratio_remains_the_fallback_without_iceflow():
+    state = _state()
+    thk_module.initialize(_cfg(0.9), state)
+
+    expected_lower = np.maximum(np.asarray(state.topg), -0.9 * np.asarray(state.thk))
+    np.testing.assert_allclose(state.lsurf, expected_lower)
 
 
 def test_nonpositive_thickness_density_ratio_is_rejected_without_iceflow():
@@ -85,8 +105,6 @@ def test_nonpositive_thickness_density_ratio_is_rejected_without_iceflow():
 def test_nonpositive_iceflow_densities_are_rejected(
     ice_density, water_density, message
 ):
-    cfg = _cfg(
-        0.9, ice_density=ice_density, water_density=water_density
-    )
+    cfg = _cfg(0.9, ice_density=ice_density, water_density=water_density)
     with pytest.raises(ValueError, match=message):
         thk_module.initialize(cfg, _state())

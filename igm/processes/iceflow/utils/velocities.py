@@ -4,15 +4,44 @@ import tensorflow as tf
 from igm.utils.math.getmag import getmag
 
 
-@tf.function(jit_compile=True)
-def compute_cell_ice_mask(thk: tf.Tensor) -> tf.Tensor:
-    """Return cells whose four corner nodes have positive thickness."""
+def _all_cell_corners(mask: tf.Tensor) -> tf.Tensor:
+    """Return cells for which all four corner nodes are true."""
     return (
-        (thk[..., :-1, :-1] > 0.0)
-        & (thk[..., :-1, 1:] > 0.0)
-        & (thk[..., 1:, :-1] > 0.0)
-        & (thk[..., 1:, 1:] > 0.0)
+        mask[..., :-1, :-1]
+        & mask[..., :-1, 1:]
+        & mask[..., 1:, :-1]
+        & mask[..., 1:, 1:]
     )
+
+
+def _any_cell_corner(mask: tf.Tensor) -> tf.Tensor:
+    """Return cells for which at least one corner node is true."""
+    return (
+        mask[..., :-1, :-1]
+        | mask[..., :-1, 1:]
+        | mask[..., 1:, :-1]
+        | mask[..., 1:, 1:]
+    )
+
+
+@tf.function(jit_compile=True)
+def compute_cell_ice_mask(
+    thk: tf.Tensor, grounded: Optional[tf.Tensor] = None
+) -> tf.Tensor:
+    """Return Q1 cells with mechanically supported velocity degrees of freedom.
+
+    A full four-ice-node cell is valid whether grounded or floating.  A
+    partially covered cell is valid only when it contains ice and all four
+    corner locations are grounded; this retains land margins without adding
+    unsupported degrees of freedom at a floating front.  If ``grounded`` is
+    omitted, only full ice cells are returned.
+    """
+    ice = thk > 0.0
+    full_ice = _all_cell_corners(ice)
+    if grounded is None:
+        return full_ice
+    full_grounded = _all_cell_corners(tf.cast(grounded, tf.bool))
+    return full_ice | (_any_cell_corner(ice) & full_grounded)
 
 
 def _pad_cell_mask_to_nodes(
@@ -30,9 +59,11 @@ def _pad_cell_mask_to_nodes(
 
 
 @tf.function(jit_compile=True)
-def compute_node_ice_mask(thk: tf.Tensor) -> tf.Tensor:
+def compute_node_ice_mask(
+    thk: tf.Tensor, grounded: Optional[tf.Tensor] = None
+) -> tf.Tensor:
     """Return ice nodes belonging to at least one active Q1 cell."""
-    cell_mask = compute_cell_ice_mask(thk)
+    cell_mask = compute_cell_ice_mask(thk, grounded)
     node_support = (
         _pad_cell_mask_to_nodes(cell_mask, 0, 1, 0, 1)
         | _pad_cell_mask_to_nodes(cell_mask, 0, 1, 1, 0)

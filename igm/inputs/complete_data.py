@@ -5,17 +5,18 @@
 
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
+
+
 def complete_data(state, water_level=None):
     """
     This function adds a postriori import fields such as X, Y, x, dx, ....
 
     ``water_level`` is an optional sub-config with fields ``include`` and
-    ``value``. When ``include`` is True and ``state.water_level`` is not
-    already present (not loaded from the input NetCDF), a uniform 2D
-    field equal to ``value`` is created. Downstream modules that need a
-    water level -- e.g. the ``floating`` energy component of iceflow --
-    then see it on state without the ``thk`` / ``thk_ls`` module having
-    to populate it, which would force an awkward process ordering.
+    ``value``. ``state.water_level`` is always created unless it was loaded
+    from the input file: a uniform 2D field equal to ``value`` when
+    ``include`` is True, otherwise the "no ocean" level
+    (see ``igm.processes.thk.masks``).
     """
 
     # define grids, i.e. state.X and state.Y has same shape as state.thk
@@ -32,7 +33,9 @@ def complete_data(state, water_level=None):
 
     # if thickness is not defined in the netcdf, then it is set to zero
     if not hasattr(state, "thk"):
-        state.thk = tf.Variable(tf.zeros((state.y.shape[0], state.x.shape[0])), trainable=False)
+        state.thk = tf.Variable(
+            tf.zeros((state.y.shape[0], state.x.shape[0])), trainable=False
+        )
     else:
         # Clamp to non-negative: some input NetCDFs encode small negative thk
         # values near ice edges (interpolation/rounding artifacts). The legacy
@@ -52,14 +55,12 @@ def complete_data(state, water_level=None):
     if not hasattr(state, "usurf"):
         state.usurf = tf.Variable(state.topg + state.thk, trainable=False)
 
-    # water_level: populate a uniform field only when explicitly requested
-    # and not already loaded from the NetCDF.
-    if (water_level is not None
-            and getattr(water_level, "include", False)
-            and not hasattr(state, "water_level")):
+    # water_level: a uniform sea/lake level when requested, else "no ocean";
+    # a field loaded from the input file is kept.
+    if not hasattr(state, "water_level"):
+        include = water_level is not None and getattr(water_level, "include", False)
+        level = water_level.value if include else WATER_LEVEL_NO_OCEAN
         state.water_level = tf.Variable(
-            tf.ones_like(state.topg)
-            * tf.cast(water_level.value, state.topg.dtype),
+            tf.ones_like(state.topg) * tf.cast(level, state.topg.dtype),
             trainable=False,
         )
-

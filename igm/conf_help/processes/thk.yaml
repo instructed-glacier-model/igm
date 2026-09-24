@@ -7,6 +7,10 @@ domain:
     Type: list
     Units: dimless
     Description: "Active-cell constraints intersected before thickness transport. Each entry has a `method`: `grounded` recomputes flotation from live geometry; `initial_ice` retains cells above its optional `min_thickness` at initialization; `interior` retains the four-neighbour interior of a named state `field`; `state_mask` uses a named state `field` directly. An empty list evolves the full grid. Internal active/inactive faces carry zero flux, and inactive thickness is held fixed."
+remove_rigid_body_modes:
+  Type: boolean
+  Units: dimless
+  Description: "If true, ice without a mechanical anchor to grounded ice is removed after every thickness update (and once at initialization). Floating ice must belong to full Q1 cells connected through cell edges to a full cell with a grounded corner; otherwise it can translate or rotate freely, so its velocity is not determined by the force balance and exact solves return arbitrary speeds that throttle the CFL step. Grounded ice is never removed. With a sub-grid front, iceflow padding and Href belonging only to removed ice are filtered too."
 boundary:
   left:
     Type: string

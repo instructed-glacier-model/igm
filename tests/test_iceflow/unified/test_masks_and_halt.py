@@ -7,7 +7,14 @@ import tensorflow as tf
 from omegaconf import OmegaConf
 
 from igm.processes.iceflow.unified import utils
+from igm.processes.iceflow.unified.evaluator.evaluator import (
+    EvaluatorParams,
+    evaluator_iceflow,
+)
+from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
+from igm.processes.thk.masks import compute_grounded_mask
 from igm.processes.iceflow.unified.halt import InterfaceHalt
+from igm.processes.iceflow.unified.halt import Halt
 from igm.processes.iceflow.unified.halt.criteria.rel_initial import (
     CriterionRelInitial,
 )
@@ -22,9 +29,7 @@ from igm.processes.iceflow.utils.velocities import (
 
 
 def test_ice_masks_exclude_nodes_without_active_cell_support():
-    thk = tf.constant(
-        [[[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
-    )
+    thk = tf.constant([[[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
 
     np.testing.assert_array_equal(
         compute_cell_ice_mask(thk).numpy(),
@@ -32,13 +37,28 @@ def test_ice_masks_exclude_nodes_without_active_cell_support():
     )
     np.testing.assert_array_equal(
         compute_node_ice_mask(thk).numpy(),
-        np.array(
-            [[[True, True, False], [True, True, False], [False, False, False]]]
-        ),
+        np.array([[[True, True, False], [True, True, False], [False, False, False]]]),
     )
 
 
-def test_unified_cost_excludes_cells_with_an_ice_free_corner(monkeypatch):
+@pytest.mark.parametrize(
+    ("topg_value", "expected_cost", "expected_gradient"),
+    [
+        (
+            10.0,
+            8.0,
+            np.array([[[[1, 2, 1], [2, 4, 2], [1, 2, 1]]]]) / 4.0,
+        ),
+        (
+            -10.0,
+            6.0,
+            np.array([[[[1, 2, 1], [2, 3, 1], [1, 1, 0]]]]) / 4.0,
+        ),
+    ],
+)
+def test_unified_cost_retains_grounded_but_not_floating_partial_cells(
+    monkeypatch, topg_value, expected_cost, expected_gradient
+):
     class CellSumComponent:
         name = "cell_sum"
 
@@ -61,14 +81,20 @@ def test_unified_cost_excludes_cells_with_an_ice_free_corner(monkeypatch):
         utils, "get_energy_components", lambda cfg: [CellSumComponent()]
     )
     cfg = OmegaConf.create(
-        {"processes": {"iceflow": {"unified": {"inputs": ["thk"]}}}}
+        {
+            "processes": {
+                "iceflow": {
+                    "physics": {"ice_density": 910.0, "water_density": 1000.0},
+                    "unified": {"inputs": ["thk", "usurf", "water_level"]},
+                }
+            }
+        }
     )
     state = SimpleNamespace(iceflow=SimpleNamespace(discr_h=None, discr_v=None))
     cost_fn = utils.get_cost_fn(cfg, state)
-    thk = tf.constant(
-        [[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]]]
-    )
-    inputs = thk[..., tf.newaxis]
+    thk = tf.constant([[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]]])
+    topg = tf.fill(tf.shape(thk), tf.cast(topg_value, thk.dtype))
+    inputs = tf.stack([thk, thk + topg, tf.zeros_like(thk)], axis=-1)
     U = tf.Variable(tf.ones((1, 1, 3, 3)))
     V = tf.Variable(tf.ones((1, 1, 3, 3)))
 
@@ -76,10 +102,109 @@ def test_unified_cost_excludes_cells_with_an_ice_free_corner(monkeypatch):
         cost = cost_fn(U, V, inputs)
     grad_U, grad_V = tape.gradient(cost, [U, V])
 
-    assert float(cost) == 6.0
-    expected = np.array([[[[1, 2, 1], [2, 3, 1], [1, 1, 0]]]]) / 4.0
-    np.testing.assert_allclose(grad_U.numpy(), expected)
-    np.testing.assert_allclose(grad_V.numpy(), expected)
+    assert float(cost) == expected_cost
+    np.testing.assert_allclose(grad_U.numpy(), expected_gradient)
+    np.testing.assert_allclose(grad_V.numpy(), expected_gradient)
+
+
+@pytest.mark.parametrize(
+    ("thk", "grounded", "expected_cell", "expected_node"),
+    [
+        (
+            [[1.0, 0.0], [1.0, 0.0]],
+            [[True, True], [True, True]],
+            [[True]],
+            [[True, False], [True, False]],
+        ),
+        (
+            [[1.0, 0.0], [1.0, 0.0]],
+            [[True, False], [True, False]],
+            [[False]],
+            [[False, False], [False, False]],
+        ),
+        (
+            [[1.0, 1.0], [1.0, 1.0]],
+            [[False, False], [False, False]],
+            [[True]],
+            [[True, True], [True, True]],
+        ),
+    ],
+)
+def test_local_cell_and_node_masks(thk, grounded, expected_cell, expected_node):
+    thk = tf.constant([thk])
+    grounded = tf.constant([grounded])
+
+    np.testing.assert_array_equal(
+        compute_cell_ice_mask(thk, grounded).numpy(), [expected_cell]
+    )
+    np.testing.assert_array_equal(
+        compute_node_ice_mask(thk, grounded).numpy(), [expected_node]
+    )
+
+
+@pytest.mark.parametrize(
+    ("thk", "topg", "expected"),
+    [
+        (
+            [[1.0, 0.0], [1.0, 0.0]],
+            [[10.0, 10.0], [10.0, 10.0]],
+            [[True, False], [True, False]],
+        ),
+        (
+            [[1.0, 0.0], [1.0, 0.0]],
+            [[-10.0, -10.0], [-10.0, -10.0]],
+            [[False, False], [False, False]],
+        ),
+        (
+            [[1.0, 1.0], [1.0, 1.0]],
+            [[-10.0, -10.0], [-10.0, -10.0]],
+            [[True, True], [True, True]],
+        ),
+    ],
+)
+def test_evaluator_uses_the_same_local_node_support(thk, topg, expected):
+    thk = tf.constant(thk)
+    topg = tf.constant(topg)
+    shape = (1, 1) + tuple(thk.shape)
+    mapping = MappingIdentity(
+        [], tf.ones(shape), 2.0 * tf.ones(shape), precision="single"
+    )
+    parameters = EvaluatorParams(Nz=1, force_max_velbar=0.0, rho_ratio=1000.0 / 910.0)
+    result = evaluator_iceflow(
+        tf.zeros((1,) + tuple(thk.shape) + (1,)),
+        parameters,
+        thk=thk,
+        usurf=thk + topg,
+        water_level=tf.zeros_like(thk),
+        mapping=mapping,
+        V_bar=tf.ones(1),
+        V_b=tf.ones(1),
+        V_s=tf.ones(1),
+    )
+
+    expected = np.array([expected])
+    np.testing.assert_array_equal(result["U"].numpy(), expected)
+    np.testing.assert_array_equal(result["V"].numpy(), 2.0 * expected)
+
+
+def test_local_mask_uses_the_sliding_flotation_criterion():
+    thk = tf.constant([[100.0, 0.0], [100.0, 0.0]])
+    topg = tf.constant([[10.0, 10.0], [-200.0, -200.0]])
+    grounded = compute_grounded_mask(
+        thk, topg, tf.zeros_like(thk), tf.constant(1000.0 / 910.0)
+    )
+
+    np.testing.assert_array_equal(grounded.numpy(), [[True, True], [False, False]])
+
+    floating_thk = tf.constant([1000.0])
+    floating_lower_surface = -tf.constant(918.0 / 1028.0) * floating_thk
+    floating = compute_grounded_mask(
+        floating_thk,
+        floating_lower_surface,
+        tf.zeros_like(floating_thk),
+        tf.constant(1028.0 / 918.0),
+    )
+    np.testing.assert_array_equal(floating.numpy(), [False])
 
 
 def test_rel_initial_compares_against_first_metric_norm_and_resets():
@@ -113,6 +238,7 @@ def test_rel_initial_is_available_from_halt_configuration():
                     "unified": {
                         "halt": {
                             "freq": 1,
+                            "raise_on_failure": False,
                             "success": [
                                 {
                                     "criterion": "rel_initial",
@@ -120,9 +246,7 @@ def test_rel_initial_is_available_from_halt_configuration():
                                 }
                             ],
                             "failure": [],
-                            "criteria": {
-                                "rel_initial": {"tol": 0.1, "ord": "l2"}
-                            },
+                            "criteria": {"rel_initial": {"tol": 0.1, "ord": "l2"}},
                             "metrics": {"grad_u_norm": {}},
                         }
                     },
@@ -233,3 +357,55 @@ def test_abs_change_can_be_enabled_from_halt_configuration():
     cfg_halt.success = []
     halt_args = InterfaceHalt.get_halt_args(cfg)
     assert halt_args["crit_success"] == []
+
+
+def test_raise_on_failure_aborts_the_solve_on_a_nan_velocity():
+    from igm.processes.iceflow.unified.halt.criteria.nan import CriterionNaN
+    from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
+    from igm.processes.iceflow.unified.optimizers.cg_newton import OptimizerCGNewton
+
+    shape = (1, 1, 2, 2)
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
+    nan_cost = lambda U, V, inputs: tf.reduce_sum(U * U + V * V) * float("nan")
+    halt = Halt(
+        crit_failure=[CriterionNaN(metric=MetricU(), dtype="float32")],
+        dtype="float32",
+        raise_on_failure=True,
+    )
+    optimizer = OptimizerCGNewton(
+        cost_fn=nan_cost,
+        map=mapping,
+        halt=halt,
+        print_cost=False,
+        precision="single",
+        preconditioner="none",
+        iter_max=2,
+        damping=0.0,
+        cg_max_iter=4,
+        warm_start=False,
+    )
+    with pytest.raises(RuntimeError):
+        optimizer.minimize(tf.zeros([1, 2, 2, 1]))
+
+
+def test_raise_on_failure_works_with_a_compiled_optimizer():
+    from igm.processes.iceflow.unified.halt.criteria.nan import CriterionNaN
+    from igm.processes.iceflow.unified.mappings.identity import MappingIdentity
+    from igm.processes.iceflow.unified.optimizers.adam import OptimizerAdam
+
+    shape = (1, 1, 2, 2)
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
+    halt = Halt(
+        crit_failure=[CriterionNaN(metric=MetricU(), dtype="float32")],
+        raise_on_failure=True,
+    )
+    optimizer = OptimizerAdam(
+        cost_fn=lambda U, V, inputs: tf.reduce_sum(U + V) * float("nan"),
+        map=mapping,
+        halt=halt,
+        print_cost=False,
+        iter_max=2,
+    )
+
+    with pytest.raises(RuntimeError):
+        optimizer.minimize(tf.zeros([1, 2, 2, 1]))

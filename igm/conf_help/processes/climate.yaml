@@ -72,81 +72,85 @@ glacialindex:
   climate_0_file:
     Type: string
     Units: dimless
-    Description: "NetCDF file for the modern (warm) end-member climate."
+    Description: "NetCDF file for the GI=0 end-member climate (warm state, e.g. modern or interglacial)."
   climate_1_file:
     Type: string
     Units: dimless
-    Description: "NetCDF file for the glacial (cold) end-member climate."
+    Description: "NetCDF file for the GI=1 end-member climate (cold state, e.g. glacial maximum)."
   signal_file:
     Type: string
     Units: dimless
     Description: "File containing the glacial index signal (time, index) used to interpolate between end members."
   vertical_lapse_rate_0:
     Type: float
-    Units: °C (100 m)^{-1}
-    Description: "Vertical lapse rate applied to the modern end-member temperature field."
+    Units: °C km^{-1}
+    Description: "Adiabatic lapse rate of air temperature applied to the GI=0 end-member temperature field."
   vertical_lapse_rate_1:
     Type: float
-    Units: °C (100 m)^{-1}
-    Description: "Vertical lapse rate applied to the glacial end-member temperature field."
+    Units: °C km^{-1}
+    Description: "Adiabatic lapse rate of air temperature applied to the GI=1 end-member temperature field."
+  temp_std:
+    Type: float
+    Units: °C
+    Description: "Standard deviation of daily air temperature, used when a climate file has no `air_temp_sd` variable."
   temporal_resampling:
     Type: integer
-    Units: dimless
-    Description: "Number of sub-steps per model time step for temporal resampling of the glacial index signal."
+    Units: yr^{-1}
+    Description: "Number of samples per year used to represent the seasonal cycle: the monthly fields of the climate files are linearly interpolated onto this many sub-annual steps (12 = monthly, 52 = weekly). Independent of update_freq, which only sets how often (in years) the climate is recomputed. Must be >= the number of time records in the climate files. Memory grows linearly with it (52 uses ~4x the memory of 12)."
 station:
   update_freq:
     Type: float
     Units: yr
-    Description: "Update climate fields every X years."
+    Description: "Update the climate fields each X years during simulation"
   zero_degree_isotherm:
     Type: float
-    Units: m
-    Description: "Elevation at which mean annual temperature is 0 °C."
+    Units: m a.s.l.
+    Description: "Elevation at which mean annual temperature is 0 °C"
   adiabatic_lapse_rate:
     Type: float
     Units: °C m^{-1}
-    Description: "Adiabatic lapse rate for air temperature."
+    Description: "Adiabatic lapse rate for air temperature"
   air_temperature_stdev:
     Type: float
-    Units: °C
-    Description: "Space-independent standard deviation of daily temperature variability."
+    Units: °C or K
+    Description: "The space-independent standard deviation of the daily temperature variability"
   precipitation_lapse_rate:
     Type: float
     Units: "% per 100 m"
-    Description: "Change in precipitation with altitude as a fraction of reference_precipitation."
+    Description: "Change in precipitation with altitude (in % / 100m): i.e. in % of the given reference_precipitation value."
   reference_precipitation_elevation:
     Type: float
-    Units: m
-    Description: "Elevation of the reference precipitation station."
+    Units: m a.s.l.
+    Description: "Elevation at which mean cumulative annual precipitation is known (e.g. a weather station)"
   reference_precipitation:
     Type: float
-    Units: mm yr^{-1}
-    Description: "Mean cumulative annual precipitation at the reference station."
+    Units: mm yr^{-1} w.e.
+    Description: "Mean cumulative annual precipitation (in mm yr-1 water equivalent) where it is known (e.g. a weather station)"
   min_precipitation_allowed:
     Type: float
-    Units: mm yr^{-1}
-    Description: "Minimum allowed precipitation to avoid unrealistically low values."
+    Units: mm yr^{-1} w.e.
+    Description: "Minimum allowed precipitation to avoid unrealistically low (e.g. negative) values"
   cosine_yearly_cycle_temp:
     Type: boolean
     Units: dimless
-    Description: "Add an idealised cosine seasonal temperature signal."
+    Description: "Keep the temperature constant throughout the year ('False'), or create an idealised seasonal sinusoidal signal of temperature change ('True')"
   cosine_yearly_cycle_amplitude:
     Type: float
-    Units: °C
-    Description: "Amplitude of the cosine seasonal temperature variation."
+    Units: °C or K
+    Description: "Amplitude of the cosine-based seasonal temperature variation, defining the maximum excursion from the mean annual temperature (not between min and max)"
   southern_hemisphere_climate:
     Type: boolean
     Units: dimless
-    Description: "Shift the seasonal cycle by 6 months for southern-hemisphere glaciers."
+    Description: "Set to 'True' for Southern Hemisphere hydrological year (May - April cycle) and Southern seasonal cycle (i.e. warmest temperatures in January)"
   export_climate_ref:
     Type: boolean
     Units: dimless
-    Description: "Export a climate_ref.nc file for the original topography."
+    Description: "Set to 'True' to export a NetCDF file called 'climate_ref.nc' which allows to view the climate fields produced from original topography and user parameters"
   time_dependent_climate:
     Type: boolean
     Units: dimless
-    Description: "Allow climate to vary in time via climate_change_array."
+    Description: "Keep climate constant throughout simulation ('False'), or make it change in time ('True') and thus use the user-given climate_change_array"
   climate_change_array:
     Type: list
     Units: dimless
-    Description: "Time-dependent offsets: rows of [time, temperature_offset (°C), precip_offset (mm yr^{-1})]."
+    Description: "Time-dependent parameters for temperature offsets (in °C of change) and precipitation offsets (in % of the original precip field, i.e. '100' means no change, '110' means +10% precip). Array structure: [time, temperature_offset, precip_offset]"

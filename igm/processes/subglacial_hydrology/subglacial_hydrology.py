@@ -79,12 +79,6 @@ def _compute_N(cfg: DictConfig, state: State) -> tf.Tensor:
     elif mode == "percentage":
         N = (1.0 - tf.cast(cfg_sh.percentage, dtype)) * p_ice
     elif mode == "ocean_connected":
-        if not hasattr(state, "water_level"):
-            raise ValueError(
-                "❌ subglacial_hydrology.mode = 'ocean_connected' requires "
-                "state.water_level. Activate the 'thk' module (which "
-                "creates state.water_level) before 'subglacial_hydrology'."
-            )
         rho_water = tf.cast(cfg_phys.water_density, dtype)
         ocean_depth = tf.maximum(state.water_level - state.topg, 0.0)
         N = p_ice - rho_water * g * ocean_depth * PA_TO_MPA

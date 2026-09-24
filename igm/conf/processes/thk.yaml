@@ -7,6 +7,7 @@ thk:
 
   domain:
     constraints: []                    # intersect reusable active-cell constraints; empty evolves the full grid
+  remove_rigid_body_modes: false       # calve off floating ice not anchored to grounded ice (icebergs) after each update
 
   boundary:                            # independent thickness-transport domain sides
     left: zero                         # zero/open | symmetric/no-flux | periodic

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk import boundary
 from igm.processes.thk import thk as thk_module
 
@@ -31,7 +32,12 @@ def _cfg(scheme="explicit", boundary_value=None):
 
 def _state():
     thickness = tf.ones((4, 7), tf.float32)
-    return SimpleNamespace(thk=thickness, topg=tf.zeros_like(thickness), it=0)
+    return SimpleNamespace(
+        thk=thickness,
+        topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
+        it=0,
+    )
 
 
 def test_side_modes_and_readable_aliases_are_normalized():
@@ -193,6 +199,7 @@ def test_explicit_symmetric_boundary_blocks_outflow_on_each_side(side):
     state = SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=ubar,
         vbar=vbar,
         smb=tf.zeros_like(thickness),
@@ -218,6 +225,7 @@ def test_explicit_symmetric_boundary_remains_no_flux_with_flux_smoothing():
     state = SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=generator.normal(thickness.shape),
         vbar=generator.normal(thickness.shape),
         smb=tf.zeros_like(thickness),
@@ -227,9 +235,9 @@ def test_explicit_symmetric_boundary_remains_no_flux_with_flux_smoothing():
     )
     cfg = _cfg(
         scheme="explicit",
-        boundary_value={name: "symmetric" for name in (
-            "left", "right", "top", "bottom"
-        )},
+        boundary_value={
+            name: "symmetric" for name in ("left", "right", "top", "bottom")
+        },
     )
     cfg.processes.thk.divflux_smooth_sigma = 0.8
 
@@ -247,6 +255,7 @@ def test_explicit_symmetric_boundary_handles_single_cell_axes(shape):
     state = SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         ubar=tf.ones_like(thickness),
         vbar=-tf.ones_like(thickness),
         smb=tf.zeros_like(thickness),

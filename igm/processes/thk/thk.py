@@ -27,7 +27,8 @@ from .domains import (
     update_active_domain,
 )
 from .fronts import get_front
-from .surfaces import update_surfaces, validate_density_ratio
+from .rigid_body import remove_rigid_body_modes
+from .surfaces import get_density_ratio, update_surfaces, validate_density_ratio
 from .transport import get_transport
 
 
@@ -47,6 +48,8 @@ class ThkComponents:
     pipeline: tuple
     domain_constraints: tuple
     boundaries: boundary.BoundaryConditions
+    remove_rigid_body_modes: bool
+    rho_ratio: float
     transport_options: dict = field(default_factory=dict)
     component_state: dict = field(default_factory=dict)
 
@@ -85,9 +88,7 @@ def _select_components(cfg):
     # Compose: a "replace_transport" front owns mass transport itself, so the
     # selected transport scheme does not run at all; an "after_transport"
     # front instead runs right after it.
-    replaces_transport = (
-        front is not None and front.UPDATE_MODE == "replace_transport"
-    )
+    replaces_transport = front is not None and front.UPDATE_MODE == "replace_transport"
     mass_transport_name = front_name if replaces_transport else transport_name
     mass_transport = front if replaces_transport else transport
     pipeline = (
@@ -101,16 +102,12 @@ def _select_components(cfg):
     boundary.validate_backend(boundaries, transport, transport_name)
     if front is not None:
         boundary.validate_backend(boundaries, front, front_name)
-    if constraints and not getattr(
-        mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False
-    ):
+    if constraints and not getattr(mass_transport, "SUPPORTS_ACTIVE_DOMAIN", False):
         raise ValueError(
             f"Thickness backend {mass_transport_name!r} does not support "
             "active-domain constraints."
         )
-    smooth_sigma = float(
-        getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0)
-    )
+    smooth_sigma = float(getattr(cfg.processes.thk, "divflux_smooth_sigma", 0.0))
     if smooth_sigma != 0.0 and not getattr(
         mass_transport, "SUPPORTS_DIVFLUX_SMOOTHING", False
     ):
@@ -120,6 +117,13 @@ def _select_components(cfg):
             "available only with scheme: explicit."
         )
 
+    # Unanchored floating ice (icebergs) may be calved off after each update;
+    # use the same canonical flotation ratio as the surface reconstruction.
+    remove_rigid_body_modes = bool(
+        getattr(cfg.processes.thk, "remove_rigid_body_modes", False)
+    )
+    rho_ratio = 1.0 / get_density_ratio(cfg)
+
     return ThkComponents(
         transport_name=transport_name,
         transport=transport,
@@ -128,6 +132,8 @@ def _select_components(cfg):
         pipeline=pipeline,
         domain_constraints=constraints,
         boundaries=boundaries,
+        remove_rigid_body_modes=remove_rigid_body_modes,
+        rho_ratio=rho_ratio,
     )
 
 
@@ -135,6 +141,10 @@ def initialize(cfg, state):
     if not hasattr(state, "topg"):
         raise ValueError(
             "The 'thk' module requires an initial topography ('state.topg')."
+        )
+    if not hasattr(state, "water_level"):
+        raise ValueError(
+            "The 'thk' module requires a water level ('state.water_level')."
         )
 
     # Select and check everything before any component touches the state.
@@ -145,6 +155,9 @@ def initialize(cfg, state):
     for component in components.pipeline:
         component.initialize(cfg, state)
     initialize_active_domain(cfg, state, components.domain_constraints)
+
+    if components.remove_rigid_body_modes:
+        remove_rigid_body_modes(state, components.rho_ratio)
 
     update_surfaces(cfg, state)
 
@@ -169,6 +182,9 @@ def update(cfg, state):
         component.update(cfg, state)
     if components.domain_constraints:
         update_active_domain(cfg, state, components.domain_constraints)
+
+    if components.remove_rigid_body_modes:
+        remove_rigid_body_modes(state, components.rho_ratio)
 
     update_surfaces(cfg, state)
 

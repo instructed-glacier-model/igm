@@ -120,6 +120,7 @@ iceflow:
     cg_newton:
       cg_tol: 1e-20
       warm_start: true
+      cold_restart_interval: 0.0
       cg_max_iter: 100
       line_search_compile: false
       print_timing: false
@@ -132,6 +133,7 @@ iceflow:
       hvp_mode: autodiff
       hvp_verify: false
       probe_mode: autodiff
+      probe_batch: 0
       preconditioner: block_jacobi
       operator_update_freq: 1
       precond_update_freq: 1
@@ -160,7 +162,6 @@ iceflow:
       disable_xla: true
       precision: double
       use_basin_mask: true
-      water_level: 0.0
       record_path: error_estimate.jsonl
       save_fields_dir: null
       publish_field: true
@@ -258,7 +259,7 @@ iceflow:
           slidingco: 0.05
           dX: 100.0
           water_level: 0.0
-          effective_pressure: 2.0  # MPa, Mohr-Coulomb / Budd
+          effective_pressure: 0.0
           X: 0.0
           Y: 0.0
         inputs_variances:        # (std)^2
@@ -269,7 +270,7 @@ iceflow:
           slidingco: 1.0e-3      # 0.03
           dX: 1.0e4              # 100 m
           water_level: 2.5e5     # 500 m
-          effective_pressure: 12.0  # 3.5 MPa
+          effective_pressure: 4.0  # 2 MPa
           X: 2.5e9               # 50 km
           Y: 2.5e9
     network:
@@ -330,6 +331,7 @@ iceflow:
       patches_per_batch: 1
     halt:
       freq: 1
+      raise_on_failure: false
       success: []
       failure: []
       criteria: 

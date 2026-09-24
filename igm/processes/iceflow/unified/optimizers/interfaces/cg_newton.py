@@ -35,6 +35,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             mapping=map,
             verify_stencil=bool(getattr(cfg_unified.cg_newton, "hvp_verify", False)),
             owner="cg_newton",
+            probe_batch=cfg_unified.cg_newton.probe_batch,
         )
 
     @staticmethod
@@ -68,6 +69,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "cg_max_iter": cg.cg_max_iter,
             "cg_tol": cg.cg_tol,
             "warm_start": cg.warm_start,
+            "cold_restart_interval": cg.cold_restart_interval,
             "damping": cg.damping,
             "damping_adaptive": cg.get("damping_adaptive", False),
             "damping_min": cg.get("damping_min", 1e-12),

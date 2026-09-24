@@ -5,6 +5,7 @@
 
 """Energy operators used by the Newton-CG ice-flow solver."""
 
+import math
 import warnings
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Tuple
@@ -33,6 +34,7 @@ from .molho_banded import (
     allocate_molho_bands,
     build_molho_stencil,
     extract_symmetric_bands,
+    extract_symmetric_bands_batched,
     supports_compact_molho,
 )
 
@@ -164,6 +166,51 @@ class ADOperator(Operator):
             output_gradients=v_flat,
         )
         return hv_flat + damping * v_flat
+
+    def hvp_many(
+        self,
+        inputs: tf.Tensor,
+        v_many: tf.Tensor,
+        damping: tf.Tensor,
+    ) -> tf.Tensor:
+        """Hessian-vector products for K tangents at once, rows of ``v_many`` (K, n).
+
+        Identity mappings only (theta = the velocity fields): the K copies are
+        stacked along the batch axis. The IGM cost averages over that axis,
+        so the resulting Hessian-vector products are rescaled by K.
+        """
+        damping = tf.convert_to_tensor(damping, self.precision)
+        return self._hvp_many(inputs, v_many, damping)
+
+    @tf.function(reduce_retracing=True)
+    def _hvp_many(
+        self,
+        inputs: tf.Tensor,
+        v_many: tf.Tensor,
+        damping: tf.Tensor,
+    ) -> tf.Tensor:
+        K = tf.shape(v_many)[0]  # dynamic: reduce_retracing relaxes the leading dim
+        shape = tuple(int(s) for s in self.map.shape)  # (1, Nz, Ny, Nx)
+        n = math.prod(shape)
+        field_shape = tf.concat([[K], tf.constant(shape[1:], tf.int32)], axis=0)
+        theta_flat = self.map.flatten_theta(self.map.get_theta())
+        theta_many = tf.tile(theta_flat[tf.newaxis], tf.stack([K, 1]))
+        inputs_many = tf.tile(
+            inputs, tf.concat([[K], tf.ones(len(inputs.shape) - 1, tf.int32)], axis=0)
+        )
+
+        with tf.GradientTape() as outer_tape:
+            outer_tape.watch(theta_many)
+            with tf.GradientTape() as inner_tape:
+                inner_tape.watch(theta_many)
+                U = tf.reshape(theta_many[:, :n], field_shape)
+                V = tf.reshape(theta_many[:, n:], field_shape)
+                for apply_bc in self.map.apply_bcs:
+                    U, V = apply_bc(U, V)
+                cost = self.cost_fn(U, V, inputs_many)
+            grad_many = inner_tape.gradient(cost, theta_many)
+        hv_many = outer_tape.gradient(grad_many, theta_many, output_gradients=v_many)
+        return tf.cast(K, self.precision) * hv_many + damping * v_many
 
     @tf.function(reduce_retracing=True)
     def _forward_hvp(
@@ -412,6 +459,7 @@ class MOLHOBandedADOperator(_BandedADOperatorBase):
         precision: str = "float32",
         verify_stencil: bool = False,
         probe_mode: str = "autodiff",
+        probe_batch: int = 0,
     ):
         if not supports_compact_molho(mapping):
             raise ValueError(
@@ -427,6 +475,15 @@ class MOLHOBandedADOperator(_BandedADOperatorBase):
         )
 
         self.B, self.Nz, self.Ny, self.Nx = tuple(mapping.shape)
+        self._probe_batch = int(probe_batch)
+        if self._probe_batch < 0:
+            raise ValueError("probe_batch must be non-negative.")
+        if self._probe_batch > 0 and self.B != 1:
+            raise ValueError(
+                "probe_batch requires an identity mapping with batch size one."
+            )
+        if self._probe_batch > 0 and probe_mode != "autodiff":
+            raise ValueError("probe_batch requires probe_mode='autodiff'.")
         self.n_components = 4
         self.periodic_y, self.periodic_x = periodic_axes(mapping)
         self._center, self._edges = allocate_molho_bands(
@@ -441,20 +498,56 @@ class MOLHOBandedADOperator(_BandedADOperatorBase):
         self._prepared = False
 
     def prepare(self, inputs: tf.Tensor, damping: tf.Tensor) -> None:
-        center, edges = extract_symmetric_bands(
-            lambda components: self._component_apply(inputs, components),
-            self.B,
-            self.n_components,
-            self.Ny,
-            self.Nx,
-            self.precision,
-            periodic_y=self.periodic_y,
-            periodic_x=self.periodic_x,
-        )
+        if self._probe_batch > 0:
+            center, edges = extract_symmetric_bands_batched(
+                lambda probes: self._component_apply_many(inputs, probes),
+                self.B,
+                self.n_components,
+                self.Ny,
+                self.Nx,
+                self.precision,
+                periodic_y=self.periodic_y,
+                periodic_x=self.periodic_x,
+            )
+        else:
+            center, edges = extract_symmetric_bands(
+                lambda components: self._component_apply(inputs, components),
+                self.B,
+                self.n_components,
+                self.Ny,
+                self.Nx,
+                self.precision,
+                periodic_y=self.periodic_y,
+                periodic_x=self.periodic_x,
+            )
         self._center.assign(center)
         self._edges.assign(edges)
         self._prepared = True
         self._verify_if_requested(inputs, damping)
+
+    def _component_apply_many(
+        self, inputs: tf.Tensor, probes: tf.Tensor
+    ) -> tf.Tensor:
+        """probes (n_comp, n_colors, B, n_comp, ny, nx) -> responses, same layout."""
+        K = int(probes.shape[0]) * int(probes.shape[1])
+        comps = tf.reshape(probes, (K, self.B, self.n_components, self.Ny, self.Nx))
+        # theta layout is [u..., v...] per probe (see MappingIdentity.flatten_theta)
+        flat = tf.concat(
+            [
+                tf.reshape(comps[:, :, : self.Nz], (K, -1)),
+                tf.reshape(comps[:, :, self.Nz :], (K, -1)),
+            ],
+            axis=1,
+        )
+        chunks = [
+            self._ad.hvp_many(inputs, flat[i : i + self._probe_batch], self._zero)
+            for i in range(0, K, self._probe_batch)
+        ]
+        hv = tf.concat(chunks, axis=0)  # (K, n_theta)
+        n = self.B * self.Nz * self.Ny * self.Nx
+        u = tf.reshape(hv[:, :n], (K, self.B, self.Nz, self.Ny, self.Nx))
+        v = tf.reshape(hv[:, n:], (K, self.B, self.Nz, self.Ny, self.Nx))
+        return tf.reshape(tf.concat([u, v], axis=2), probes.shape)
 
     def hvp(
         self,

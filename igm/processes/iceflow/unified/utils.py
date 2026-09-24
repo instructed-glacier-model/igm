@@ -10,6 +10,10 @@ from typing import Callable
 from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
+from igm.processes.thk.masks import (
+    compute_grounded_mask,
+    water_level_from_inputs,
+)
 from igm.processes.iceflow.utils.velocities import compute_cell_ice_mask
 
 
@@ -21,10 +25,13 @@ def get_cost_fn(
     cfg_unified = cfg.processes.iceflow.unified
 
     energy_components = get_energy_components(cfg)
-    idx_thk = tuple(cfg_unified.inputs).index("thk")
-
-    # Exclude partially covered Q1 cells so ice-free nodes cannot enter the solve.
-    # The floating-front energy is already defined on this cell region's boundary.
+    input_names = tuple(cfg_unified.inputs)
+    idx_thk = input_names.index("thk")
+    idx_usurf = input_names.index("usurf")
+    rho_ratio = (
+        cfg.processes.iceflow.physics.water_density
+        / cfg.processes.iceflow.physics.ice_density
+    )
 
     def _cost_fn_impl(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         """Cost function from velocity fields and inputs."""
@@ -39,7 +46,10 @@ def get_cost_fn(
         )
 
         thk = input[..., idx_thk]
-        cell_mask = compute_cell_ice_mask(thk)
+        topg = input[..., idx_usurf] - thk
+        water_level = water_level_from_inputs(input, input_names, thk)
+        grounded = compute_grounded_mask(thk, topg, water_level, rho_ratio)
+        cell_mask = compute_cell_ice_mask(thk, grounded)
         energy = energy * tf.cast(cell_mask[tf.newaxis, :, :, :], energy.dtype)
 
         energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])

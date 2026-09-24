@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk import fronts, transport
 from igm.processes.thk import thk as thk_module
 
@@ -49,6 +50,7 @@ def _state():
     return SimpleNamespace(
         thk=thickness,
         topg=tf.zeros_like(thickness),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         it=0,
     )
 
@@ -96,9 +98,7 @@ def test_after_transport_front_composes_without_changing_thk_dispatch(monkeypatc
         finalize=finalize_front,
     )
 
-    monkeypatch.setitem(
-        transport.TransportSchemes, "test_scheme", test_scheme
-    )
+    monkeypatch.setitem(transport.TransportSchemes, "test_scheme", test_scheme)
     monkeypatch.setitem(fronts.FrontMethods, "test_front", test_front)
 
     state = _state()

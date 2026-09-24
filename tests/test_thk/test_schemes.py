@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 import pytest
 import tensorflow as tf
 
+from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 from igm.processes.thk import fronts, transport
 from igm.processes.thk import thk as thk_module
 
@@ -33,6 +34,7 @@ def _state():
     return SimpleNamespace(
         thk=tf.ones((3, 4), dtype=tf.float32),
         topg=tf.zeros((3, 4), dtype=tf.float32),
+        water_level=tf.constant(WATER_LEVEL_NO_OCEAN),
         it=0,
     )
 
@@ -78,9 +80,7 @@ def test_new_scheme_needs_only_one_dictionary_entry(monkeypatch):
             state.divflux = tf.zeros_like(state.thk)
             state.thk = state.thk + 2.0
 
-    monkeypatch.setitem(
-        transport.TransportSchemes, "test_scheme", TestScheme
-    )
+    monkeypatch.setitem(transport.TransportSchemes, "test_scheme", TestScheme)
 
     cfg = _cfg("TEST_SCHEME")
     state = _state()

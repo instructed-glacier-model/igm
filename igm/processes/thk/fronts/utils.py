@@ -74,10 +74,8 @@ def marine_calving_rate(cfg, state, dtype):
     rate = tf.cast(state.calving_rate, dtype)
     if not cfg.processes.thk.only_marine:
         return rate
-    if hasattr(state, "water_level"):
-        return rate * tf.cast(state.topg < state.water_level, dtype)
-    # only_marine was requested but there is no sea level to define "marine".
-    return tf.zeros_like(rate)
+    # Without an ocean (the "no ocean" water level) no cell is marine.
+    return rate * tf.cast(state.topg < state.water_level, dtype)
 
 
 def extend_thk_for_iceflow(cfg, thk, partial_mask, full_mask):

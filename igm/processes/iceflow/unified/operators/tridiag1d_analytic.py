@@ -21,6 +21,7 @@ from typing import Dict, Iterable, Tuple
 import tensorflow as tf
 
 from igm.processes.iceflow.utils.velocities import compute_cell_ice_mask
+from igm.processes.thk.masks import compute_grounded_mask, water_level_from_inputs
 
 from .tridiag1d import Tridiag1DADOperator
 
@@ -70,6 +71,8 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         )
 
         numerics = cfg.processes.iceflow.numerics
+        physics = cfg.processes.iceflow.physics
+        self._rho_ratio = physics.water_density / physics.ice_density
         if str(numerics.basis_horizontal).lower() != "q1":
             raise ValueError(
                 "Analytic tridiag_newton assembly requires "
@@ -111,7 +114,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
                 "makes gravity nonlinear in velocity."
             )
 
-        required = {"thk"}
+        required = {"thk", "usurf"}
         if self._viscosity is not None:
             required.update(("arrhenius", "dX"))
         if self._gravity is not None:
@@ -194,9 +197,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         n = tf.cast(self._viscosity.params.n, dtype)
         p = 1.0 + 1.0 / n
         exponent = (p - 2.0) / 2.0
-        regularization2 = tf.cast(
-            self._viscosity.params.eps_dot_regu, dtype
-        ) ** 2
+        regularization2 = tf.cast(self._viscosity.params.eps_dot_regu, dtype) ** 2
         maximum2 = tf.cast(self._viscosity.params.eps_dot_max, dtype) ** 2
 
         h = self._field(inputs, "thk")
@@ -213,21 +214,24 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         base = capped + regularization2
         energy = coefficient * tf.pow(base, exponent) * capped / p
         active_cap = tf.cast(strain2 <= maximum2, dtype)
-        f_prime = active_cap * (
-            tf.pow(base, exponent)
-            + exponent * capped * tf.pow(base, exponent - 1.0)
-        ) / p
-        f_second = active_cap * (
-            2.0 * exponent * tf.pow(base, exponent - 1.0)
-            + exponent
-            * (exponent - 1.0)
-            * capped
-            * tf.pow(base, exponent - 2.0)
-        ) / p
+        f_prime = (
+            active_cap
+            * (
+                tf.pow(base, exponent)
+                + exponent * capped * tf.pow(base, exponent - 1.0)
+            )
+            / p
+        )
+        f_second = (
+            active_cap
+            * (
+                2.0 * exponent * tf.pow(base, exponent - 1.0)
+                + exponent * (exponent - 1.0) * capped * tf.pow(base, exponent - 2.0)
+            )
+            / p
+        )
         derivative = coefficient * 2.0 * f_prime * du / dx
-        curvature = coefficient * (
-            2.0 * f_prime + 4.0 * f_second * du * du
-        ) / (dx * dx)
+        curvature = coefficient * (2.0 * f_prime + 4.0 * f_second * du * du) / (dx * dx)
         return energy, -derivative, derivative, curvature, -curvature, curvature
 
     def _scalar_sliding_terms(
@@ -252,9 +256,10 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         coefficient = self._sliding_coefficient(inputs)
         radial = coefficient * tf.pow(speed2, p / 2.0 - 1.0)
         gradient_q = radial * metric
-        hessian_q = radial * metric_second + coefficient * (p - 2.0) * tf.pow(
-            speed2, p / 2.0 - 2.0
-        ) * metric * metric
+        hessian_q = (
+            radial * metric_second
+            + coefficient * (p - 2.0) * tf.pow(speed2, p / 2.0 - 2.0) * metric * metric
+        )
         energy_q = coefficient * tf.pow(speed2, p / 2.0) / p
 
         def integrate(values: tf.Tensor, shape: tf.Tensor) -> tf.Tensor:
@@ -282,18 +287,14 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         )
         coefficient = h_q * surface_x
         scale = (
-            tf.cast(1e-6, dtype)
-            * tf.cast(params.rho, dtype)
-            * tf.cast(params.g, dtype)
+            tf.cast(1e-6, dtype) * tf.cast(params.rho, dtype) * tf.cast(params.g, dtype)
         )
-        energy = scale * self._quad_weight * tf.reduce_sum(
-            coefficient * u_q, axis=1
+        energy = scale * self._quad_weight * tf.reduce_sum(coefficient * u_q, axis=1)
+        grad_left = (
+            scale * self._quad_weight * tf.reduce_sum(coefficient * left, axis=1)
         )
-        grad_left = scale * self._quad_weight * tf.reduce_sum(
-            coefficient * left, axis=1
-        )
-        grad_right = scale * self._quad_weight * tf.reduce_sum(
-            coefficient * right, axis=1
+        grad_right = (
+            scale * self._quad_weight * tf.reduce_sum(coefficient * right, axis=1)
         )
         return energy, grad_left, grad_right
 
@@ -319,9 +320,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         edge_w = float("W" in params.cf_eswn)
         edge_e = float("E" in params.cf_eswn)
         wet_padded = tf.pad(wet, [[0, 0], [1, 0]], constant_values=edge_w)
-        wet_padded = tf.pad(
-            wet_padded, [[0, 0], [0, 1]], constant_values=edge_e
-        )
+        wet_padded = tf.pad(wet_padded, [[0, 0], [0, 1]], constant_values=edge_e)
         wet_west = wet_padded[:, :-2]
         wet_east = wet_padded[:, 2:]
 
@@ -329,17 +328,13 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         rho_water = tf.cast(params.rho_water, dtype)
         gravity = tf.cast(params.g, dtype)
         water_depth = tf.maximum(water0 - bed0, 0.0)
-        pressure = 0.5 * gravity * (
-            rho * h0 * h0 - rho_water * water_depth * water_depth
+        pressure = (
+            0.5 * gravity * (rho * h0 * h0 - rho_water * water_depth * water_depth)
         )
         dx_cell = 0.5 * (dx[:, 0, :-1] + dx[:, 1, 1:])
         scale = tf.cast(cell_ice, dtype) / dx_cell
-        grad_left = (
-            tf.cast(1e-6, dtype) * scale * pressure[:, :-1] * wet_west
-        )
-        grad_right = (
-            -tf.cast(1e-6, dtype) * scale * pressure[:, 1:] * wet_east
-        )
+        grad_left = tf.cast(1e-6, dtype) * scale * pressure[:, :-1] * wet_west
+        grad_right = -tf.cast(1e-6, dtype) * scale * pressure[:, 1:] * wet_east
         energy = grad_left * u[:, :-1] + grad_right * u[:, 1:]
         return energy, grad_left, grad_right
 
@@ -384,7 +379,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
             grad_left += terms[1]
             grad_right += terms[2]
 
-        cell_mask = compute_cell_ice_mask(self._field(inputs, "thk"))[:, 0, :]
+        cell_mask = self._cell_mask(inputs)[:, 0, :]
         cell_weight = tf.cast(cell_mask, self.precision) * self._energy_normalization
         cost = tf.reduce_sum(cell_weight * energy)
         gradient = tf.pad(cell_weight * grad_left, [[0, 0], [0, 1]])
@@ -398,9 +393,10 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         active_east = tf.pad(active[:, 1:], [[0, 0], [0, 1]])
         lower = tf.pad(h_lr, [[0, 0], [1, 0]]) * active * active_west
         diagonal = (
-            tf.pad(h_ll, [[0, 0], [0, 1]])
-            + tf.pad(h_rr, [[0, 0], [1, 0]])
-        ) * active * active
+            (tf.pad(h_ll, [[0, 0], [0, 1]]) + tf.pad(h_rr, [[0, 0], [1, 0]]))
+            * active
+            * active
+        )
         upper = tf.pad(h_lr, [[0, 0], [0, 1]]) * active * active_east
         diagonal += tf.cast(damping, self.precision)
         return cost, gradient * active, lower, diagonal, upper
@@ -426,9 +422,17 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         return self._field(inputs, name)
 
     def _water_level(self, inputs: tf.Tensor) -> tf.Tensor:
-        if "water_level" in self._input_indices:
-            return self._field(inputs, "water_level")
-        return tf.zeros_like(self._field(inputs, "thk"))
+        return water_level_from_inputs(
+            inputs, tuple(self._input_indices), self._field(inputs, "thk")
+        )
+
+    def _cell_mask(self, inputs: tf.Tensor) -> tf.Tensor:
+        thk = self._field(inputs, "thk")
+        topg = self._field(inputs, "usurf") - thk
+        grounded = compute_grounded_mask(
+            thk, topg, self._water_level(inputs), self._rho_ratio
+        )
+        return compute_cell_ice_mask(thk, grounded)
 
     def _interp_q1(self, field: tf.Tensor) -> tf.Tensor:
         """Q1 interpolation, squeezed to ``(B,4,Nx-1)`` for ``Ny=2``."""
@@ -459,14 +463,8 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         grad_y_e = (ne - se) * inverse_dx
         eta = self._eta[..., tf.newaxis]
         xi = self._xi[..., tf.newaxis]
-        grad_x = (
-            (1.0 - eta) * grad_x_s[:, tf.newaxis]
-            + eta * grad_x_n[:, tf.newaxis]
-        )
-        grad_y = (
-            (1.0 - xi) * grad_y_w[:, tf.newaxis]
-            + xi * grad_y_e[:, tf.newaxis]
-        )
+        grad_x = (1.0 - eta) * grad_x_s[:, tf.newaxis] + eta * grad_x_n[:, tf.newaxis]
+        grad_y = (1.0 - xi) * grad_y_w[:, tf.newaxis] + xi * grad_y_e[:, tf.newaxis]
         return grad_x[:, :, 0, :], grad_y[:, :, 0, :]
 
     def _viscosity_element_blocks(
@@ -488,9 +486,10 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         arrhenius = self._field(inputs, "arrhenius")
         dx = self._field(inputs, "dX")[:, 1:, 1:][:, 0, :]
         stiffness = 2.0 * tf.pow(arrhenius, -1.0 / n)
-        coefficient = tf.reduce_sum(
-            self._interp_q1(h) * self._interp_q1(stiffness), axis=1
-        ) * self._quad_weight
+        coefficient = (
+            tf.reduce_sum(self._interp_q1(h) * self._interp_q1(stiffness), axis=1)
+            * self._quad_weight
+        )
 
         du = (u[:, 1:] - u[:, :-1]) / dx
         dv = (v[:, 1:] - v[:, :-1]) / dx
@@ -499,15 +498,11 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         base = capped + regularization2
 
         f_prime = (
-            tf.pow(base, exponent)
-            + exponent * capped * tf.pow(base, exponent - 1.0)
+            tf.pow(base, exponent) + exponent * capped * tf.pow(base, exponent - 1.0)
         ) / p
         f_second = (
             2.0 * exponent * tf.pow(base, exponent - 1.0)
-            + exponent
-            * (exponent - 1.0)
-            * capped
-            * tf.pow(base, exponent - 2.0)
+            + exponent * (exponent - 1.0) * capped * tf.pow(base, exponent - 2.0)
         ) / p
         cap_jacobian = tf.cast(strain2 <= maximum2, dtype)
         f_prime *= cap_jacobian
@@ -562,7 +557,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
 
         if bool(params.use_mask_gr):
             wl = self._water_level(inputs)
-            grounded = h + tf.cast(params.rho_ratio, dtype) * (bed - wl) > 0.0
+            grounded = compute_grounded_mask(h, bed, wl, params.rho_ratio)
             stress *= tf.cast(grounded, dtype)
 
         coefficient = self._interp_q1(stress) / tf.pow(
@@ -574,9 +569,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
             )
             pressure_q = self._interp_q1(effective_pressure)
             q = tf.cast(params.q_exponent, dtype)
-            coefficient *= tf.pow(
-                pressure_q / tf.cast(params.N_ref, dtype), q
-            )
+            coefficient *= tf.pow(pressure_q / tf.cast(params.N_ref, dtype), q)
         return coefficient
 
     def _sliding_element_blocks(
@@ -614,11 +607,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         if component.name in self._POWER_LAW_SLIDING:
             coefficient = self._sliding_coefficient(inputs)
             radial_first_twice = coefficient * tf.pow(speed2, p / 2.0 - 1.0)
-            radial_second_four = (
-                coefficient
-                * (p - 2.0)
-                * tf.pow(speed2, p / 2.0 - 2.0)
-            )
+            radial_second_four = coefficient * (p - 2.0) * tf.pow(speed2, p / 2.0 - 2.0)
         else:
             # F(t)=tau_c*((t^(p/2)+u_c^p)^(1/p)-u_c), t=speed^2.
             # Hessian_x F = 2 F'(t) M + 4 F''(t) (Mx)(Mx)^T.
@@ -631,9 +620,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
                 h = self._field(inputs, "thk")
                 bed_nodes = self._field(inputs, "usurf") - h
                 wl = self._water_level(inputs)
-                grounded = (
-                    h + tf.cast(params.rho_ratio, dtype) * (bed_nodes - wl) > 0.0
-                )
+                grounded = compute_grounded_mask(h, bed_nodes, wl, params.rho_ratio)
                 friction = self._interp_q1(
                     self._friction_field(inputs) * tf.cast(grounded, dtype)
                 )
@@ -650,14 +637,18 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
                 * tf.pow(transition, 1.0 / p - 1.0)
                 * tf.pow(speed2, p / 2.0 - 1.0)
             )
-            f_second = tau_c * tf.cast(0.5, dtype) * (
-                (1.0 / p - 1.0)
-                * tf.pow(transition, 1.0 / p - 2.0)
-                * (p / 2.0)
-                * tf.pow(speed2, p - 2.0)
-                + tf.pow(transition, 1.0 / p - 1.0)
-                * (p / 2.0 - 1.0)
-                * tf.pow(speed2, p / 2.0 - 2.0)
+            f_second = (
+                tau_c
+                * tf.cast(0.5, dtype)
+                * (
+                    (1.0 / p - 1.0)
+                    * tf.pow(transition, 1.0 / p - 2.0)
+                    * (p / 2.0)
+                    * tf.pow(speed2, p - 2.0)
+                    + tf.pow(transition, 1.0 / p - 1.0)
+                    * (p / 2.0 - 1.0)
+                    * tf.pow(speed2, p / 2.0 - 2.0)
+                )
             )
             radial_first_twice = 2.0 * f_prime
             radial_second_four = 4.0 * f_second
@@ -669,9 +660,10 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         weights = self._quad_weight * cell_weight[:, tf.newaxis, :]
 
         def integrate(shape_a: tf.Tensor, shape_b: tf.Tensor) -> tf.Tensor:
-            weighted = hessian_q * (
-                weights * shape_a * shape_b
-            )[:, tf.newaxis, tf.newaxis, :, :]
+            weighted = (
+                hessian_q
+                * (weights * shape_a * shape_b)[:, tf.newaxis, tf.newaxis, :, :]
+            )
             return tf.reduce_sum(weighted, axis=3)
 
         return (
@@ -687,9 +679,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         return self._extract_bands_at(inputs, theta_flat)
 
     @tf.function(reduce_retracing=True)
-    def _extract_bands_at(
-        self, inputs: tf.Tensor, theta_flat: tf.Tensor
-    ) -> tf.Tensor:
+    def _extract_bands_at(self, inputs: tf.Tensor, theta_flat: tf.Tensor) -> tf.Tensor:
         """Assemble bands as a pure function of the current velocity.
 
         The stateful ``prepare`` API still uses ``_extract_bands``.  This
@@ -703,7 +693,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         u = U[:, 0, 0, :]
         v = V[:, 0, 0, :]
 
-        cell_mask = compute_cell_ice_mask(self._field(inputs, "thk"))[:, 0, :]
+        cell_mask = self._cell_mask(inputs)[:, 0, :]
         cell_weight = tf.cast(cell_mask, self.precision) * self._energy_normalization
         zeros = tf.zeros((self.B, 2, 2, self.Nx - 1), self.precision)
         ll = lr = rl = rr = zeros
@@ -717,9 +707,7 @@ class Tridiag1DAnalyticOperator(Tridiag1DADOperator):
         spatial_padding_left = [[0, 0], [0, 0], [0, 0], [1, 0]]
         spatial_padding_right = [[0, 0], [0, 0], [0, 0], [0, 1]]
         west = tf.pad(rl, spatial_padding_left)
-        center = tf.pad(ll, spatial_padding_right) + tf.pad(
-            rr, spatial_padding_left
-        )
+        center = tf.pad(ll, spatial_padding_right) + tf.pad(rr, spatial_padding_left)
         east = tf.pad(lr, spatial_padding_right)
 
         def apply_active(block: tf.Tensor, neighbour: tf.Tensor) -> tf.Tensor:

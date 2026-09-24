@@ -83,7 +83,9 @@ class InterfaceErrorEstimator:
                 f"framesizemax={framesizemax} splits the {ny}x{nx} grid into "
                 f"{num_patches} patches."
             )
-        if bool(_cfg_get(getattr(cfg_unified, "adaptive_patching", {}), "enabled", False)):
+        if bool(
+            _cfg_get(getattr(cfg_unified, "adaptive_patching", {}), "enabled", False)
+        ):
             raise ValueError(
                 "❌ error_estimator is incompatible with adaptive_patching.enabled=true."
             )
@@ -96,17 +98,24 @@ class InterfaceErrorEstimator:
         Nz = int(cfg_numerics.Nz)
 
         discr_v = state.iceflow.discr_v
-        if normalize_precision(precision) != normalize_precision(cfg_numerics.precision):
+        if normalize_precision(precision) != normalize_precision(
+            cfg_numerics.precision
+        ):
             # Estimator precision differs from the run: rebuild the energy in
             # the estimator precision (own discretization constants).
             cost_fn, discr_v = build_cost_fn_in_precision(cfg, precision)
 
         topg = None
         if hasattr(state, "topg") and state.topg is not None:
-            topg = np.asarray(state.topg.numpy() if hasattr(state.topg, "numpy") else state.topg)
+            topg = np.asarray(
+                state.topg.numpy() if hasattr(state.topg, "numpy") else state.topg
+            )
+        water_level = np.asarray(state.water_level)
 
         basin_mask = None
-        if bool(_cfg_get(cfg_est, "use_basin_mask", True)) and hasattr(state, "basinmask"):
+        if bool(_cfg_get(cfg_est, "use_basin_mask", True)) and hasattr(
+            state, "basinmask"
+        ):
             basin = state.basinmask
             basin = basin.numpy() if hasattr(basin, "numpy") else np.asarray(basin)
             basin_mask = np.asarray(basin) > 0.5
@@ -137,7 +146,9 @@ class InterfaceErrorEstimator:
         if multigrid is None:
             preconditioner_options = {}
         elif isinstance(multigrid, DictConfig):
-            preconditioner_options = dict(OmegaConf.to_container(multigrid, resolve=True))
+            preconditioner_options = dict(
+                OmegaConf.to_container(multigrid, resolve=True)
+            )
         else:
             preconditioner_options = dict(multigrid)
 
@@ -150,12 +161,11 @@ class InterfaceErrorEstimator:
             "V_s": discr_v.V_s,
             "idx_thk": inputs.index("thk"),
             "idx_usurf": _optional_index(inputs, "usurf"),
-            "idx_water_level": _optional_index(inputs, "water_level"),
             "topg": topg,
             "basin_mask": basin_mask,
             "rho_ice": float(cfg_physics.ice_density),
             "rho_water": float(cfg_physics.water_density),
-            "water_level": float(_cfg_get(cfg_est, "water_level", 0.0)),
+            "water_level": water_level,
             "freq": int(_cfg_get(cfg_est, "freq", 250)),
             "estimate_at_start": bool(_cfg_get(cfg_est, "estimate_at_start", True)),
             "cg_iters": cg_iters,
@@ -163,11 +173,15 @@ class InterfaceErrorEstimator:
             "hvp_mode": str(_cfg_get(cfg_est, "hvp_mode", "banded")),
             "probe_mode": probe_mode,
             "hvp_verify": bool(_cfg_get(cfg_est, "hvp_verify", False)),
-            "preconditioner": str(_cfg_get(cfg_est, "preconditioner", "barotropic_multigrid")),
+            "preconditioner": str(
+                _cfg_get(cfg_est, "preconditioner", "barotropic_multigrid")
+            ),
             "preconditioner_options": preconditioner_options,
             "damping": float(_cfg_get(cfg_est, "damping", 1.0e-16)),
             "operator_update_freq": int(_cfg_get(cfg_est, "operator_update_freq", 0)),
-            "operator_refresh_rel_change": float(_cfg_get(cfg_est, "operator_refresh_rel_change", 0.05)),
+            "operator_refresh_rel_change": float(
+                _cfg_get(cfg_est, "operator_refresh_rel_change", 0.05)
+            ),
             "newton_steps": int(_cfg_get(cfg_est, "newton_steps", 2)),
             "disable_xla": bool(_cfg_get(cfg_est, "disable_xla", True)),
             "record_path": _cfg_get(cfg_est, "record_path", "error_estimate.jsonl"),

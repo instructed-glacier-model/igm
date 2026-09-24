@@ -34,12 +34,13 @@ import tensorflow as tf
 
 from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.utils.velocities import compute_node_ice_mask, get_velsurf
+from igm.processes.thk.masks import compute_grounded_mask, no_ocean_like
 
 from ..mappings.identity import MappingIdentity
 from ..operators import build_energy_operator
 from ..optimizers.utils.pcg import pcg_init, pcg_relres, pcg_run
 from ..preconditioners import build_preconditioner
-from .metrics import grounded_mask, summarize_velocity_error
+from .metrics import summarize_velocity_error
 
 
 class ErrorEstimator:
@@ -56,12 +57,11 @@ class ErrorEstimator:
         precision: str = "double",
         basis_vertical: str = "molho",
         idx_usurf: Optional[int] = None,
-        idx_water_level: Optional[int] = None,
         topg: Optional[np.ndarray] = None,
         basin_mask: Optional[np.ndarray] = None,
         rho_ice: float = 910.0,
         rho_water: float = 1000.0,
-        water_level: float = 0.0,
+        water_level: Optional[np.ndarray] = None,
         freq: int = 250,
         estimate_at_start: bool = True,
         cg_iters: Sequence[int] = (10,),
@@ -115,15 +115,22 @@ class ErrorEstimator:
 
         self.idx_thk = int(idx_thk)
         self.idx_usurf = None if idx_usurf is None else int(idx_usurf)
-        self.idx_water_level = None if idx_water_level is None else int(idx_water_level)
         self.rho_ice = float(rho_ice)
         self.rho_water = float(rho_water)
-        self.water_level = tf.constant(float(water_level), self.dtype)
+        # Like topg, the water level is static input data taken from state;
+        # None means no ocean (see igm.processes.thk.masks).
+        self._water_level = (
+            None
+            if water_level is None
+            else tf.constant(np.asarray(water_level), self.dtype)
+        )
         self.V_s = tf.cast(V_s, self.dtype)
         self._damping = tf.constant(float(damping), self.dtype)
         self._topg = None if topg is None else tf.constant(np.asarray(topg), self.dtype)
         self._basin = (
-            None if basin_mask is None else tf.constant(np.asarray(basin_mask, dtype=bool))
+            None
+            if basin_mask is None
+            else tf.constant(np.asarray(basin_mask, dtype=bool))
         )
         self._reference = None
         if reference is not None:
@@ -208,9 +215,7 @@ class ErrorEstimator:
         change = tf.sqrt(
             tf.reduce_sum(tf.square(U - U0)) + tf.reduce_sum(tf.square(V - V0))
         )
-        scale = tf.sqrt(
-            tf.reduce_sum(tf.square(U0)) + tf.reduce_sum(tf.square(V0))
-        )
+        scale = tf.sqrt(tf.reduce_sum(tf.square(U0)) + tf.reduce_sum(tf.square(V0)))
         tiny = tf.cast(1e-30, self.dtype)
         self._last_rel_change = float((change / tf.maximum(scale, tiny)).numpy())
         return (
@@ -253,11 +258,12 @@ class ErrorEstimator:
             topg = inputs[0, :, :, self.idx_usurf] - thk
         else:
             return None
-        if self.idx_water_level is not None:
-            water_level = inputs[0, :, :, self.idx_water_level]
-        else:
-            water_level = self.water_level
-        return grounded_mask(thk, topg, water_level, self.rho_ice, self.rho_water)
+        water_level = (
+            self._water_level if self._water_level is not None else no_ocean_like(thk)
+        )
+        return compute_grounded_mask(
+            thk, topg, water_level, self.rho_water / self.rho_ice
+        )
 
     def _delta_metrics(
         self,
@@ -277,12 +283,16 @@ class ErrorEstimator:
         du_s, dv_s = get_velsurf(dU, dV, self.V_s)
         du_s, dv_s = du_s[0], dv_s[0]
         # -delta estimates the error and u + delta the reference velocity.
-        out = summarize_velocity_error(du_s, dv_s, u_s + du_s, v_s + dv_s, ice, grounded, prefix)
+        out = summarize_velocity_error(
+            du_s, dv_s, u_s + du_s, v_s + dv_s, ice, grounded, prefix
+        )
         out[f"{prefix}_delta_l2"] = tf.norm(delta)
         out[f"{prefix}_decrement"] = -0.5 * tf.tensordot(delta, g, axes=1)
         return out, du_s, dv_s
 
-    def _solve_impl(self, U: tf.Tensor, V: tf.Tensor, inputs: tf.Tensor) -> Dict[str, tf.Tensor]:
+    def _solve_impl(
+        self, U: tf.Tensor, V: tf.Tensor, inputs: tf.Tensor
+    ) -> Dict[str, tf.Tensor]:
         """Gradient, truncated PCG, chord steps and metrics (traced once)."""
         self.shadow.U.assign(U)
         self.shadow.V.assign(V)
@@ -310,7 +320,9 @@ class ErrorEstimator:
         for k in self.cg_iters:
             pcg = pcg_run(A, pre, pcg, k - k_prev, self.cg_tol)
             k_prev = k
-            metrics, du_s, dv_s = self._delta_metrics(pcg.x, u_s, v_s, ice, grounded, g, f"k{k}")
+            metrics, du_s, dv_s = self._delta_metrics(
+                pcg.x, u_s, v_s, ice, grounded, g, f"k{k}"
+            )
             out.update(metrics)
             out[f"k{k}_cg_iters"] = tf.cast(pcg.iters, self.dtype)
             out[f"k{k}_relres"] = pcg_relres(A, b, pcg.x)
@@ -336,11 +348,19 @@ class ErrorEstimator:
         if self._reference is not None:
             u_ref, v_ref = self._reference["u_ref"], self._reference["v_ref"]
             out.update(
-                summarize_velocity_error(u_s - u_ref, v_s - v_ref, u_ref, v_ref, ice, grounded, "true")
+                summarize_velocity_error(
+                    u_s - u_ref, v_s - v_ref, u_ref, v_ref, ice, grounded, "true"
+                )
             )
             out.update(
                 summarize_velocity_error(
-                    u_s + du_s - u_ref, v_s + dv_s - v_ref, u_ref, v_ref, ice, grounded, "corr"
+                    u_s + du_s - u_ref,
+                    v_s + dv_s - v_ref,
+                    u_ref,
+                    v_ref,
+                    ice,
+                    grounded,
+                    "corr",
                 )
             )
 
@@ -358,7 +378,11 @@ class ErrorEstimator:
     @property
     def primary(self) -> str:
         """Key prefix of the reported estimate (last step, largest k)."""
-        return f"step{self.newton_steps}" if self.newton_steps > 1 else f"k{self.k_primary}"
+        return (
+            f"step{self.newton_steps}"
+            if self.newton_steps > 1
+            else f"k{self.k_primary}"
+        )
 
     def estimate(self, U, V, inputs) -> Tuple[Dict[str, float], tf.Tensor, bool]:
         """Estimate the error of ``(U, V)``; returns ``(scalars, error_field, refreshed)``.
@@ -388,7 +412,10 @@ class ErrorEstimator:
         refreshed = self._needs_prepare(U, V, inputs)
         if refreshed:
             if first and self.verbose:
-                print("[error_estimator] tracing Hessian probing and preconditioner ...", flush=True)
+                print(
+                    "[error_estimator] tracing Hessian probing and preconditioner ...",
+                    flush=True,
+                )
             self._prepare(U, V, inputs)
             self._u_prepared = (tf.identity(U), tf.identity(V))
             self._inputs_prepared = tf.identity(inputs)
@@ -397,35 +424,54 @@ class ErrorEstimator:
             self._calls_since_prepare += 1
         t1 = time.perf_counter()
         if first and self.verbose:
-            print(f"[error_estimator] prepared in {t1 - t0:.1f}s; tracing PCG solve ...", flush=True)
+            print(
+                f"[error_estimator] prepared in {t1 - t0:.1f}s; tracing PCG solve ...",
+                flush=True,
+            )
 
         out = self._solve_graph(U, V, inputs)
-        fields = {key[6:]: out.pop(key) for key in list(out) if key.startswith("field_")}
+        fields = {
+            key[6:]: out.pop(key) for key in list(out) if key.startswith("field_")
+        }
         scalars = {key: float(value.numpy()) for key, value in out.items()}
         error_field = tf.constant(fields["err"].numpy(), tf.float32)  # synchronises
         if self.save_fields_dir:
-            self._last_fields = {k: v.numpy().astype(np.float32) for k, v in fields.items()}
+            self._last_fields = {
+                k: v.numpy().astype(np.float32) for k, v in fields.items()
+            }
         t2 = time.perf_counter()
 
         scalars["wall_s"] = t2 - t0
         scalars["wall_prepare_s"] = t1 - t0
         scalars["wall_solve_s"] = t2 - t1
-        scalars["rel_change_since_prepare"] = 0.0 if refreshed else self._last_rel_change
+        scalars["rel_change_since_prepare"] = (
+            0.0 if refreshed else self._last_rel_change
+        )
         prefix = self.primary + "_"
         for key in list(scalars):
             if key.startswith(prefix):
-                scalars["est_" + key[len(prefix):]] = scalars[key]
+                scalars["est_" + key[len(prefix) :]] = scalars[key]
         self.n_calls += 1
         return scalars, error_field, refreshed
 
-    def record(self, iteration: int, scalars: Dict[str, float], field: tf.Tensor, refreshed: bool) -> None:
+    def record(
+        self,
+        iteration: int,
+        scalars: Dict[str, float],
+        field: tf.Tensor,
+        refreshed: bool,
+    ) -> None:
         """Log one estimate (JSONL, optional field files, ``state.err_est_*``)."""
         state = self.state
         step = getattr(state, "it", None) if state is not None else None
         sim_time = getattr(state, "t", None) if state is not None else None
         record = {
             "iter": int(iteration),
-            "step": int(step.numpy() if hasattr(step, "numpy") else step) if step is not None else None,
+            "step": (
+                int(step.numpy() if hasattr(step, "numpy") else step)
+                if step is not None
+                else None
+            ),
             "t": float(sim_time.numpy()) if hasattr(sim_time, "numpy") else None,
             "refreshed": bool(refreshed),
             "k_primary": self.k_primary,
@@ -445,7 +491,9 @@ class ErrorEstimator:
             try:
                 os.makedirs(self.save_fields_dir, exist_ok=True)
                 np.savez_compressed(
-                    os.path.join(self.save_fields_dir, f"fields_{int(iteration) + 1:06d}.npz"),
+                    os.path.join(
+                        self.save_fields_dir, f"fields_{int(iteration) + 1:06d}.npz"
+                    ),
                     iteration=int(iteration),
                     **self._last_fields,
                 )
@@ -453,7 +501,13 @@ class ErrorEstimator:
                 pass
 
         if state is not None:
-            for key in ("median_rel_grounded", "median_rel_floating", "median_rel_all", "rmse_all", "decrement"):
+            for key in (
+                "median_rel_grounded",
+                "median_rel_floating",
+                "median_rel_all",
+                "rmse_all",
+                "decrement",
+            ):
                 if "est_" + key in scalars:
                     setattr(state, "err_est_" + key, scalars["est_" + key])
             state.err_est_iter = int(iteration)

@@ -49,8 +49,8 @@ water_level:
   include:
     Type: boolean
     Units: dimless
-    Description: "Create a uniform 2D `state.water_level` field. Only applied if `water_level` is not already loaded from the input data. Required by the iceflow `floating` energy component for marine / tidewater setups."
+    Description: "If True, fill `state.water_level` with the uniform `value` (a sea or lake level). If False (default), the domain has no ocean: `state.water_level` is filled with the \"no ocean\" level (-1e6 m), so nothing floats and lsurf = topg (right for mountain glaciers and for sub-zero synthetic beds such as ISMIP-HOM). A `water_level` variable in the input file takes precedence over both. With an ocean, also list water_level in processes.iceflow.unified.inputs."
   value:
     Type: float
     Units: m
-    Description: "Value (in metres) used to fill the uniform `water_level` field when `include: True`."
+    Description: "Uniform water level (m) used when `include: True`, e.g. 0.0 for present-day sea level."

@@ -36,7 +36,6 @@ from .utils import (
     neighbour_mean,
 )
 
-
 UPDATE_MODE = "replace_transport"
 COMPATIBLE_TRANSPORTS = ("explicit",)
 AVAILABLE = True
@@ -44,10 +43,9 @@ UNAVAILABLE_REASON = ""
 
 
 def _ocean(state):
+    """Ice-free cells below the water level (none without an ocean)."""
     is_ice = state.thk > 0.0
-    if hasattr(state, "water_level"):
-        return tf.logical_and(tf.logical_not(is_ice), state.topg < state.water_level)
-    return tf.logical_not(is_ice)
+    return tf.logical_and(tf.logical_not(is_ice), state.topg < state.water_level)
 
 
 def _partial_mask(state):
@@ -63,11 +61,11 @@ def _threshold_thickness(cfg, state, is_ice):
     H_threshold = tf.where(grounded, h_avg - state.topg, H_avg)
     H_threshold = tf.maximum(H_threshold, 0.0)
 
-    if hasattr(state, "water_level"):
-        Dw = tf.maximum(state.water_level - state.topg, 0.0)
-        H_float = Dw / p.ratio_density
-        marine = Dw > 0.0
-        H_threshold = tf.where(marine, tf.minimum(H_threshold, H_float), H_threshold)
+    # Zero ocean depth (land, or the "no ocean" water level) leaves it as is.
+    Dw = tf.maximum(state.water_level - state.topg, 0.0)
+    H_float = Dw / p.ratio_density
+    marine = Dw > 0.0
+    H_threshold = tf.where(marine, tf.minimum(H_threshold, H_float), H_threshold)
     return H_threshold
 
 
