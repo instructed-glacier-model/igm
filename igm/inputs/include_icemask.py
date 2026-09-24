@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Author: Andreas Henz, andreas.henz@geo.uzh.ch
-# Date: 06.09.2023
+# Date: 06.09.2023, update 24.09.2026
 
 """
 This IGM module loads an icemask shapefile (ESRI Shapefile) and creates a ice mask out of it.
@@ -25,6 +25,7 @@ IMPORTANT: Pay attention to the coordinate system used in the nc file and the sh
 
 import numpy as np
 import tensorflow as tf
+import os
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -84,4 +85,4 @@ def read_shapefile(filepath):
         # Return the GeoDataFrame
         return gdf
     except Exception as e:
-        print("Error reading shapefile:", e)
+        raise FileNotFoundError(f"Cannot read shapefile: {filepath}. Current working directory: {os.getcwd()}. The relative file path to the shapefile also depends on the hydra folder structure. Error: {e}. ")
