@@ -120,7 +120,7 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     status = get_status(cfg, state, init, distribution_shifted)
     do_solve = set_optimizer_params(cfg, status, optimizer)
     if do_solve and optimizer.name == "cg_newton":
-        optimizer.cold_restart(state.t, init)
+        optimizer.cold_restart(getattr(state, "t", None), init)
 
     # Adaptive patch selection: train on a subset of patches where the inputs
     # change the most. Applied to INIT/WARM_UP/DEFAULT alike so the optimizer
