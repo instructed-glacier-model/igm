@@ -120,6 +120,7 @@ iceflow:
     cg_newton:
       cg_tol: 1e-20
       warm_start: true
+      cold_restart_interval: 0.0
       cg_max_iter: 100
       line_search_compile: false
       print_timing: false

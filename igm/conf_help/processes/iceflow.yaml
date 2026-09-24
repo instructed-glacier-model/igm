@@ -428,6 +428,10 @@ unified:
       Type: boolean
       Description: "Reuse the previous Newton step direction as the initial guess for the next CG linear solve."
       Units: dimless
+    cold_restart_interval:
+      Type: float
+      Description: "Physical-time interval in years between zero-velocity restarts for identity/Newton-CG; zero disables restarts."
+      Units: years
     cg_max_iter:
       Type: integer
       Description: "Maximum number of conjugate-gradient iterations in the CG-Newton optimizer."

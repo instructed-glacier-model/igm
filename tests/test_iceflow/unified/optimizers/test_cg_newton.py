@@ -29,6 +29,123 @@ from igm.processes.iceflow.unified.optimizers.interfaces.cg_newton import (
 )
 
 
+def test_cg_newton_replaces_nonfinite_or_non_descent_direction():
+    shape = (1, 1, 1, 1)
+    mapping = MappingIdentity(
+        [], tf.zeros(shape), tf.zeros(shape), precision="single"
+    )
+    optimizer = OptimizerCGNewton(
+        cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
+        map=mapping,
+        print_cost=False,
+        precision="single",
+        preconditioner="none",
+    )
+    gradient = tf.constant([1.0, -2.0])
+
+    direction, _ = optimizer._force_descent(
+        tf.constant([float("nan"), 1.0]), gradient, tf.zeros_like(gradient)
+    )
+    np.testing.assert_allclose(direction, -gradient)
+
+    direction, _ = optimizer._force_descent(
+        gradient, gradient, tf.zeros_like(gradient)
+    )
+    np.testing.assert_allclose(direction, -gradient)
+
+
+@pytest.mark.parametrize(
+    ("invalid_product", "expected_iterations", "finite_residual"),
+    [(float("nan"), 0, False), (-1.0, 1, True)],
+)
+def test_cg_newton_rejects_invalid_cg_curvature(
+    invalid_product, expected_iterations, finite_residual
+):
+    shape = (1, 1, 1, 1)
+    mapping = MappingIdentity(
+        [], tf.zeros(shape), tf.zeros(shape), precision="single"
+    )
+    optimizer = OptimizerCGNewton(
+        cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
+        map=mapping,
+        print_cost=False,
+        precision="single",
+        preconditioner="none",
+    )
+    optimizer._cg_A = lambda vector: invalid_product * vector
+    rhs = tf.constant([1.0, -2.0])
+
+    direction, iterations, relative_residual = optimizer._cg_solve(
+        b=rhs,
+        x0=tf.zeros_like(rhs),
+        iter_max=tf.constant(5),
+        tol=tf.constant(1.0e-10),
+    )
+
+    np.testing.assert_allclose(direction, 0.0)
+    assert int(iterations) == expected_iterations
+    assert bool(tf.math.is_finite(relative_residual)) is finite_residual
+    if finite_residual:
+        assert float(relative_residual) == pytest.approx(1.0)
+
+
+def _cold_restart_optimizer(interval):
+    shape = (1, 1, 1, 1)
+    mapping = MappingIdentity(
+        [], tf.ones(shape), -tf.ones(shape), precision="single"
+    )
+    optimizer = OptimizerCGNewton(
+        cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
+        map=mapping,
+        print_cost=False,
+        precision="single",
+        preconditioner="none",
+        cold_restart_interval=interval,
+    )
+    return optimizer, mapping
+
+
+def test_cg_newton_cold_restart_uses_physical_time_interval():
+    optimizer, mapping = _cold_restart_optimizer(1.0)
+    optimizer._p_prev = tf.Variable([3.0, -4.0])
+
+    optimizer.cold_restart(tf.constant(2000.0), init=True)
+    optimizer.cold_restart(tf.constant(2000.5))
+    np.testing.assert_allclose(mapping.U, 1.0)
+
+    optimizer.cold_restart(tf.constant(2001.0))
+    np.testing.assert_allclose(mapping.U, 0.0)
+    np.testing.assert_allclose(mapping.V, 0.0)
+    np.testing.assert_allclose(optimizer._p_prev, 0.0)
+
+    mapping.U.assign(tf.ones_like(mapping.U) * 3.0)
+    optimizer.cold_restart(tf.constant(2001.0))
+    np.testing.assert_allclose(mapping.U, 3.0)
+
+
+def test_cg_newton_cold_restart_schedule_does_not_drift():
+    optimizer, mapping = _cold_restart_optimizer(1.0)
+
+    optimizer.cold_restart(tf.constant(2000.0), init=True)
+    optimizer.cold_restart(tf.constant(2001.05))
+    mapping.U.assign(tf.ones_like(mapping.U) * 4.0)
+
+    # The next restart remains anchored at 2002.0 rather than drifting to
+    # 2002.05 because the preceding timestep overshot its boundary.
+    optimizer.cold_restart(tf.constant(2002.02))
+    np.testing.assert_allclose(mapping.U, 0.0)
+
+
+def test_cg_newton_cold_restart_is_disabled_by_default():
+    optimizer, mapping = _cold_restart_optimizer(0.0)
+
+    optimizer.cold_restart(tf.constant(2000.0), init=True)
+    optimizer.cold_restart(tf.constant(2010.0))
+
+    np.testing.assert_allclose(mapping.U, 1.0)
+    assert optimizer._last_cold_restart_time is None
+
+
 @pytest.mark.parametrize("line_search_compile", [True, False])
 @pytest.mark.parametrize("preconditioner", ["none", "block_jacobi"])
 def test_cg_newton_solves_coupled_quadratic(
