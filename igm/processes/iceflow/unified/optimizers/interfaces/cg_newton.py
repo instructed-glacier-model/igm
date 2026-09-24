@@ -35,6 +35,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             mapping=map,
             verify_stencil=bool(getattr(cfg_unified.cg_newton, "hvp_verify", False)),
             owner="cg_newton",
+            probe_batch=cfg_unified.cg_newton.probe_batch,
         )
 
     @staticmethod

@@ -338,6 +338,7 @@ def test_banded_operator_dispatch(nz, periodic, expected_type):
                             "hvp_mode": "banded",
                             "hvp_verify": False,
                             "probe_mode": "fd",
+                            "probe_batch": 0,
                         }
                     },
                 }
@@ -389,6 +390,7 @@ def test_molho_banded_operator_dispatch():
                             "hvp_mode": "banded",
                             "hvp_verify": False,
                             "probe_mode": "autodiff",
+                            "probe_batch": 0,
                         }
                     },
                 }

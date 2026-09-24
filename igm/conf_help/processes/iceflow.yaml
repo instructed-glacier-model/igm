@@ -480,6 +480,10 @@ unified:
       Type: string
       Description: "Method used by the component and spatial colouring probes when hvp_mode=banded: autodiff uses exact reverse-over-reverse Hessian-vector products and is the production MOLHO mode; fd uses central finite differences in double precision; forward uses exact forward-over-reverse products for validation. The number of probes depends on Nz and the periodic grid dimensions."
       Units: dimless
+    probe_batch:
+      Type: integer
+      Description: "Number of MOLHO stencil probes evaluated per batched autodiff HVP call. Zero evaluates probes individually. Requires an identity mapping with batch size one and probe_mode=autodiff; memory use grows with the batch."
+      Units: dimless
     preconditioner:
       Type: string
       Description: "CG preconditioner: none, block_jacobi, or barotropic_multigrid. The multigrid option requires identity-mapped MOLHO with Nz=2 and combines full four-component point smoothing with a two-component horizontal coarse correction."

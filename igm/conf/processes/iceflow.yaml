@@ -133,6 +133,7 @@ iceflow:
       hvp_mode: autodiff
       hvp_verify: false
       probe_mode: autodiff
+      probe_batch: 0
       preconditioner: block_jacobi
       operator_update_freq: 1
       precond_update_freq: 1

@@ -70,6 +70,70 @@ def test_compact_molho_matches_exact_hvp(bcs, probe_mode):
     assert float(relative) < 1e-11
 
 
+def _batch_mean_quadratic_energy(U, V, inputs):
+    """Average independent per-sample energies, as the IGM energy cost does."""
+    del inputs
+    shifted = tf.roll(U, shift=1, axis=-1) + tf.roll(V, shift=1, axis=-2)
+    per_sample = tf.reduce_sum(
+        U * U + V * V + 0.5 * U * shifted + 0.25 * V * V * V * V,
+        axis=[1, 2, 3],
+    )
+    return tf.reduce_mean(per_sample)
+
+
+@pytest.mark.parametrize("probe_batch", [7, 64])
+def test_batched_probing_matches_sequential(probe_batch):
+    shape = (1, 2, 5, 7)
+    rng = np.random.default_rng(3)
+    mapping = MappingIdentity(
+        [],
+        tf.constant(rng.normal(size=shape), tf.float64),
+        tf.constant(rng.normal(size=shape), tf.float64),
+        precision="double",
+    )
+    inputs = tf.zeros((1, 5, 7, 1), tf.float64)
+    damping = tf.constant(0.0, tf.float64)
+    sequential = MOLHOBandedADOperator(_batch_mean_quadratic_energy, mapping, "double")
+    batched = MOLHOBandedADOperator(
+        _batch_mean_quadratic_energy, mapping, "double", probe_batch=probe_batch
+    )
+    sequential.prepare(inputs, damping)
+    batched.prepare(inputs, damping)
+    np.testing.assert_allclose(
+        batched._center.numpy(), sequential._center.numpy(), rtol=1e-10, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        batched._edges.numpy(), sequential._edges.numpy(), rtol=1e-10, atol=1e-12
+    )
+
+    # hvp_many rows are the individual HVPs
+    exact = ADOperator(_batch_mean_quadratic_energy, mapping, "double")
+    vectors = tf.constant(rng.normal(size=(5, 2 * np.prod(shape))), tf.float64)
+    many = exact.hvp_many(inputs, vectors, damping)
+    for k in range(5):
+        np.testing.assert_allclose(
+            many[k].numpy(),
+            exact.hvp(inputs, vectors[k], damping).numpy(),
+            rtol=1e-10,
+            atol=1e-12,
+        )
+
+
+def test_batched_probing_rejects_incompatible_probe_mode():
+    shape = (1, 2, 3, 3)
+    mapping = MappingIdentity(
+        [], tf.zeros(shape, tf.float64), tf.zeros(shape, tf.float64), precision="double"
+    )
+    with pytest.raises(ValueError, match="probe_mode='autodiff'"):
+        MOLHOBandedADOperator(
+            _batch_mean_quadratic_energy,
+            mapping,
+            "double",
+            probe_mode="fd",
+            probe_batch=2,
+        )
+
+
 def test_modified_ldl_matches_dense_inverse_without_eigh(monkeypatch):
     rng = np.random.default_rng(5)
     factors = rng.normal(size=(1, 6, 7, 4, 4))

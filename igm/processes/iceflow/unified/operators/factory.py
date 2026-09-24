@@ -29,6 +29,7 @@ def build_energy_operator(
     mapping,
     verify_stencil: bool = False,
     owner: str = "cg_newton",
+    probe_batch: int = 0,
 ) -> Operator:
     """Build the Hessian operator selected by ``hvp_mode``.
 
@@ -39,6 +40,8 @@ def build_energy_operator(
     hvp_mode = str(hvp_mode).lower()
 
     if hvp_mode == "autodiff":
+        if int(probe_batch) != 0:
+            raise ValueError("probe_batch requires hvp_mode='banded'.")
         return ADOperator(cost_fn, mapping, precision)
 
     if hvp_mode == "banded":
@@ -50,12 +53,22 @@ def build_energy_operator(
         else:
             operator_cls = BandedADOperator
 
+        operator_args = {
+            "verify_stencil": bool(verify_stencil),
+            "probe_mode": str(probe_mode),
+        }
+        if operator_cls is MOLHOBandedADOperator:
+            operator_args["probe_batch"] = int(probe_batch)
+        elif int(probe_batch) != 0:
+            raise ValueError(
+                "probe_batch is only supported by the MOLHO banded operator."
+            )
+
         return operator_cls(
             cost_fn,
             mapping,
             precision,
-            verify_stencil=bool(verify_stencil),
-            probe_mode=str(probe_mode),
+            **operator_args,
         )
 
     raise ValueError(
