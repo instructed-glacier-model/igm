@@ -139,7 +139,9 @@ def update(cfg, state):
 
         if hasattr(state, "icemask"):
             state.smb = tf.where(
-                (state.smb < 0) | (state.icemask > 0.5), state.smb, -10
+                (state.smb < 0) | (state.icemask > 0.5),
+                state.smb,
+                cfg.processes.smb.smb_outside_icemask,
             )
 
         state.smb = tf.clip_by_value(

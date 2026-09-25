@@ -39,6 +39,10 @@ validation:
       exp_e_1: 0.20        # 20% for exp_e_1
       exp_e_2: 0.20        # 20% for exp_e_2
 
+    # Per-combination overrides (most specific wins); partial match, like `skip`.
+    combinations:
+      - {experiment: exp_c, mapping: network, optimizer: lbfgs, tolerance: 0.12}
+
   save_plots: true
 
 # Optional: Skip specific test combinations

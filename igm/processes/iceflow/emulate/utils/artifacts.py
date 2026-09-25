@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import warnings
 
 import importlib_resources
 import tensorflow as tf
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 import igm.processes.iceflow.emulate.emulators as emulators
 
@@ -22,6 +23,41 @@ from igm.processes.iceflow.emulate.utils.architectures import Architectures
 
 
 EMULATOR_FILENAME = "emulator.keras"
+
+# Config paths relative to processes.iceflow; all values live in compatibility.
+HARD_CHECKS = (
+    "numerics.Nz",
+    "numerics.basis_vertical",
+    "numerics.basis_horizontal",
+    "physics.sliding.u_ref",
+    "unified.inputs",
+    "physics.ice_density",
+    "physics.gravity_cst",
+    "physics.energy_components",
+    "physics.sliding.law",
+    "physics.sliding.exponent",
+    "physics.viscosity.exponent",
+    "unified.network.output_scale",
+)
+WARNING_CHECKS = (
+    "physics.sliding.regularization",
+    "physics.viscosity.regularization",
+    "physics.thr_ice_thk",
+    "physics.min_sr",
+    "physics.max_sr",
+)
+
+
+def _config_value(cfg, path):
+    value = OmegaConf.select(cfg.processes.iceflow, path, throw_on_missing=True)
+    return OmegaConf.to_container(value, resolve=True) if OmegaConf.is_config(value) else value
+
+
+def capture_artifact_compatibility(cfg):
+    """Capture all settings used to validate an artifact."""
+    return {path: _config_value(cfg, path)
+            for path in HARD_CHECKS + WARNING_CHECKS}
+
 
 _emulator_theme = Theme(
     {
@@ -100,17 +136,13 @@ class EmulatorArtifact(tf.keras.Model):
         architecture_name: str,
         architecture_params: dict[str, Any],
         core_model: tf.keras.Model | None = None,
-        basis_vertical: str | None = None,
-        basis_horizontal: str | None = None,
-        u_ref: float | None = None,
+        compatibility: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.architecture_name = str(architecture_name)
         self.architecture_params = dict(architecture_params)
-        self.basis_vertical = basis_vertical
-        self.basis_horizontal = basis_horizontal
-        self.u_ref = float(u_ref) if u_ref is not None else None
+        self.compatibility = dict(compatibility or {})
 
         if core_model is None:
             if self.architecture_name.lower() not in Architectures:
@@ -152,9 +184,7 @@ class EmulatorArtifact(tf.keras.Model):
         config = super().get_config()
         config["architecture_name"] = self.architecture_name
         config["architecture_params"] = self.architecture_params
-        config["basis_vertical"] = self.basis_vertical
-        config["basis_horizontal"] = self.basis_horizontal
-        config["u_ref"] = self.u_ref
+        config["compatibility"] = dict(self.compatibility)
         return config
 
     def get_build_config(self) -> dict[str, Any]:
@@ -201,50 +231,36 @@ def save_emulator_artifact(
 
 
 def validate_emulator_artifact(
-    model: EmulatorArtifact, cfg: "DictConfig", expected_inputs
+    model: EmulatorArtifact, cfg: DictConfig, expected_inputs,
 ) -> None:
-    """Raise ValueError if *model* is incompatible with *cfg* (Nz, input channels, discretization).
-
-    *expected_inputs* is the caller's own input-channel list (e.g.
-    ``cfg.processes.iceflow.unified.inputs`` for the unified mode). It is passed
-    in explicitly so this emulator helper never reaches into another mode's
-    config subtree.
-    """
-    cfg_Nz = int(cfg.processes.iceflow.numerics.Nz)
-    if model.Nz != cfg_Nz:
-        raise ValueError(f"Nz mismatch: emulator={model.Nz}, config={cfg_Nz}")
-
-    cfg_u_ref = float(cfg.processes.iceflow.physics.sliding.u_ref)
-    if model.u_ref != cfg_u_ref:
-        raise ValueError(f"u_ref mismatch: emulator={model.u_ref}, config={cfg_u_ref}")
-
-    model_inputs = list(model.input_names)
-    cfg_inputs = list(expected_inputs)
-    if model_inputs != cfg_inputs:
-        raise ValueError(
-            f"Input channel mismatch: emulator={model_inputs}, config={cfg_inputs}"
-        )
-
-    numerics = cfg.processes.iceflow.numerics
-    for attr, cfg_val in [
-        ("basis_vertical", str(numerics.basis_vertical)),
-        ("basis_horizontal", str(numerics.basis_horizontal)),
-    ]:
-        model_val = getattr(model, attr, None)
-        if model_val is not None and model_val != cfg_val:
-            raise ValueError(f"{attr} mismatch: emulator={model_val!r}, config={cfg_val!r}")
+    """Require complete training metadata; report hard mismatches or soft warnings."""
+    checks = HARD_CHECKS + WARNING_CHECKS
+    saved = {path: model.compatibility.get(path) for path in checks}
+    if missing := [path for path, value in saved.items() if value is None]:
+        raise ValueError("Missing emulator artifact settings: " + ", ".join(missing))
+    current = {path: _config_value(cfg, path) for path in checks}
+    current["unified.inputs"] = list(expected_inputs)
+    # Energy order is immaterial; input-channel order is part of the model contract.
+    for values in (saved, current):
+        values["physics.energy_components"] = sorted(values["physics.energy_components"])
+    errors, notices = [], []
+    for path in checks:
+        if saved[path] != current[path]:
+            messages = errors if path in HARD_CHECKS else notices
+            messages.append(f"{path}: artifact={saved[path]!r}, config={current[path]!r}")
+    if errors:
+        raise ValueError("Incompatible emulator artifact:\n" + "\n".join(errors))
+    if notices:
+        warnings.warn("Emulator artifact training differences:\n" + "\n".join(notices),
+                      UserWarning, stacklevel=2)
 
 
 def load_emulator_artifact(
     artifact_dir: str | Path,
-    cfg: "DictConfig | None" = None,
-    expected_inputs=None,
+    cfg: DictConfig,
+    expected_inputs,
 ) -> EmulatorArtifact:
-    """Load a Keras emulator artifact. If *cfg* is given, validates Nz and input channels.
-
-    *expected_inputs* is the caller's input-channel list, forwarded to
-    :func:`validate_emulator_artifact`.
-    """
+    """Load a Keras emulator artifact and validate its training settings."""
     artifact_path = _resolve_emulator_path(artifact_dir)
     if not artifact_path.exists():
         raise FileNotFoundError(

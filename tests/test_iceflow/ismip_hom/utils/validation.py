@@ -14,6 +14,8 @@ def validate_results(
     x_igm: np.ndarray,
     v_igm: np.ndarray,
     experiment: str,
+    mapping: Optional[str] = None,
+    optimizer: Optional[str] = None,
 ) -> Tuple[bool, Optional[float]]:
     """Validate simulation results against reference data."""
     config = load_test_config()
@@ -50,7 +52,7 @@ def validate_results(
     else:
         raise ValueError(f"Unknown error type: {error_type}")
 
-    tolerance = get_tolerance(experiment)
+    tolerance = get_tolerance(experiment, mapping, optimizer)
     is_valid = error <= tolerance
 
     return is_valid, error

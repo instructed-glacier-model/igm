@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import yaml
 
 
@@ -104,10 +104,25 @@ def get_unified_parameters_no_length(experiment: str) -> List[tuple]:
     return params
 
 
-def get_tolerance(experiment: str) -> float:
-    """Get tolerance value for experiment."""
+def get_tolerance(
+    experiment: str,
+    mapping: Optional[str] = None,
+    optimizer: Optional[str] = None,
+) -> float:
+    """Get tolerance for a test case: combination > experiment > default."""
     config = load_test_config()
     tol_config = config["validation"]["tolerance"]
+
+    # Check for combination-specific tolerance (experiment + mapping + optimizer)
+    test_case = {
+        "experiment": experiment,
+        "mapping": mapping,
+        "optimizer": optimizer,
+    }
+    for item in tol_config.get("combinations", []) or []:
+        criteria = {k: v for k, v in item.items() if k != "tolerance"}
+        if all(test_case.get(k) == v for k, v in criteria.items()):
+            return item["tolerance"]
 
     # Check for experiment-specific tolerance
     exp_tolerances = tol_config.get("experiments", {})

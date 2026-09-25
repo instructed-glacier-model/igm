@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/instructed-glacier-model/igm/actions/workflows/ci.yml/badge.svg)](https://github.com/instructed-glacier-model/igm/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/igm-model.svg)](https://pypi.org/project/igm-model/)
-[![Python](https://img.shields.io/badge/python-3.9%20|%203.10-blue)](https://pypi.org/project/igm-model/)
+[![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)](https://pypi.org/project/igm-model/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Documentation](https://img.shields.io/badge/docs-igm--model.org-blue)](https://igm-model.org)
 [![Paper](https://img.shields.io/badge/paper-EarthArXiv-orange)](https://eartharxiv.org/repository/view/13712/)
@@ -16,6 +16,8 @@
 IGM is an accessible, differentiable, modular, and GPU-accelerated ice flow model.
 
 **Full documentation → [igm-model.org](https://igm-model.org)**
+
+Note: the `igm-doc` folder is a git submodule holding the sources of the documentation. It stays empty unless you clone with `--recurse-submodules`, and it is not needed to run IGM.
 
 ---
 Looking for version 2 or earlier? See the [legacy wiki](https://github.com/jouvetg/igm/wiki).

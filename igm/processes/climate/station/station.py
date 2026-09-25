@@ -18,12 +18,11 @@ def initialize(cfg, state):
     state.usurf_initial = state.usurf
 
     # Precompute the required constants (once) based on user-given climate parameters
-    state.reference_precip_ice = (
-        cfg.processes.climate.station.reference_precipitation * 1.0989
-    )  # conversion from water equivalent to ice equivalent (using ice density of 910 kg m-3)
+    # precipitation is kept in water equivalent (kg m-2 yr-1 = mm w.e. yr-1), as expected by the smb module
+    state.reference_precip = cfg.processes.climate.station.reference_precipitation
     state.precip_ref_change = (
         cfg.processes.climate.station.precipitation_lapse_rate / 100
-    ) * state.reference_precip_ice  # equal to ~27.47 kg m-2 yr-1 ice equ. with default params.
+    ) * state.reference_precip  # equal to 24 kg m-2 yr-1 w.e. per 100 m with default params.
 
     produce_climate_data(cfg, state)
 
@@ -111,7 +110,7 @@ def update(cfg, state):
         # Print climate data to make sure values make sense (optionnal)
         # tf.print("air_temp (°C): min =", tf.reduce_min(state.air_temp), "max =", tf.reduce_max(state.air_temp))
         # tf.print("air_temp_sd (°C): min =", tf.reduce_min(state.air_temp_sd), "max =", tf.reduce_max(state.air_temp_sd))
-        # tf.print("precipitation (kg m-2 yr-1 ice equ.): min =", tf.reduce_min(state.precipitation), "max =", tf.reduce_max(state.precipitation))
+        # tf.print("precipitation (kg m-2 yr-1 w.e.): min =", tf.reduce_min(state.precipitation), "max =", tf.reduce_max(state.precipitation))
 
         # tf.print("Shape of delta_height:", tf.shape(delta_height))
         # tf.print("Shape of air_temp:", tf.shape(state.air_temp))
@@ -142,7 +141,7 @@ def produce_climate_data(cfg, state):
         state.usurf - cfg.processes.climate.station.reference_precipitation_elevation
     ) / 100
     precip_change = diff_elev_precip * state.precip_ref_change
-    precipitation = state.reference_precip_ice + precip_change
+    precipitation = state.reference_precip + precip_change
     # Ensure precipitation is never below the minimum allowed
     precipitation = tf.maximum(
         precipitation, cfg.processes.climate.station.min_precipitation_allowed
