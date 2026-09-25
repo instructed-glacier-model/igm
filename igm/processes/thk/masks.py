@@ -49,14 +49,15 @@ def compute_grounded_mask(
 ) -> tf.Tensor:
     """Return a boolean mask where ice is grounded.
 
-    ``rho_ratio`` is water density divided by ice density. The threshold is
-    strict: ice exactly at flotation counts as floating.
+    ``rho_ratio`` is water density divided by ice density. Ice within float32
+    round-off of flotation counts as floating: with ``topg = usurf - thk`` (the
+    ice flow), floating ice is exactly at flotation.
     """
     dtype = thk.dtype
-    phi = thk + tf.cast(rho_ratio, dtype) * (
-        tf.cast(topg, dtype) - tf.cast(water_level, dtype)
-    )
-    return phi > 0.0
+    topg = tf.cast(topg, dtype)
+    phi = thk + tf.cast(rho_ratio, dtype) * (topg - tf.cast(water_level, dtype))
+    tol = tf.cast(64.0 * 2.0**-23, dtype) * (thk + tf.abs(topg))  # 64 float32 ulps
+    return phi > tol
 
 
 def mask_gr(
