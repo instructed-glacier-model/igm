@@ -36,7 +36,7 @@ filename:
   Description: "NetCDF input data file created by OGGM."
 remove_RGI_folder:
   Type: boolean
-  Description: "Remove downloaded RGI folder."
+  Description: "Remove the RGI folder once input.nc is built. Keep False if other modules read it (e.g. climate or smb with method oggm)."
   Units: dimless
 sub_entity_mask:
   Type: boolean
@@ -61,8 +61,4 @@ OGGM_server_v7_hr:
 OGGM_server_v6:
   Type: string
   Description: "The address of the OGGM server for RGI6.0 directories."
-  Units: dimless
-glathida_server:
-  Type: string
-  Description: "The address of the GlaThiDa server to download thickness profiles from."
   Units: dimless
