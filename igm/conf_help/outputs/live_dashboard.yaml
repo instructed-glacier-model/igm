@@ -29,7 +29,7 @@ save_frames:
 headless:
   Type: boolean
   Units: dimless
-  Description: "Use a non-interactive Agg backend instead of TkAgg. Frames are saved automatically. Use in CI or on display-less servers."
+  Description: "Use a non-interactive Agg backend instead of TkAgg. Frames are saved automatically. Use in CI or on display-less servers; enabled automatically when no display is found (e.g. over SSH without X forwarding)."
 window_size:
   Type: list
   Units: pixels
