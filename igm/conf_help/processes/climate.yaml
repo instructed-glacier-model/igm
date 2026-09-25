@@ -13,8 +13,8 @@ simple:
     Description: "Mean annual temperature at ref_elevation."
   prec:
     Type: float
-    Units: kg m^{-2} yr^{-1}
-    Description: "Mean annual precipitation at ref_elevation."
+    Units: kg m^{-2} yr^{-1} (= mm yr^{-1} w.e.)
+    Description: "Mean annual precipitation (water equivalent) at ref_elevation."
   temp_std:
     Type: float
     Units: °C
