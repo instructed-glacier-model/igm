@@ -44,6 +44,7 @@ validation:
     # Per-combination overrides (most specific wins); partial match, like `skip`.
     combinations:
       - {experiment: exp_c, mapping: network, optimizer: lbfgs, tolerance: 0.12}
+      - {experiment: exp_c, mapping: network, optimizer: adam, tolerance: 0.12}   # run-to-run spread 6-11 %
 
   save_plots: true
 
