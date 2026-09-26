@@ -24,6 +24,7 @@ def _initialize_output(tmp_path):
                 "write_ncdf": {
                     "output_file": str(output_file),
                     "keep_open": True,
+                    "complevel": 0,
                     "vars_to_save": ["thk"],
                 }
             },
