@@ -2,8 +2,9 @@ import tensorflow as tf
 
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 
+
 @tf.function()
-def compute_divflux(u, v, h, dx, dy, method='upwind', smooth_sigma=0.0):
+def compute_divflux(u, v, h, dx, dy, method="upwind", smooth_sigma=0.0):
     """
     upwind computation of the divergence of the flux : d(u h)/dx + d(v h)/dy
     First, u and v are computed on the staggered grid (i.e. cell edges)
@@ -20,7 +21,7 @@ def compute_divflux(u, v, h, dx, dy, method='upwind', smooth_sigma=0.0):
     rough data geometry) while leaving long wavelengths nearly untouched.
     """
 
-    if method == 'upwind':
+    if method == "upwind":
 
         ## Compute u and v on the staggered grid
         u = tf.concat(
@@ -38,7 +39,7 @@ def compute_divflux(u, v, h, dx, dy, method='upwind', smooth_sigma=0.0):
         Qx = u * tf.where(u > 0, Hx[:, :-1], Hx[:, 1:])  # has shape (ny,nx+1)
         Qy = v * tf.where(v > 0, Hy[:-1, :], Hy[1:, :])  # has shape (ny+1,nx)
 
-    elif method == 'centered':
+    elif method == "centered":
 
         Qx = u * h
         Qy = v * h

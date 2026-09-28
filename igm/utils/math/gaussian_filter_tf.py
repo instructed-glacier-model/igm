@@ -1,4 +1,5 @@
-import tensorflow as tf 
+import tensorflow as tf
+
 
 def gaussian_kernel(size: int, sigma: float):
     """Creates a 2D Gaussian kernel."""
@@ -9,9 +10,10 @@ def gaussian_kernel(size: int, sigma: float):
     kernel = kernel / tf.reduce_sum(kernel)
     return kernel[:, :, tf.newaxis, tf.newaxis]  # shape (k, k, 1, 1)
 
+
 def gaussian_filter_tf(qx, sigma=1.0, kernel_size=5):
     """Apply 2D Gaussian filter to qx using TensorFlow."""
     qx = qx[tf.newaxis, :, :, tf.newaxis]  # shape (1, ny, nx, 1)
     kernel = tf.cast(gaussian_kernel(kernel_size, sigma), qx.dtype)
-    qx_smooth = tf.nn.conv2d(qx, kernel, strides=1, padding='SAME')
+    qx_smooth = tf.nn.conv2d(qx, kernel, strides=1, padding="SAME")
     return qx_smooth[0, :, :, 0]  # shape (ny, nx)

@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 @tf.function()
 def compute_upwind_gradient_tf(u, v, s, dx):
     #  upwind computation of u ds/dx + v ds/dy

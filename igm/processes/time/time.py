@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
@@ -20,9 +20,7 @@ def _reduce_for_cfl(x, percentile, active_mask=None):
     if percentile >= 100.0:
         if active_mask is None:
             return tf.reduce_max(abs_x)
-        return tf.reduce_max(
-            tf.where(active_mask, abs_x, tf.zeros_like(abs_x))
-        )
+        return tf.reduce_max(tf.where(active_mask, abs_x, tf.zeros_like(abs_x)))
     flat = (
         tf.reshape(abs_x, [-1])
         if active_mask is None
@@ -39,9 +37,7 @@ def _reduce_for_cfl(x, percentile, active_mask=None):
     keep_tail = tf.maximum(
         1,
         tf.cast(
-            tf.math.ceil(
-                tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0
-            ),
+            tf.math.ceil(tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0),
             tf.int32,
         ),
     )
@@ -109,9 +105,7 @@ def update(cfg, state):
             cfg.processes.time.cfl,
             state.dx,
             cfg.processes.time.step_max,
-            percentile=float(
-                getattr(cfg.processes.time, "cfl_percentile", 100.0)
-            ),
+            percentile=float(getattr(cfg.processes.time, "cfl_percentile", 100.0)),
             active_mask=getattr(state, "thk_active_mask", None),
         )
     else:
@@ -125,7 +119,7 @@ def update(cfg, state):
         state.saveresult = True
         state.itsave += 1
     else:
-        state.saveresult = False 
+        state.saveresult = False
 
     # the first loop is not advancing
     if state.it >= 0:
