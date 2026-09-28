@@ -5,6 +5,13 @@ from .interface import InterfaceBoundaryCondition
 from igm.common import State
 
 
+def _plain(value: Any) -> Any:
+    """A config edge value as a float, a list of floats, or None."""
+    if value is None or isinstance(value, (int, float)):
+        return value
+    return [float(v) for v in value]
+
+
 class InterfaceDirichletBoundary(InterfaceBoundaryCondition):
     """Interface for Dirichlet boundary condition on specified edges."""
 
@@ -13,24 +20,27 @@ class InterfaceDirichletBoundary(InterfaceBoundaryCondition):
         """Extract boundary values from config.
 
         Expected config fields (all optional, omit or set to null to skip):
-            bc.left   : float
-            bc.right  : float
-            bc.top    : float
-            bc.bottom : float
+            bc.left   : float, or [u, v]
+            bc.right  : float, or [u, v]
+            bc.top    : float, or [u, v]
+            bc.bottom : float, or [u, v]
         """
         basis_vertical = cfg.processes.iceflow.numerics.basis_vertical.lower()
         allowed_bases = ["lagrange", "molho", "ssa"]
 
         cfg_dirichlet = cfg.processes.iceflow.unified.bc.dirichlet
         values = {
-            "left": cfg_dirichlet.get("left", None),
-            "right": cfg_dirichlet.get("right", None),
-            "top": cfg_dirichlet.get("top", None),
-            "bottom": cfg_dirichlet.get("bottom", None),
+            side: _plain(cfg_dirichlet.get(side, None))
+            for side in ("left", "right", "top", "bottom")
         }
 
         if basis_vertical not in allowed_bases:
-            nonzero = [k for k, v in values.items() if v is not None and v != 0.0]
+            nonzero = [
+                k
+                for k, v in values.items()
+                if v is not None
+                and any(c != 0.0 for c in (v if isinstance(v, list) else [v]))
+            ]
             if nonzero:
                 raise ValueError(
                     f"Dirichlet boundary condition with non-zero values ({', '.join(nonzero)}) "

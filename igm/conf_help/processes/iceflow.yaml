@@ -350,20 +350,20 @@ unified:
   bc:
     dirichlet:
       left:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the left (west) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the left (west) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       right:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the right (east) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the right (east) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       top:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the top (north) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the top (north) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       bottom:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the bottom (south) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the bottom (south) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
   optimizer:
     Type: string
