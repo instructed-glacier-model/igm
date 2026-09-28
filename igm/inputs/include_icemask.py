@@ -70,19 +70,22 @@ def include_icemask(state, mask_shapefile, mask_invert):
 
 
 def read_shapefile(filepath):
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(
+        f"Icemask shapefile not found: {filepath} "
+        f"(current working directory: {os.getcwd()})"
+        )
+
     try:
-        # Read the shapefile
         gdf = gpd.read_file(filepath)
-
-        # Print the information about the shapefile
-        print("-----------------------")
-        print("Icemask Shapefile information:")
-        print("Number of features (polygons):", len(gdf))
-        print("EPSG code: ", gdf.crs.to_epsg())
-        print("Geometry type:", gdf.geometry.type.unique()[0])
-        print("-----------------------")
-
-        # Return the GeoDataFrame
-        return gdf
     except Exception as e:
-        raise FileNotFoundError(f"Cannot read shapefile: {filepath}. Current working directory: {os.getcwd()}. The relative file path to the shapefile also depends on the hydra folder structure. Error: {e}. ")
+        raise RuntimeError(f"Cannot read icemask shapefile {filepath}: {e}") from e
+
+    print("-----------------------")
+    print("Icemask Shapefile information:")
+    print("EPSG code: ", gdf.crs.to_epsg() if gdf.crs is not None else "undefined")
+    print("Geometry type:", gdf.geometry.type.unique()[0])
+    print("Number of features (polygons):", len(gdf))
+    print("-----------------------")
+
+    return gdf
