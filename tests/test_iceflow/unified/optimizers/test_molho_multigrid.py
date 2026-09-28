@@ -23,6 +23,8 @@ from igm.processes.iceflow.unified.operators.molho_banded import (
     SymmetricBandedStencil,
     extract_symmetric_bands_batched,
 )
+
+
 def _quadratic_energy(U, V, inputs):
     del inputs
     components = tf.concat([U, V], axis=1)
@@ -153,10 +155,14 @@ def test_modified_ldl_matches_dense_inverse_without_eigh(monkeypatch):
     expected = np.linalg.inv(matrix)
     np.testing.assert_allclose(actual, expected, rtol=2e-7, atol=2e-6)
 
-    graph = tf.function(invert_spd_4x4).get_concrete_function(
-        center,
-        tf.constant(1e-14, tf.float64),
-    ).graph
+    graph = (
+        tf.function(invert_spd_4x4)
+        .get_concrete_function(
+            center,
+            tf.constant(1e-14, tf.float64),
+        )
+        .graph
+    )
     assert all("Eig" not in operation.type for operation in graph.get_operations())
 
 
@@ -278,3 +284,111 @@ def test_periodic_full_smoother_has_stable_weight():
     )
     assert float(preconditioner.smoother_weight) == pytest.approx(0.5)
     assert float(preconditioner.multigrid.smoother_weight) == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("ny", [2, 3, 4, 5])
+def test_compact_molho_periodic_few_rows(ny):
+    """periodic_ns flowlines: offsets alias when fewer than 3 rows are active."""
+    shape = (1, 2, ny, 7)
+    rng = np.random.default_rng(21)
+    mapping = MappingIdentity(
+        [PeriodicNS()],
+        tf.constant(rng.normal(size=shape), tf.float64),
+        tf.constant(rng.normal(size=shape), tf.float64),
+        precision="double",
+    )
+    inputs = tf.zeros((1, 1, 1, 1, 1), tf.float64)
+    damping = tf.constant(1e-15, tf.float64)
+    exact = ADOperator(_quadratic_energy, mapping, "double")
+    compact = MOLHOBandedADOperator(_quadratic_energy, mapping, "double")
+    compact.prepare(inputs, damping)
+    vector = tf.constant(rng.normal(size=2 * np.prod(shape)), tf.float64)
+    reference = exact.hvp(inputs, vector, damping)
+    actual = compact.hvp(inputs, vector, damping)
+    relative = tf.norm(reference - actual) / tf.norm(reference)
+    assert float(relative) < 1e-11
+
+
+@pytest.mark.parametrize("ny", [1, 2, 3, 4])
+def test_symmetric_band_extraction_periodic_few_rows(ny):
+    """duplicated_endpoints=False (multigrid levels): true period-ny wrap."""
+    nx = 7
+    n_components = 2
+    rng = np.random.default_rng(8)
+    center = tf.constant(rng.normal(size=(n_components, n_components)), tf.float64)
+    center = 0.5 * (center + tf.transpose(center))
+    couplings = {
+        offset: tf.constant(rng.normal(size=(n_components, n_components)), tf.float64)
+        for offset in ((1, 0), (0, 1), (1, 1), (1, -1))
+    }
+
+    def move(value: tf.Tensor, dy: int, dx: int) -> tf.Tensor:
+        """Sample the (y + dy, x + dx) neighbour: periodic y, zero-padded x."""
+        if dy:
+            value = tf.roll(value, shift=-dy, axis=-2)
+        if dx > 0:
+            value = tf.pad(
+                value[..., dx:], [[0, 0]] * (value.shape.rank - 1) + [[0, dx]]
+            )
+        elif dx < 0:
+            value = tf.pad(
+                value[..., :dx], [[0, 0]] * (value.shape.rank - 1) + [[-dx, 0]]
+            )
+        return value
+
+    def operator(components: tf.Tensor) -> tf.Tensor:
+        """Exact 9-point operator: true period-ny wrap in y, open in x."""
+        result = tf.einsum("oi,...iyx->...oyx", center, components)
+        for (dy, dx), weight in couplings.items():
+            result += tf.einsum("oi,...iyx->...oyx", weight, move(components, dy, dx))
+            result += tf.einsum(
+                "oi,...iyx->...oyx", tf.transpose(weight), move(components, -dy, -dx)
+            )
+        return result
+
+    packed_center, edges = extract_symmetric_bands_batched(
+        operator,
+        1,
+        n_components,
+        ny,
+        nx,
+        tf.float64,
+        periodic_y=True,
+        periodic_x=False,
+        duplicated_endpoints=False,
+    )
+    stencil = SymmetricBandedStencil(
+        packed_center,
+        edges,
+        periodic_y=True,
+        periodic_x=False,
+        duplicated_endpoints=False,
+    )
+    vector = tf.constant(rng.normal(size=(1, n_components, ny, nx)), tf.float64)
+    reference = operator(vector)
+    actual = stencil.apply(vector)
+    relative = tf.norm(reference - actual) / tf.norm(reference)
+    assert float(relative) < 1e-11
+
+
+def test_alias_multipliers_are_identity_for_three_active_cells():
+    """The aliasing weights must not touch grids with >= 3 active cells."""
+    from igm.processes.iceflow.unified.operators.banded import (
+        component_band_multipliers,
+    )
+    from igm.processes.iceflow.unified.operators.molho_banded import (
+        symmetric_edge_multipliers,
+    )
+
+    cases = [
+        dict(ny=4, nx=7, periodic_y=True, periodic_x=False),
+        dict(ny=5, nx=5, periodic_y=True, periodic_x=True),
+        dict(ny=2, nx=7, periodic_y=False, periodic_x=False),
+        dict(ny=100, nx=200, periodic_y=True, periodic_x=False),
+    ]
+    for duplicated in (True, False):
+        for case in cases:
+            ny = case["ny"] + (1 if not duplicated and case["periodic_y"] else 0)
+            args = {**case, "ny": ny, "duplicated_endpoints": duplicated}
+            assert set(component_band_multipliers(**args)) == {1.0}, args
+            assert set(symmetric_edge_multipliers(**args)) == {1.0}, args

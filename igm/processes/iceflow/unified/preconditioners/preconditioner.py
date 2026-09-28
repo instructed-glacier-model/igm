@@ -16,6 +16,7 @@ from ..operators.banded import (
     COMPONENT_CENTER_KEY,
     as_dtype,
     build_component_selectors,
+    component_band_multipliers,
     extract_component_bands,
     periodic_axes,
 )
@@ -39,9 +40,7 @@ def invert_spd_4x4(
         return symmetric[:, row, col]
 
     diagonal_scale = tf.reduce_max(
-        tf.abs(
-            tf.stack([entry(index, index) for index in range(4)], axis=0)
-        ),
+        tf.abs(tf.stack([entry(index, index) for index in range(4)], axis=0)),
         axis=0,
     )
     tiny = 1e-300 if center.dtype == tf.float64 else 1e-30
@@ -65,18 +64,14 @@ def invert_spd_4x4(
     )
     l32 = (entry(3, 2) - l30 * l20 * d0 - l31 * l21 * d1) / d2
     d3 = tf.maximum(
-        entry(3, 3)
-        - l30 * l30 * d0
-        - l31 * l31 * d1
-        - l32 * l32 * d2,
+        entry(3, 3) - l30 * l30 * d0 - l31 * l31 * d1 - l32 * l32 * d2,
         floor,
     )
 
     columns = []
     for column in range(4):
         rhs = [
-            tf.ones_like(d0) if row == column else tf.zeros_like(d0)
-            for row in range(4)
+            tf.ones_like(d0) if row == column else tf.zeros_like(d0) for row in range(4)
         ]
         y0 = rhs[0]
         y1 = rhs[1] - l10 * y0
@@ -179,6 +174,12 @@ class ComponentBlockJacobiPreconditioner(Preconditioner):
                 colors,
                 neighbour_colors,
                 n_colors,
+                component_band_multipliers(
+                    self.Ny,
+                    self.Nx,
+                    periodic_y=self.periodic_y,
+                    periodic_x=self.periodic_x,
+                ),
             )
             identity = tf.eye(self.n_components, dtype=self.dtype)
             identity = identity[tf.newaxis, :, :, tf.newaxis, tf.newaxis]
@@ -214,14 +215,10 @@ class ComponentBlockJacobiPreconditioner(Preconditioner):
 
         matrix = tf.transpose(center, [0, 3, 4, 1, 2])
         matrix = 0.5 * (matrix + tf.linalg.matrix_transpose(matrix))
-        diagonal_scale = tf.reduce_max(
-            tf.abs(tf.linalg.diag_part(matrix)), axis=-1
-        )
+        diagonal_scale = tf.reduce_max(tf.abs(tf.linalg.diag_part(matrix)), axis=-1)
         floor = self._eigenvalue_floor(diagonal_scale)
         identity = tf.eye(self.n_components, dtype=self.dtype)
-        inverse = tf.linalg.inv(
-            matrix + floor[..., tf.newaxis, tf.newaxis] * identity
-        )
+        inverse = tf.linalg.inv(matrix + floor[..., tf.newaxis, tf.newaxis] * identity)
         return tf.transpose(inverse, [0, 3, 4, 1, 2])
 
     def _split(self, flat: tf.Tensor) -> tf.Tensor:
@@ -287,9 +284,11 @@ class BarotropicMultigridPreconditioner(ComponentBlockJacobiPreconditioner):
         if int(coarse_size) < 2:
             raise ValueError("multigrid.coarse_size must be at least two.")
 
-        point_weight = min(float(smoother_weight), 0.5) if (
-            self.periodic_y or self.periodic_x
-        ) else float(smoother_weight)
+        point_weight = (
+            min(float(smoother_weight), 0.5)
+            if (self.periodic_y or self.periodic_x)
+            else float(smoother_weight)
+        )
         self.smoother_weight = tf.constant(point_weight, self.dtype)
         self.smoother_steps = int(smoother_steps)
         self.mode = barotropic_mode(mapping, self.dtype)
@@ -365,9 +364,7 @@ class BarotropicMultigridPreconditioner(ComponentBlockJacobiPreconditioner):
     def _project(self, components: tf.Tensor) -> tf.Tensor:
         u = tf.einsum("z,bzyx->byx", self.mode, components[:, :2])
         v = tf.einsum("z,bzyx->byx", self.mode, components[:, 2:])
-        return tf.stack([u, v], axis=1)[
-            ..., : self.active_y, : self.active_x
-        ]
+        return tf.stack([u, v], axis=1)[..., : self.active_y, : self.active_x]
 
     def _prolong_mode(self, barotropic: tf.Tensor) -> tf.Tensor:
         u = self.mode[tf.newaxis, :, tf.newaxis, tf.newaxis] * barotropic[:, 0:1]
@@ -391,9 +388,7 @@ class BarotropicMultigridPreconditioner(ComponentBlockJacobiPreconditioner):
             point_residual = residual - self._operator_apply(value)
             value += self.smoother_weight * self._point_solve(point_residual)
 
-        coarse_residual = self._project(
-            residual - self._operator_apply(value)
-        )
+        coarse_residual = self._project(residual - self._operator_apply(value))
         value += self._prolong_mode(self.multigrid.apply(coarse_residual))
 
         for _ in range(self.smoother_steps):

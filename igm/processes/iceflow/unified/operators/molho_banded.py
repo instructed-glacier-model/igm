@@ -1,11 +1,17 @@
 """Compact symmetric stencils for the two-layer MOLHO discretization."""
 
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import tensorflow as tf
 
-from .banded import OFFSETS, build_component_selectors, periodic_axes, shift_local
-
+from .banded import (
+    OFFSETS,
+    axis_period,
+    build_component_selectors,
+    periodic_axes,
+    shift_local,
+    wrap_offset,
+)
 
 MOLHO_STENCIL_KEY = "molho_symmetric_stencil"
 EDGE_OFFSETS: Tuple[Tuple[int, int], ...] = (
@@ -14,6 +20,69 @@ EDGE_OFFSETS: Tuple[Tuple[int, int], ...] = (
     (1, 1),
     (1, -1),
 )
+
+
+def symmetric_edge_multipliers(
+    ny: int,
+    nx: int,
+    *,
+    periodic_y: bool = False,
+    periodic_x: bool = False,
+    duplicated_endpoints: bool = True,
+) -> Tuple[float, ...]:
+    """Edge weights that count aliased periodic couplings exactly once.
+
+    On a periodic axis with fewer than three active cells, distinct stencil
+    offsets reach the same neighbour and the colour-based extraction assigns
+    each aliased edge the full folded coupling. ``SymmetricBandedStencil.apply``
+    adds every stored edge together with its shifted transpose, so a folded
+    coupling must be stored exactly once: an edge whose offset aliases the
+    centre is dropped (the centre probe already holds it), an edge aliasing an
+    earlier edge or its reciprocal is dropped, and an edge aliasing its own
+    reciprocal is halved because apply() visits it from both orientations.
+    With three or more active cells per periodic axis every weight is one.
+    """
+    period_y = axis_period(ny, periodic_y, duplicated_endpoints)
+    period_x = axis_period(nx, periodic_x, duplicated_endpoints)
+    center = wrap_offset((0, 0), period_y, period_x)
+    seen = set()
+    multipliers = []
+    for dy, dx in EDGE_OFFSETS:
+        signature = wrap_offset((dy, dx), period_y, period_x)
+        reciprocal = wrap_offset((-dy, -dx), period_y, period_x)
+        key = frozenset((signature, reciprocal))
+        if signature == center or key in seen:
+            multipliers.append(0.0)
+        elif signature == reciprocal:
+            multipliers.append(0.5)
+        else:
+            multipliers.append(1.0)
+        seen.add(key)
+    return tuple(multipliers)
+
+
+def scale_symmetric_edges(
+    edges: List[tf.Tensor],
+    ny: int,
+    nx: int,
+    dtype: tf.DType,
+    *,
+    periodic_y: bool,
+    periodic_x: bool,
+    duplicated_endpoints: bool,
+) -> List[tf.Tensor]:
+    """Apply ``symmetric_edge_multipliers`` to extracted edge bands."""
+    multipliers = symmetric_edge_multipliers(
+        ny,
+        nx,
+        periodic_y=periodic_y,
+        periodic_x=periodic_x,
+        duplicated_endpoints=duplicated_endpoints,
+    )
+    return [
+        edge if multiplier == 1.0 else edge * tf.cast(multiplier, dtype)
+        for edge, multiplier in zip(edges, multipliers)
+    ]
 
 
 def supports_compact_molho(mapping, basis_vertical: str = "molho") -> bool:
@@ -54,9 +123,7 @@ def _shift(
         if axis == -2:
             zero = tf.zeros_like(value[..., :1, :])
             parts = (
-                [value[..., 1:, :], zero]
-                if offset > 0
-                else [zero, value[..., :-1, :]]
+                [value[..., 1:, :], zero] if offset > 0 else [zero, value[..., :-1, :]]
             )
         else:
             zero = tf.zeros_like(value[..., :1])
@@ -78,9 +145,7 @@ def _shift(
 
 def center_pairs(n_components: int) -> Tuple[Tuple[int, int], ...]:
     return tuple(
-        (row, col)
-        for row in range(n_components)
-        for col in range(row, n_components)
+        (row, col) for row in range(n_components) for col in range(row, n_components)
     )
 
 
@@ -193,9 +258,7 @@ class SymmetricBandedStencil:
                 periodic_x=self.periodic_x,
                 duplicated_endpoints=self.duplicated_endpoints,
             )
-            result += tf.einsum(
-                "boiyx,...biyx->...boyx", reciprocal, negative
-            )
+            result += tf.einsum("boiyx,...biyx->...boyx", reciprocal, negative)
         return result
 
     def dense_bands(self) -> tf.Tensor:
@@ -224,9 +287,7 @@ def allocate_symmetric_bands(
     name: str,
 ) -> Tuple[tf.Variable, tf.Variable]:
     center = tf.Variable(
-        tf.zeros(
-            (len(center_pairs(n_components)), batch_size, ny, nx), dtype
-        ),
+        tf.zeros((len(center_pairs(n_components)), batch_size, ny, nx), dtype),
         trainable=False,
         name=f"{name}_center",
     )
@@ -341,11 +402,18 @@ def extract_symmetric_bands(
                 periodic_x=periodic_x,
                 duplicated_endpoints=duplicated_endpoints,
             )
-            reciprocal = tf.einsum(
-                "o,biyx->boiyx", input_mask, reciprocal
-            )
+            reciprocal = tf.einsum("o,biyx->boiyx", input_mask, reciprocal)
             edge_parts[edge_index] += 0.5 * (direct + reciprocal)
 
+    edge_parts = scale_symmetric_edges(
+        edge_parts,
+        ny,
+        nx,
+        dtype,
+        periodic_y=periodic_y,
+        periodic_x=periodic_x,
+        duplicated_endpoints=duplicated_endpoints,
+    )
     return tf.stack(center_parts, axis=0), tf.stack(edge_parts, axis=0)
 
 
@@ -382,6 +450,15 @@ def compact_symmetric_bands(
             duplicated_endpoints=duplicated_endpoints,
         )
         edges.append(0.5 * (direct + reciprocal))
+    edges = scale_symmetric_edges(
+        edges,
+        int(dense_bands.shape[-2]),
+        int(dense_bands.shape[-1]),
+        dense_bands.dtype,
+        periodic_y=periodic_y,
+        periodic_x=periodic_x,
+        duplicated_endpoints=duplicated_endpoints,
+    )
     return packed_center, tf.stack(edges, axis=0)
 
 
@@ -409,9 +486,7 @@ def extract_symmetric_bands_batched(
     spatial = tf.cast(
         tf.equal(
             color[tf.newaxis],
-            tf.cast(
-                tf.range(n_colors)[:, tf.newaxis, tf.newaxis], color.dtype
-            ),
+            tf.cast(tf.range(n_colors)[:, tf.newaxis, tf.newaxis], color.dtype),
         ),
         dtype,
     )
@@ -429,9 +504,7 @@ def extract_symmetric_bands_batched(
             n_colors,
             dtype=dtype,
         )
-        dense_bands.append(
-            tf.einsum("yxc,icboyx->boiyx", selector, responses)
-        )
+        dense_bands.append(tf.einsum("yxc,icboyx->boiyx", selector, responses))
     return compact_symmetric_bands(
         tf.stack(dense_bands, axis=0),
         periodic_y=periodic_y,

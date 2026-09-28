@@ -5,7 +5,7 @@
 
 """Select the Hessian operator for a velocity mapping from ``hvp_mode``."""
 
-from typing import Callable
+from typing import Callable, Optional
 
 import tensorflow as tf
 
@@ -29,7 +29,7 @@ def build_energy_operator(
     mapping,
     verify_stencil: bool = False,
     owner: str = "cg_newton",
-    probe_batch: int = 0,
+    probe_batch: Optional[int] = 0,
 ) -> Operator:
     """Build the Hessian operator selected by ``hvp_mode``.
 
@@ -38,9 +38,10 @@ def build_energy_operator(
     MOLHO use specialized compact storage. ``owner`` only labels errors.
     """
     hvp_mode = str(hvp_mode).lower()
+    probe_batch = int(probe_batch or 0)
 
     if hvp_mode == "autodiff":
-        if int(probe_batch) != 0:
+        if probe_batch != 0:
             raise ValueError("probe_batch requires hvp_mode='banded'.")
         return ADOperator(cost_fn, mapping, precision)
 
@@ -58,8 +59,8 @@ def build_energy_operator(
             "probe_mode": str(probe_mode),
         }
         if operator_cls is MOLHOBandedADOperator:
-            operator_args["probe_batch"] = int(probe_batch)
-        elif int(probe_batch) != 0:
+            operator_args["probe_batch"] = probe_batch
+        elif probe_batch != 0:
             raise ValueError(
                 "probe_batch is only supported by the MOLHO banded operator."
             )

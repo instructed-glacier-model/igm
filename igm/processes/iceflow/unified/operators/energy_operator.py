@@ -18,6 +18,7 @@ from .banded import (
     ComponentBandedOperator,
     as_dtype,
     build_component_selectors,
+    component_band_multipliers,
     extract_component_bands,
     periodic_axes,
 )
@@ -278,20 +279,16 @@ class _BandedADOperatorBase(Operator):
             return self._ad.forward_hvp(inputs, v_flat, self._zero)
 
         theta_flat = self.map.flatten_theta(self.map.get_theta())
-        epsilon = tf.cast(1e-6, self.precision) * (
-            tf.cast(1.0, self.precision) + tf.norm(theta_flat)
-        ) / (tf.norm(v_flat) + tf.cast(1e-30, self.precision))
-        _, grad_plus = self._ad.cost_grad_at(
-            inputs, theta_flat + epsilon * v_flat
+        epsilon = (
+            tf.cast(1e-6, self.precision)
+            * (tf.cast(1.0, self.precision) + tf.norm(theta_flat))
+            / (tf.norm(v_flat) + tf.cast(1e-30, self.precision))
         )
-        _, grad_minus = self._ad.cost_grad_at(
-            inputs, theta_flat - epsilon * v_flat
-        )
+        _, grad_plus = self._ad.cost_grad_at(inputs, theta_flat + epsilon * v_flat)
+        _, grad_minus = self._ad.cost_grad_at(inputs, theta_flat - epsilon * v_flat)
         return (grad_plus - grad_minus) / (2.0 * epsilon)
 
-    def _verify_if_requested(
-        self, inputs: tf.Tensor, damping: tf.Tensor
-    ) -> None:
+    def _verify_if_requested(self, inputs: tf.Tensor, damping: tf.Tensor) -> None:
         if self._verify_stencil and not self._verified:
             self.verify(inputs, damping)
             self._verified = True
@@ -301,9 +298,7 @@ class _BandedADOperatorBase(Operator):
         vector = tf.random.normal(tf.shape(theta_flat), dtype=self.precision)
         exact = self._ad.hvp(inputs, vector, damping)
         approximate = self.hvp(inputs, vector, damping)
-        relative_error = float(
-            tf.norm(exact - approximate) / (tf.norm(exact) + 1e-30)
-        )
+        relative_error = float(tf.norm(exact - approximate) / (tf.norm(exact) + 1e-30))
         if relative_error > 1e-6:
             warnings.warn(
                 f"{type(self).__name__} differs from the exact Hessian by "
@@ -358,6 +353,12 @@ class BandedADOperator(_BandedADOperatorBase):
                 periodic_x=self.periodic_x,
             )
         )
+        self._band_multipliers = component_band_multipliers(
+            self.Ny,
+            self.Nx,
+            periodic_y=self.periodic_y,
+            periodic_x=self.periodic_x,
+        )
 
         band_shape = (
             len(OFFSETS),
@@ -390,6 +391,7 @@ class BandedADOperator(_BandedADOperatorBase):
             self._colors,
             self._neighbour_colors,
             self._n_colors,
+            self._band_multipliers,
         )
         self._component_bands.assign(bands)
         self._prepared = True
@@ -525,9 +527,7 @@ class MOLHOBandedADOperator(_BandedADOperatorBase):
         self._prepared = True
         self._verify_if_requested(inputs, damping)
 
-    def _component_apply_many(
-        self, inputs: tf.Tensor, probes: tf.Tensor
-    ) -> tf.Tensor:
+    def _component_apply_many(self, inputs: tf.Tensor, probes: tf.Tensor) -> tf.Tensor:
         """probes (n_comp, n_colors, B, n_comp, ny, nx) -> responses, same layout."""
         K = int(probes.shape[0]) * int(probes.shape[1])
         comps = tf.reshape(probes, (K, self.B, self.n_components, self.Ny, self.Nx))
@@ -626,9 +626,7 @@ class SSABandedADOperator(_BandedADOperatorBase):
         )
 
         self.batch_size, _, self.ny, self.nx = tuple(mapping.shape)
-        self._color, self._neighbour_colors = build_ssa_selectors(
-            self.ny, self.nx
-        )
+        self._color, self._neighbour_colors = build_ssa_selectors(self.ny, self.nx)
         self._bands = allocate_ssa_bands(
             self.batch_size,
             self.ny,
