@@ -1,5 +1,6 @@
-description: Compute calving flux at a marine or lacustrine ice front
+description: Lateral ablation rate (calving and frontal melt) at a marine or lacustrine ice front
 category: hydrosphere
 type: experimental #  `core`, `community`, `experimental`, or `deprecated`
-needs: [thk, topg, water_level, ubar, vbar]
-updates: [calving_rate]
+authors: [Guillaume Jouvet, Thomas Gregov]
+needs: [] # resolved from the active calving law (laws/<law>/<law>.yaml)
+updates: [calving_rate, frontal_melt_rate]

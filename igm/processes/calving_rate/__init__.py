@@ -1,1 +1,1 @@
-from .calving_rate import initialize, finalize, update
+from .calving_rate import initialize, update, finalize, get_active_submodule
