@@ -1,5 +1,10 @@
 """Thickness-transport implementations, their dispatch table, and selection."""
 
+from types import ModuleType
+from typing import Tuple
+
+from omegaconf import DictConfig
+
 from . import adi, explicit, ffsl, implicit, implicit_x
 
 TransportSchemes = {
@@ -11,12 +16,12 @@ TransportSchemes = {
 }
 
 
-def available_transport_schemes():
+def available_transport_schemes() -> Tuple[str, ...]:
     """Return configured transport names in deterministic order."""
     return tuple(sorted(TransportSchemes))
 
 
-def get_transport(cfg):
+def get_transport(cfg: DictConfig) -> Tuple[str, ModuleType]:
     """Resolve ``cfg.processes.thk.scheme`` into ``(name, module)``."""
     name = str(getattr(cfg.processes.thk, "scheme", "explicit")).strip().lower()
     try:

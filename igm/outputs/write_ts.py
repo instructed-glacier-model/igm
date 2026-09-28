@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
@@ -17,7 +17,8 @@ def initialize(cfg, state):
 
 def run(cfg, state):
     if state.saveresult:
-        vol = np.sum(state.thk) * (state.dx**2) / 10**9
+        # A calving front keeps the ice of its partial cells in Href.
+        vol = np.sum(state.thk + getattr(state, "Href", 0.0)) * (state.dx**2) / 10**9
         area = np.sum(state.thk > 1) * (state.dx**2) / 10**6
 
         if not hasattr(state, "already_called_update_write_ts"):
@@ -26,7 +27,7 @@ def run(cfg, state):
             if hasattr(state, "logger"):
                 state.logger.info("Initialize NCDF ts output Files")
 
-            nc = Dataset( cfg.outputs.write_ts.output_file,"w", format="NETCDF4" )
+            nc = Dataset(cfg.outputs.write_ts.output_file, "w", format="NETCDF4")
 
             nc.createDimension("time", None)
             E = nc.createVariable("time", np.dtype("float32").char, ("time",))
@@ -48,11 +49,10 @@ def run(cfg, state):
                     "Write NCDF ts file at time : " + str(state.t.numpy())
                 )
 
-            nc = Dataset( cfg.outputs.write_ts.output_file, "a", format="NETCDF4" )
+            nc = Dataset(cfg.outputs.write_ts.output_file, "a", format="NETCDF4")
             d = nc.variables["time"][:].shape[0]
 
             nc.variables["time"][d] = state.t.numpy()
             for var in ["vol", "area"]:
                 nc.variables[var][d] = vars()[var].numpy()
             nc.close()
-

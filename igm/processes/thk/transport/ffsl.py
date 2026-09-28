@@ -28,7 +28,7 @@ from typing import NamedTuple
 import tensorflow as tf
 
 from .. import boundary
-
+from ..sources import mass_balance
 
 _DEFAULT_MAX_DEFORMATION = 0.5
 _DEFAULT_MAX_SUBSTEPS = 128
@@ -78,12 +78,8 @@ def _superbee_slope(lines, left, right):
 def _reconstruction_integral_base(lines, slopes, prefix, position):
     """Integrate reconstruction inside one copy of the finite domain."""
     line_length = tf.shape(lines)[1]
-    clipped = tf.clip_by_value(
-        position, 0.0, tf.cast(line_length, lines.dtype)
-    )
-    cell = tf.minimum(
-        tf.cast(tf.floor(clipped), tf.int32), line_length - 1
-    )
+    clipped = tf.clip_by_value(position, 0.0, tf.cast(line_length, lines.dtype))
+    cell = tf.minimum(tf.cast(tf.floor(clipped), tf.int32), line_length - 1)
     fraction = clipped - tf.cast(cell, lines.dtype)
 
     cell_average = tf.gather(lines, cell, axis=1, batch_dims=1)
@@ -101,9 +97,7 @@ def _reconstruction_integral(lines, slopes, prefix, position, left):
     if left != "periodic":
         # A zero exterior contains no ice. At a symmetric boundary the normal
         # face is fixed and ordered departure faces remain inside the domain.
-        return _reconstruction_integral_base(
-            lines, slopes, prefix, position
-        )
+        return _reconstruction_integral_base(lines, slopes, prefix, position)
 
     line_length = tf.cast(tf.shape(lines)[1], lines.dtype)
     cycles = tf.floor(position / line_length)
@@ -126,9 +120,7 @@ def _repair_nonnegative_roundoff(thickness):
 def _transport_lines(lines, face_velocity, dt, dx, left, right):
     """Conservatively transport a batch of lines through arbitrary face CFLs."""
     slopes = _superbee_slope(lines, left, right)
-    prefix = tf.concat(
-        [tf.zeros_like(lines[:, :1]), tf.cumsum(lines, axis=1)], axis=1
-    )
+    prefix = tf.concat([tf.zeros_like(lines[:, :1]), tf.cumsum(lines, axis=1)], axis=1)
     line_length = tf.shape(lines)[1]
     faces = tf.cast(tf.range(line_length + 1)[None, :], lines.dtype)
     departure = faces - face_velocity * dt / dx
@@ -195,32 +187,26 @@ def _substep_count(maximum_deformation, deformation_limit, max_substeps):
     )
     # Avoid an undefined float-to-int conversion for pathologically large
     # input while preserving a useful 'larger than allowed' diagnostic.
-    requested = tf.minimum(
-        requested, tf.cast(2_000_000_000, requested.dtype)
-    )
+    requested = tf.minimum(requested, tf.cast(2_000_000_000, requested.dtype))
     required = tf.maximum(tf.cast(requested, tf.int32), 1)
     return required, tf.minimum(required, max_substeps)
 
 
 def _apply_source(thickness, increment):
-    """Apply SMB and report mass added by the non-negativity constraint."""
+    """Apply the source term and report mass added by the non-negativity constraint."""
     unconstrained = thickness + increment
     constrained = tf.nn.relu(unconstrained)
     correction = tf.reduce_sum(constrained - unconstrained)
     return constrained, correction
 
 
-def _strang_x_y(
-    thickness, u_face, v_face, dt, dx, left, right, top, bottom
-):
+def _strang_x_y(thickness, u_face, v_face, dt, dx, left, right, top, bottom):
     first = _transport_x(thickness, u_face, 0.5 * dt, dx, left, right)
     second = _transport_y(first, v_face, dt, dx, top, bottom)
     return _transport_x(second, u_face, 0.5 * dt, dx, left, right)
 
 
-def _strang_y_x(
-    thickness, u_face, v_face, dt, dx, left, right, top, bottom
-):
+def _strang_y_x(thickness, u_face, v_face, dt, dx, left, right, top, bottom):
     first = _transport_y(thickness, v_face, 0.5 * dt, dx, top, bottom)
     second = _transport_x(first, u_face, dt, dx, left, right)
     return _transport_y(second, v_face, 0.5 * dt, dx, top, bottom)
@@ -233,7 +219,7 @@ def _ffsl_step(
     thickness,
     dx,
     dt,
-    smb,
+    source,
     step_index,
     deformation_limit,
     max_substeps,
@@ -244,26 +230,20 @@ def _ffsl_step(
     limit_policy="accept",
 ):
     """Execute one conservative, arbitrary-CFL FFSL thickness step."""
-    u_face, v_face = boundary.face_velocities(
-        ubar, vbar, left, right, top, bottom
-    )
-    maximum_deformation = _velocity_deformation(
-        ubar, vbar, u_face, v_face, dt, dx
-    )
+    u_face, v_face = boundary.face_velocities(ubar, vbar, left, right, top, bottom)
+    maximum_deformation = _velocity_deformation(ubar, vbar, u_face, v_face, dt, dx)
     required_substeps, substeps = _substep_count(
         maximum_deformation, deformation_limit, max_substeps
     )
     substep_dt = dt / tf.cast(substeps, thickness.dtype)
-    half_source_increment = 0.5 * substep_dt * smb
+    half_source_increment = 0.5 * substep_dt * source
 
     def condition(index, field, source_correction):
         del field, source_correction
         return index < substeps
 
     def body(index, field, source_correction):
-        field, correction_before = _apply_source(
-            field, half_source_increment
-        )
+        field, correction_before = _apply_source(field, half_source_increment)
         x_first = tf.equal(tf.math.floormod(step_index + index, 2), 0)
         field = tf.cond(
             x_first,
@@ -295,9 +275,7 @@ def _ffsl_step(
         # kilometre-scale field.  Repair once per complete Strang step and
         # preserve its global flux-form mass, avoiding three line reductions.
         field = _repair_nonnegative_roundoff(field)
-        field, correction_after = _apply_source(
-            field, half_source_increment
-        )
+        field, correction_after = _apply_source(field, half_source_increment)
         return (
             index + 1,
             field,
@@ -315,13 +293,13 @@ def _ffsl_step(
         parallel_iterations=1,
     )
 
-    divflux = smb - tf.math.divide_no_nan(thickness_new - thickness, dt)
+    divflux = source - tf.math.divide_no_nan(thickness_new - thickness, dt)
     source_limiter_volume = source_limiter_correction * dx * dx
     substep_limit_reached = required_substeps > max_substeps
     if limit_policy == "stop":
         step_accepted = tf.logical_not(substep_limit_reached)
         thickness_new = tf.where(step_accepted, thickness_new, thickness)
-        divflux = tf.where(step_accepted, divflux, smb)
+        divflux = tf.where(step_accepted, divflux, source)
         source_limiter_volume = tf.where(
             step_accepted,
             source_limiter_volume,
@@ -331,8 +309,7 @@ def _ffsl_step(
         step_accepted = tf.constant(True)
     else:
         raise ValueError(
-            "limit_policy must be 'stop' or 'accept'; "
-            f"got {limit_policy!r}."
+            "limit_policy must be 'stop' or 'accept'; " f"got {limit_policy!r}."
         )
     return FFSLStepResult(
         thickness_new,
@@ -358,7 +335,7 @@ def _options(cfg):
     )
 
 
-def _solve_with_options(state, smb, options):
+def _solve_with_options(state, source, options):
     """Adapt state tensors and cached options to the compiled kernel."""
     dtype = state.thk.dtype
     return _ffsl_step(
@@ -367,7 +344,7 @@ def _solve_with_options(state, smb, options):
         state.thk,
         tf.cast(state.dx, dtype),
         tf.cast(state.dt, dtype),
-        tf.cast(smb, dtype),
+        tf.cast(source, dtype),
         tf.cast(state.it, tf.int32),
         tf.cast(options["deformation_limit"], dtype),
         tf.cast(options["max_substeps"], tf.int32),
@@ -379,7 +356,7 @@ def _solve_with_options(state, smb, options):
     )
 
 
-def solve(state, cfg, smb):
+def solve(state, cfg, source):
     """Solve one step, parsing configuration for direct/test callers."""
     deformation_limit, max_substeps, limit_policy = _options(cfg)
     boundaries = boundary.get_boundary_conditions(cfg)
@@ -392,7 +369,7 @@ def solve(state, cfg, smb):
         "top": boundaries.top,
         "bottom": boundaries.bottom,
     }
-    return _solve_with_options(state, smb, options)
+    return _solve_with_options(state, source, options)
 
 
 def _validate_config(cfg, boundaries=None):
@@ -403,8 +380,7 @@ def _validate_config(cfg, boundaries=None):
     boundary.validate_backend(boundaries, SUPPORTED_BOUNDARY_MODES, "ffsl")
     if str(getattr(p, "slope_type", "superbee")).strip().lower() != "superbee":
         raise ValueError(
-            "cfg.processes.thk.scheme: ffsl currently requires "
-            "slope_type: superbee."
+            "cfg.processes.thk.scheme: ffsl currently requires " "slope_type: superbee."
         )
 
     deformation_limit, max_substeps, limit_policy = _options(cfg)
@@ -413,9 +389,7 @@ def _validate_config(cfg, boundaries=None):
             "cfg.processes.thk.ffsl.max_deformation must be positive and finite."
         )
     if max_substeps < 1:
-        raise ValueError(
-            "cfg.processes.thk.ffsl.max_substeps must be at least one."
-        )
+        raise ValueError("cfg.processes.thk.ffsl.max_substeps must be at least one.")
     if limit_policy not in ("accept", "stop"):
         raise ValueError(
             "cfg.processes.thk.ffsl.limit_policy must be 'stop' or 'accept'; "
@@ -446,11 +420,9 @@ def initialize(cfg, state):
 def update(cfg, state):
     """Advance thickness and publish FFSL conservation diagnostics."""
     del cfg
-    if not hasattr(state, "smb"):
-        state.smb = tf.zeros_like(state.thk)
 
     options = state.thk_components.transport_options
-    result = _solve_with_options(state, state.smb, options)
+    result = _solve_with_options(state, mass_balance(state), options)
     state.thk = result.thickness
     state.divflux = result.divflux
     state.ffsl_substeps = result.substeps

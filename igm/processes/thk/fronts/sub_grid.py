@@ -1,186 +1,216 @@
 #!/usr/bin/env python3
 
+# Copyright (C) 2021-2026 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+"""Sub-grid calving front of Albrecht et al. (2011), as implemented in PISM.
+
+Albrecht, T., Martin, M., Haseloff, M., Winkelmann, R., and Levermann, A.:
+Parameterization for subgrid-scale motion of ice-shelf calving fronts, The
+Cryosphere, 5, 35-44, 2011. The algorithm follows PISM (``GeometryEvolution``
+part_grid and ``FrontRetreat``, https://github.com/pism/pism, GPL v3+).
+
+One step, after the shared transport step (:mod:`.common`), which advances
+the full cells and adds the ice-side inflow to the reservoir ``Href`` of the
+partial cells (ice-free ocean cells next to ice):
+
+1. **Advance.** A partial cell becomes full when ``Href >= H_r``, the
+   threshold thickness (:func:`.common.threshold_thickness`); it then gets
+   ``thk = H_r`` (from the flux into the cell, or PISM's mean of the neighbours
+   with ``threshold: mean``) and the residual ``Href - H_r`` is split equally among its
+   ice-free ocean neighbours, which may fill in turn, for up to
+   ``max_iterations`` passes (PISM). What is left is kept in place. With
+   ``residual: discard`` it is calved instead (Albrecht et al., variant 1).
+2. **Retreat.** With the lateral ablation rate ``a = c + m_cf`` (m/yr) of
+   the ``calving_rate`` process, a partial cell loses ``dt a H_r L / dx``,
+   with ``L`` the front length in the cell (:func:`.common.front_faces`:
+   1 at a straight front, as in PISM, and sqrt(2) across a 45-degree
+   staircase, which removes PISM's orientation bias).
+   What exceeds its ``Href`` is taken from the adjacent marine full cells,
+   which become partial cells (``Href = thk - deficit``, ``thk = 0``): the
+   front retreats by at most one cell per step, and a larger demand is
+   reported in ``state.calving_unapplied_thk``.
+3. **Rules and clean-up.** ``min_thickness`` calves thin floating front
+   cells, ``fixed`` removes ice beyond the initial front, and ``Href`` is kept
+   only on partial cells.
+
+The front of the thickness field stays a sharp cliff: a cell joins the ice
+at the full thickness ``H_r`` and leaves it as a whole.
 """
 
-Implements the Parameterization for subgrid-scale motion of ice-shelf calving fronts
-of Albrecht et al. (2011), The Cryosphere 5, 35-44;
-It is a vectorized TensorFlow
-rewrite of PISM's reference implementation (https://github.com/pism/pism,
-Copyright (C) PISM Authors, GNU GPL v3+) with these IGM modifications:
-flotation cap on the threshold thickness, href_cap_factor safety clamp,
-no lateral residual redistribution, extended-thickness / halo padding
-for the iceflow solver, dual slope-limiter blend at the front band, and
-an Href-budget calving sink for retreat (level_set-style).
-
-Full cells carry thk; partial cells (ocean cells with an icy 4-neighbour)
-carry Href (m, area-specific volume). state.thk_true is the true
-step-function column (H in full cells, 0 in partial); state.thk is
-overwritten at end of step with an iceflow-facing extended version
-where partial cells are padded to interior-mean thickness. Advance
-(Albrecht 2011 / PISM): inflow accumulates in Href until it reaches
-H_threshold (interior-neighbour mean surface, capped at flotation),
-then the cell promotes to thk = H_threshold and leftover Href stays
-on the cell. Retreat (level_set-style): when
-state.calving_rate is set, _apply_calving drains a c * H_ref * dt / dx
-budget from Href first, then optionally from the adjacent cliff thk.
-See Albrecht et al. (2011), TC 5, 35-44 and PISM (https://www.pism.io/).
-"""
+from typing import Optional, Tuple
 
 import tensorflow as tf
+from omegaconf import DictConfig
 
-from .utils import (
-    blended_divflux,
-    extend_thk_for_iceflow,
-    marine_calving_rate,
-    neighbour_bool_any,
-    neighbour_mean,
+from igm.common import State
+from igm.utils.math.neighbours import any_neighbour, count_neighbours, neighbour_sum
+
+from ..transport import explicit
+from .common import (
+    ablation_rate,
+    apply_min_thickness,
+    clean_up,
+    fill_partial_cells,
+    front_faces,
+    initialize_front,
+    publish,
+    threshold_speed,
+    threshold_thickness,
+    transport,
 )
 
 UPDATE_MODE = "replace_transport"
 COMPATIBLE_TRANSPORTS = ("explicit",)
+SUPPORTED_BOUNDARY_MODES = explicit.SUPPORTED_BOUNDARY_MODES
 AVAILABLE = True
 UNAVAILABLE_REASON = ""
 
-
-def _ocean(state):
-    """Ice-free cells below the water level (none without an ocean)."""
-    is_ice = state.thk > 0.0
-    return tf.logical_and(tf.logical_not(is_ice), state.topg < state.water_level)
+RESIDUAL_POLICIES = ("discard", "redistribute")
 
 
-def _partial_mask(state):
-    is_ice = state.thk > 0.0
-    return tf.logical_and(_ocean(state), neighbour_bool_any(is_ice))
-
-
-def _threshold_thickness(cfg, state, is_ice):
-    p = cfg.processes.thk
-    H_avg = neighbour_mean(state.thk, is_ice)
-    h_avg = neighbour_mean(state.usurf, is_ice)
-    grounded = (state.topg + H_avg) > h_avg
-    H_threshold = tf.where(grounded, h_avg - state.topg, H_avg)
-    H_threshold = tf.maximum(H_threshold, 0.0)
-
-    # Zero ocean depth (land, or the "no ocean" water level) leaves it as is.
-    Dw = tf.maximum(state.water_level - state.topg, 0.0)
-    H_float = Dw / p.ratio_density
-    marine = Dw > 0.0
-    H_threshold = tf.where(marine, tf.minimum(H_threshold, H_float), H_threshold)
-    return H_threshold
-
-
-def _advect_and_route(cfg, state, is_partial):
-    state.divflux = blended_divflux(cfg, state, state.thk, state.thk > 0.0)
-    if not hasattr(state, "smb"):
-        state.smb = tf.zeros_like(state.thk)
-
-    partial_f = tf.cast(is_partial, state.thk.dtype)
-
-    inflow = tf.maximum(-state.divflux, 0.0)
-    state.Href.assign(state.Href + state.dt * inflow * partial_f)
-
-    thk_delta = tf.where(
-        is_partial,
-        tf.zeros_like(state.thk),
-        state.dt * (state.smb - state.divflux),
-    )
-    state.thk = tf.maximum(state.thk + thk_delta, 0.0)
-
-
-def _promote_and_cap(cfg, state):
-    sg = cfg.processes.thk.sub_grid
-    cap_factor = tf.cast(sg.href_cap_factor, state.thk.dtype)
-
-    for _ in range(int(sg.promote_iters)):
-        is_ice = state.thk > 0.0
-        is_partial = _partial_mask(state)
-
-        H_threshold = _threshold_thickness(cfg, state, is_ice)
-
-        href_cap = tf.where(
-            is_partial & (H_threshold > 0.0),
-            cap_factor * H_threshold,
-            state.Href,
+def initialize(cfg: DictConfig, state: State) -> None:
+    p = cfg.processes.thk.front.get("sub_grid", None) or {}
+    residual = str(p.get("residual", "redistribute")).strip().lower()
+    if residual not in RESIDUAL_POLICIES:
+        raise ValueError(
+            "cfg.processes.thk.front.sub_grid.residual must be one of "
+            f"{', '.join(RESIDUAL_POLICIES)}; got {residual!r}."
         )
-        state.Href.assign(tf.minimum(state.Href, href_cap))
-
-        thr = tf.where(H_threshold > 0.0, H_threshold, state.Href)
-
-        ready = is_partial & (state.Href >= thr) & (thr > 0.0)
-        if not tf.reduce_any(ready):
-            break
-
-        gained = tf.where(ready, thr, tf.zeros_like(state.thk))
-        state.thk = state.thk + gained
-        state.Href.assign(state.Href - gained)
+    max_iterations = int(p.get("max_iterations", 10))
+    if max_iterations < 0:
+        raise ValueError(
+            "cfg.processes.thk.front.sub_grid.max_iterations must be >= 0."
+        )
+    options = initialize_front(cfg, state)
+    options["redistribute"] = residual == "redistribute"
+    options["max_iterations"] = max_iterations
 
 
-def _apply_calving(cfg, state):
-    """Apply state.calving_rate as a mass sink on Href, then
-    optionally on the adjacent cliff (calve_cliff).
+def update(cfg: DictConfig, state: State) -> None:
+    components = state.thk_components
+    options = components.component_state["front"]
+    thk, href = transport(state)
+    fixed = getattr(state, "front_initial_extent", None) if options["fixed"] else None
+    publish(
+        state,
+        *front_step(
+            thk,
+            href,
+            tf.convert_to_tensor(state.topg),
+            tf.convert_to_tensor(state.water_level),
+            ablation_rate(cfg, state),
+            tf.cast(state.dt, thk.dtype),
+            tf.cast(state.dx, thk.dtype),
+            fixed,
+            float(components.rho_ratio),
+            int(options["max_iterations"]),
+            bool(options["redistribute"]),
+            float(options["min_thickness"]),
+            threshold_speed(state, options),
+        ),
+    )
 
-    state.calving_rate is the normal front retreat speed c (m/yr). The
-    area-specific volume drained from a partial cell per step is
-    c * H_ref * dt / dx, where H_ref is the interior-neighbour mean
-    thickness (the column the partial cell would have if it were full).
-    The dx scaling converts a cliff-retreat speed into the right
-    Href-units sink: a column of width c*dt at full height H_ref,
-    spread over a cell of size dx. With it, the net front velocity
-    becomes (flux-driven advance) - c, mirroring level_set.py.
+
+def _retreat(
+    thk: tf.Tensor,
+    href: tf.Tensor,
+    topg: tf.Tensor,
+    water_level: tf.Tensor,
+    ablation: tf.Tensor,
+    dt: tf.Tensor,
+    dx: tf.Tensor,
+    rho_ratio: float,
+    speed: Optional[tf.Tensor],
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Remove ``dt a H_r L / dx`` from each front cell (PISM FrontRetreat).
+
+    Returns the new ``(thk, Href)`` and the ablation that could not be
+    applied (more than one cell of retreat in one step).
     """
-    sg = cfg.processes.thk.sub_grid
-    dtype = state.thk.dtype
-    dx = tf.cast(state.dx, dtype)
-    c = marine_calving_rate(cfg, state, dtype)
+    marine = topg < water_level
+    ice = thk > 0.0
+    front = (~ice) & marine & any_neighbour(ice) & (ablation > 0.0)
+    H_r = threshold_thickness(thk, topg, water_level, rho_ratio, speed)
+    fill = tf.where(H_r > 0.0, href / tf.maximum(H_r, 1e-30), tf.zeros_like(href))
+    fraction = tf.where(ice, tf.ones_like(thk), tf.clip_by_value(fill, 0.0, 1.0))
+    length = tf.cast(front_faces(ice, fraction), thk.dtype)
+    demand = dt * ablation * H_r * length / dx
+    demand = tf.where(front, demand, tf.zeros_like(demand))
+    deficit = tf.maximum(demand - href, 0.0)
+    href = tf.maximum(href - demand, 0.0)
 
-    # Interior-neighbour mean thickness: the H that appears in the c * H / dx
-    # retreat-mass-flux. At partial cells state.thk = 0, so take the mean over
-    # ice neighbours.
-    H_ref = neighbour_mean(state.thk, state.thk > 0.0)
-    budget = state.dt * c * H_ref / dx
-
-    lose_href = tf.minimum(state.Href, budget)
-    state.Href.assign(state.Href - lose_href)
-
-    if not sg.calve_cliff:
-        return
-
-    remaining = budget - lose_href
-    is_ice = state.thk > 0.0
-    front_full = tf.logical_and(is_ice, neighbour_bool_any(_ocean(state)))
-    drain = tf.where(
-        front_full, tf.minimum(state.thk, remaining), tf.zeros_like(state.thk)
+    # The deficit goes to the adjacent marine full cells, in equal parts.
+    target = ice & marine
+    count = count_neighbours(target, thk.dtype)
+    share = tf.where(
+        count > 0.0, deficit / tf.maximum(count, 1.0), tf.zeros_like(deficit)
     )
-    state.thk = tf.maximum(state.thk - drain, 0.0)
+    unapplied = tf.where(count > 0.0, tf.zeros_like(deficit), deficit)
+    received = tf.where(target, neighbour_sum(share), tf.zeros_like(thk))
+    converted = received > 0.0
+    unapplied += tf.maximum(received - thk, 0.0)
+    href = tf.where(converted, tf.maximum(thk - received, 0.0), href)
+    thk = tf.where(converted, tf.zeros_like(thk), thk)
+    return thk, href, unapplied
 
 
-# ---------------------------------------------------------------------------
-# Public API (called from thk.py)
-# ---------------------------------------------------------------------------
+@tf.function(jit_compile=True)
+def front_step(
+    thk: tf.Tensor,
+    href: tf.Tensor,
+    topg: tf.Tensor,
+    water_level: tf.Tensor,
+    ablation: tf.Tensor,
+    dt: tf.Tensor,
+    dx: tf.Tensor,
+    fixed_extent: Optional[tf.Tensor],
+    rho_ratio: float,
+    max_iterations: int,
+    redistribute: bool,
+    min_thickness: float,
+    speed: Optional[tf.Tensor] = None,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Advance, retreat, rules and clean-up after the transport step.
 
+    Returns ``(thk, Href, calved, unapplied, ice_area_fraction)``, where
+    ``calved`` (m) is the ice removed from each cell, so that the total of
+    ``thk + Href`` changes during this call by exactly ``-sum(calved)``
+    (the advance only moves ice between cells).
+    """
+    topg = tf.cast(topg, thk.dtype)
+    water_level = tf.cast(water_level, thk.dtype)
+    marine = topg < water_level
 
-def initialize(cfg, state):
-    if not hasattr(state, "Href"):
-        state.Href = tf.Variable(tf.zeros_like(state.thk), trainable=False, name="Href")
-    if not hasattr(state, "thk_true"):
-        state.thk_true = tf.Variable(state.thk, trainable=False)
-
-
-def update(cfg, state):
-    # Restore the true step-function thk (full cells: H, partial: 0)
-    # before mass transport. state.thk may have been overwritten by the
-    # iceflow-facing extended view at the end of the previous step.
-    state.thk = tf.identity(state.thk_true)
-
-    is_partial = _partial_mask(state)
-    _advect_and_route(cfg, state, is_partial)
-    _promote_and_cap(cfg, state)
-
-    if hasattr(state, "calving_rate"):
-        _apply_calving(cfg, state)
-
-    state.thk_true.assign(state.thk)
-    # Partial cells carry Href rather than thk, so they read as ice-free here.
-    state.thk = extend_thk_for_iceflow(
-        cfg, state.thk, _partial_mask(state), state.thk > 0.0
+    # 1. Advance: fill, then redistribute the residuals (device-side loop).
+    # With "discard", the residual leaves the domain and is counted as calved.
+    thk, href, discarded = fill_partial_cells(
+        thk, href, topg, water_level, rho_ratio, speed, max_iterations, redistribute
     )
+    before = thk + href
+
+    # 2. Retreat by the lateral ablation rate.
+    thk, href, unapplied = _retreat(
+        thk, href, topg, water_level, ablation, dt, dx, rho_ratio, speed
+    )
+
+    # 3. Rules and clean-up.
+    thk = apply_min_thickness(thk, topg, water_level, rho_ratio, min_thickness)
+    if fixed_extent is not None:
+        beyond = marine & ~fixed_extent
+        thk = tf.where(beyond, tf.zeros_like(thk), thk)
+        href = tf.where(beyond, tf.zeros_like(href), href)
+    thk, href = clean_up(thk, href, marine)
+
+    # Retreat, rules and clean-up only remove ice, cell by cell.
+    calved = discarded + tf.maximum(before - (thk + href), 0.0)
+    threshold = threshold_thickness(thk, topg, water_level, rho_ratio, speed)
+    fill = tf.where(
+        threshold > 0.0, href / tf.maximum(threshold, 1e-30), tf.zeros_like(href)
+    )
+    fraction = tf.where(
+        thk > 0.0,
+        tf.ones_like(thk),
+        tf.where(href > 0.0, tf.minimum(fill, 1.0), tf.zeros_like(thk)),
+    )
+    return thk, href, calved, unapplied, fraction

@@ -9,7 +9,9 @@ For velocities frozen over one time step, first-order upwind transport is a
 linear operator ``D``.  The theta method therefore gives the linear system
 
     [I + dt * theta * D] H_new
-        = H_old - dt * (1 - theta) * D(H_old) + dt * smb.
+        = H_old - dt * (1 - theta) * D(H_old) + dt * source,
+
+with ``source = smb + bmb`` (:func:`..sources.mass_balance`).
 
 The system is solved by Jacobi-preconditioned BiCGSTAB.  The complete solve is
 one TensorFlow graph containing a ``tf.while_loop``: there are no Python
@@ -28,7 +30,7 @@ import tensorflow as tf
 
 from .. import boundary
 from ..domains import face_masks
-
+from ..sources import mass_balance
 
 SUPPORTED_BOUNDARY_MODES = ("zero", "symmetric", "periodic")
 SUPPORTS_ACTIVE_DOMAIN = True
@@ -84,9 +86,7 @@ def _build_operator_coefficients(
     active_mask=None,
 ):
     """Assemble the five-point upwind transport stencil once per solve."""
-    u_face, v_face = boundary.face_velocities(
-        ubar, vbar, left, right, top, bottom
-    )
+    u_face, v_face = boundary.face_velocities(ubar, vbar, left, right, top, bottom)
     if active_mask is not None:
         x_face_mask, y_face_mask = face_masks(active_mask)
         u_face = u_face * tf.cast(x_face_mask, u_face.dtype)
@@ -449,7 +449,7 @@ def _solve_theta_step(
     thickness,
     dx,
     dt,
-    smb,
+    source,
     theta,
     tolerance,
     max_iter,
@@ -464,10 +464,10 @@ def _solve_theta_step(
     """Compiled tensor-only implementation of one theta-method step."""
     dt_theta = dt * theta
     if active_mask is None:
-        active_smb = smb
+        active_source = source
     else:
         active_mask = tf.cast(active_mask, tf.bool)
-        active_smb = tf.where(active_mask, smb, tf.zeros_like(smb))
+        active_source = tf.where(active_mask, source, tf.zeros_like(source))
     coefficients = _build_operator_coefficients(
         ubar,
         vbar,
@@ -487,7 +487,7 @@ def _solve_theta_step(
     rhs = (
         thickness
         - explicit_to_implicit_ratio * (operator_old - thickness)
-        + dt * active_smb
+        + dt * active_source
     )
     initial_residual = rhs - operator_old
 
@@ -531,9 +531,7 @@ def _solve_theta_step(
         thickness_new = tf.nn.relu(thickness_solved)
         correction = thickness_new - thickness_solved
     else:
-        thickness_new = tf.where(
-            active_mask, tf.nn.relu(thickness_solved), thickness
-        )
+        thickness_new = tf.where(active_mask, tf.nn.relu(thickness_solved), thickness)
         correction = tf.where(
             active_mask,
             thickness_new - thickness_solved,
@@ -541,19 +539,19 @@ def _solve_theta_step(
         )
     nonnegative_correction_volume = tf.reduce_sum(correction) * dx * dx
     if active_mask is None:
-        divflux = smb - tf.math.divide_no_nan(thickness_new - thickness, dt)
+        divflux = source - tf.math.divide_no_nan(thickness_new - thickness, dt)
     else:
         divflux = tf.where(
             active_mask,
-            smb - tf.math.divide_no_nan(thickness_new - thickness, dt),
-            tf.zeros_like(smb),
+            source - tf.math.divide_no_nan(thickness_new - thickness, dt),
+            tf.zeros_like(source),
         )
 
     solved = converged & tf.logical_not(breakdown)
     if failure_policy == "stop":
         step_accepted = solved
         thickness_new = tf.where(step_accepted, thickness_new, thickness)
-        divflux = tf.where(step_accepted, divflux, smb)
+        divflux = tf.where(step_accepted, divflux, source)
         transport_divflux = tf.where(
             step_accepted,
             transport_divflux,
@@ -568,8 +566,7 @@ def _solve_theta_step(
         step_accepted = tf.constant(True)
     else:
         raise ValueError(
-            "failure_policy must be 'stop' or 'accept'; "
-            f"got {failure_policy!r}."
+            "failure_policy must be 'stop' or 'accept'; " f"got {failure_policy!r}."
         )
 
     return ImplicitStepResult(
@@ -587,7 +584,7 @@ def _solve_theta_step(
     )
 
 
-def _solve_with_options(state, smb, options):
+def _solve_with_options(state, source, options):
     """Adapt state tensors and cached options to the compiled solver."""
     dtype = state.thk.dtype
     return _solve_theta_step(
@@ -596,7 +593,7 @@ def _solve_with_options(state, smb, options):
         state.thk,
         tf.cast(state.dx, dtype),
         tf.cast(state.dt, dtype),
-        tf.cast(smb, dtype),
+        tf.cast(source, dtype),
         tf.cast(options["theta"], dtype),
         tf.cast(options["tolerance"], dtype),
         tf.cast(options["max_iter"], tf.int32),
@@ -615,9 +612,7 @@ def _options(cfg, boundaries=None):
     p = cfg.processes.thk
     if boundaries is None:
         boundaries = boundary.get_boundary_conditions(cfg)
-    boundary.validate_backend(
-        boundaries, SUPPORTED_BOUNDARY_MODES, "implicit"
-    )
+    boundary.validate_backend(boundaries, SUPPORTED_BOUNDARY_MODES, "implicit")
 
     theta = float(p.implicit.theta)
     if not 0.5 <= theta <= 1.0:
@@ -634,18 +629,16 @@ def _options(cfg, boundaries=None):
 
     max_iter = int(p.implicit.solver.max_iter)
     if max_iter <= 0:
-        raise ValueError(
-            "cfg.processes.thk.implicit.solver.max_iter must be positive."
-        )
+        raise ValueError("cfg.processes.thk.implicit.solver.max_iter must be positive.")
 
     max_restarts = int(p.implicit.solver.max_restarts)
     if max_restarts < 0:
         raise ValueError(
             "cfg.processes.thk.implicit.solver.max_restarts cannot be negative."
         )
-    failure_policy = str(
-        getattr(p.implicit.solver, "failure_policy", "stop")
-    ).strip().lower()
+    failure_policy = (
+        str(getattr(p.implicit.solver, "failure_policy", "stop")).strip().lower()
+    )
     if failure_policy not in ("accept", "stop"):
         raise ValueError(
             "cfg.processes.thk.implicit.solver.failure_policy must be "
@@ -664,9 +657,9 @@ def _options(cfg, boundaries=None):
     }
 
 
-def solve(state, cfg, smb):
+def solve(state, cfg, source):
     """Solve one step, parsing configuration for direct/test callers."""
-    return _solve_with_options(state, smb, _options(cfg))
+    return _solve_with_options(state, source, _options(cfg))
 
 
 def initialize(cfg, state):
@@ -682,25 +675,18 @@ def initialize(cfg, state):
     state.thk_solver_breakdown = tf.constant(False)
     state.thk_step_accepted = tf.constant(True)
     state.thk_transport_divflux = tf.zeros_like(state.thk)
-    state.thk_nonnegative_correction_volume = tf.zeros(
-        [], dtype=state.thk.dtype
-    )
+    state.thk_nonnegative_correction_volume = tf.zeros([], dtype=state.thk.dtype)
 
 
 def update(cfg, state):
     """Advance thickness by one theta-method step."""
-    if not hasattr(state, "smb"):
-        state.smb = tf.zeros_like(state.thk)
-
     del cfg
     options = state.thk_components.transport_options
-    result = _solve_with_options(state, state.smb, options)
+    result = _solve_with_options(state, mass_balance(state), options)
     state.thk = result.thickness
     state.divflux = result.divflux
     state.thk_transport_divflux = result.transport_divflux
-    state.thk_nonnegative_correction_volume = (
-        result.nonnegative_correction_volume
-    )
+    state.thk_nonnegative_correction_volume = result.nonnegative_correction_volume
     state.thk_solver_iterations = result.iterations
     state.thk_solver_restarts = result.restarts
     state.thk_solver_relative_residual = result.relative_residual

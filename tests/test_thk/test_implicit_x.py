@@ -40,8 +40,6 @@ def _cfg(theta=1.0, left="zero", right="zero"):
                             "max_restarts": 4,
                         },
                     },
-                    "calving_front": False,
-                    "method": "sub_grid",
                 }
             }
         }

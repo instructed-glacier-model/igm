@@ -10,12 +10,12 @@ domain:
 remove_rigid_body_modes:
   Type: boolean
   Units: dimless
-  Description: "If true, ice without a mechanical anchor to grounded ice is removed after every thickness update (and once at initialization). Floating ice must belong to full Q1 cells connected through cell edges to a full cell with a grounded corner; otherwise it can translate or rotate freely, so its velocity is not determined by the force balance and exact solves return arbitrary speeds that throttle the CFL step. Grounded ice is never removed. With a sub-grid front, iceflow padding and Href belonging only to removed ice are filtered too."
+  Description: "If true, ice without a mechanical anchor to grounded ice is removed after every thickness update (and once at initialization). Floating ice must belong to full Q1 cells connected through cell edges to a full cell with a grounded corner; otherwise it can translate or rotate freely, so its velocity is not determined by the force balance and exact solves return arbitrary speeds that throttle the CFL step. Grounded ice is never removed. With a calving front, nodes edge-adjacent to anchored ice (just filled, waiting for their neighbours to form full cells) are kept, the partial-cell reservoir Href is kept only next to the remaining ice, and the removed ice is added to calved_thk."
 boundary:
   left:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the left x side: `zero` (alias `open`) assumes zero exterior ice and permits outflow; `symmetric` (aliases `closed`, `no_flux`, `reflective`) imposes zero normal mass flux; `periodic` connects to the right side and requires boundary.right=periodic. Explicit supports zero and symmetric; implicit_x supports zero and symmetric in x; FFSL and implicit support all three modes."
+    Description: "Transport boundary at the left x side: `zero` (alias `open`) assumes zero exterior ice and permits outflow; `symmetric` (aliases `closed`, `no_flux`, `reflective`) imposes zero normal mass flux; `dirichlet` (alias `inflow`) holds the exterior thickness at the initial thickness of the edge cells, so ice enters with the edge velocity; `periodic` connects to the right side and requires boundary.right=periodic. Explicit and the calving fronts support zero, symmetric and dirichlet; implicit_x supports zero and symmetric in x; FFSL and implicit support zero, symmetric and periodic."
   right:
     Type: string
     Units: dimless
@@ -23,7 +23,7 @@ boundary:
   top:
     Type: string
     Units: dimless
-    Description: "Transport boundary at the first row of the y dimension, with the same zero/open, symmetric/no-flux, and paired-periodic choices."
+    Description: "Transport boundary at the first row of the y dimension, with the same zero/open, symmetric/no-flux, dirichlet/inflow and paired-periodic choices."
   bottom:
     Type: string
     Units: dimless
@@ -75,3 +75,46 @@ ratio_density:
   Type: float
   Units: dimless
   Description: "Density of ice divided by density of water, used by the flotation term. If iceflow densities are configured, initialization verifies that their ratio is consistent with this value."
+front:
+  method:
+    Type: string
+    Units: dimless
+    Description: "Calving front of marine (and lake) termini: `none` leaves the front to the thickness transport (ice advected into an ice-free cell spreads over it); `sub_grid` tracks the front at sub-grid scale from the volume of the partial cells (Albrecht et al., 2011, as in PISM); `level_set` tracks it with a level-set function moving at u - (c + m_cf) n (after Bondzio et al., 2016), with the ice following it exactly. In both, thk is the physical thickness seen by the ice flow: a front cell joins the ice at the full thickness once its cell is full, so the stress-balance front is sharp on the boundary of full Q1 cells, while the partial cells keep their volume in Href. The calving rate c and the frontal melt m_cf come from the `calving_rate` process. Both methods require scheme: explicit and no active-domain constraints."
+  first_order:
+    Type: boolean
+    Units: dimless
+    Description: "Use first-order upwind fluxes out of the cells next to the front, so that the flux into a partial cell is the ice-side flux u H (Albrecht et al., 2011, Eq. 2); the bulk keeps thk.slope_type."
+  min_thickness:
+    Type: float
+    Units: m
+    Description: "Calve floating front cells thinner than this (the thickness rule of Albrecht et al., 2011, and PISM's thickness_calving); 0 disables it."
+  fixed:
+    Type: boolean
+    Units: dimless
+    Description: "The front cannot advance beyond its initial position: ice flowing past it is calved (the front may still retreat)."
+  threshold:
+    Type: string
+    Units: dimless
+    Description: "Thickness H_r a partial cell takes when it fills: `flux` gives it the thickness continuity gives to the ice entering it, the mean over its ice neighbours of H_n |u_n| / |u_p| with |u_p| the speed extrapolated linearly to the cell (exact for a steady spreading shelf, where u H is constant; the mean where the speed is uniform); `mean` is the mean of the neighbours (PISM), which on a front thinning downstream leaves a wall one cell thick that travels with the front (Albrecht et al., 2011, Sect. 3), a first-order error. Where the bed is above the neighbours' mean ice base, the cell is filled to their mean surface in both cases."
+  sub_grid:
+    max_iterations:
+      Type: integer
+      Units: dimless
+      Description: "Passes redistributing the residual volume of partial cells that fill (PISM geometry.part_grid.max_iterations); what is left is kept in place."
+    residual:
+      Type: string
+      Units: dimless
+      Description: "Residual volume of a filled partial cell: `redistribute` it equally among its ice-free ocean neighbours (PISM), or `discard` it (Albrecht et al., 2011, variant 1), counted in calved_thk."
+  level_set:
+    reinit_freq:
+      Type: integer
+      Units: steps
+      Description: "Re-distance the level-set function psi every N steps (0: never). The partial cells are frozen (the full and empty cells re-clamped after), so no fill fraction or mass changes; every step (the default) keeps the upwind front speed exact."
+    reinit_iter:
+      Type: integer
+      Units: dimless
+      Description: "Pseudo-time iterations of each re-distancing (Sussman et al., 1994)."
+    band:
+      Type: integer
+      Units: cells
+      Description: "Cells beyond the ice where the ice velocity is extended for the level-set advection."

@@ -8,9 +8,10 @@
 import math
 
 import tensorflow as tf
+from omegaconf import DictConfig
 
 
-def get_density_ratio(cfg) -> float:
+def get_density_ratio(cfg: DictConfig) -> float:
     """Return the canonical ice/water density ratio used for flotation.
 
     ``thk.ratio_density`` determines the floating surface, while iceflow uses

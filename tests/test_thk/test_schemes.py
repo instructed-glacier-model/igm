@@ -22,7 +22,6 @@ def _cfg(scheme):
             "processes": {
                 "thk": {
                     "scheme": scheme,
-                    "calving_front": False,
                     "ratio_density": 0.91,
                 }
             }

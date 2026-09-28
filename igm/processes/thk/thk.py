@@ -12,13 +12,20 @@ them once, checks that the combination can actually run, and stores the result
 on ``state.thk_components`` for the update to use.
 
 A front declares how it composes with transport through its ``UPDATE_MODE``.
-``replace_transport`` means it owns mass transport itself, which accommodates
-IGM's existing sub-grid front code while making that non-composability
-explicit instead of silently ignoring the selected transport scheme;
-``after_transport`` means it runs right after the transport step.
+``replace_transport`` means it owns mass transport itself (both calving-front
+methods do, through the explicit scheme's divergence), making that
+non-composability explicit instead of silently ignoring the selected
+transport scheme; ``after_transport`` means it runs right after the
+transport step.
 """
 
 from dataclasses import dataclass, field
+from types import ModuleType
+
+import tensorflow as tf
+from omegaconf import DictConfig
+
+from igm.common import State
 
 from . import boundary
 from .domains import (
@@ -27,6 +34,7 @@ from .domains import (
     update_active_domain,
 )
 from .fronts import get_front
+from .fronts.common import DIAGNOSTICS
 from .rigid_body import remove_rigid_body_modes
 from .surfaces import get_density_ratio, update_surfaces, validate_density_ratio
 from .transport import get_transport
@@ -50,11 +58,17 @@ class ThkComponents:
     boundaries: boundary.BoundaryConditions
     remove_rigid_body_modes: bool
     rho_ratio: float
+    basal_mass_balance: bool = False
     transport_options: dict = field(default_factory=dict)
     component_state: dict = field(default_factory=dict)
 
 
-def _check_component(name, module, kind):
+#: Fields owned by a calving front, removed when an input file brings them
+#: into a run without one.
+FRONT_FIELDS = ("psi", "front_initial_extent", "front_initial_psi") + DIAGNOSTICS
+
+
+def _check_component(name: str, module: ModuleType, kind: str) -> None:
     """Reject a dispatch-table entry that cannot act as a component."""
     missing = [
         callback
@@ -67,7 +81,7 @@ def _check_component(name, module, kind):
         )
 
 
-def _select_components(cfg):
+def _select_components(cfg: DictConfig) -> ThkComponents:
     """Resolve the configuration into a validated set of components.
 
     Selection, composition, and the checks are one step because they depend on
@@ -134,10 +148,23 @@ def _select_components(cfg):
         boundaries=boundaries,
         remove_rigid_body_modes=remove_rigid_body_modes,
         rho_ratio=rho_ratio,
+        basal_mass_balance="bmb" in cfg.processes,
     )
 
 
-def initialize(cfg, state):
+def _drop_front_fields(state: State) -> None:
+    """Without a front, merge a loaded ``Href`` into ``thk`` and drop the rest."""
+    if hasattr(state, "Href"):
+        state.thk = tf.convert_to_tensor(state.thk) + tf.cast(
+            state.Href, state.thk.dtype
+        )
+        del state.Href
+    for name in FRONT_FIELDS:
+        if hasattr(state, name):
+            delattr(state, name)
+
+
+def initialize(cfg: DictConfig, state: State) -> None:
     if not hasattr(state, "topg"):
         raise ValueError(
             "The 'thk' module requires an initial topography ('state.topg')."
@@ -151,18 +178,24 @@ def initialize(cfg, state):
     validate_density_ratio(cfg)
     components = _select_components(cfg)
     state.thk_components = components
+    if components.front is None:
+        _drop_front_fields(state)
 
+    # The fronts read the ice-flow geometry (usurf), so it must be current.
+    update_surfaces(cfg, state)
     for component in components.pipeline:
         component.initialize(cfg, state)
     initialize_active_domain(cfg, state, components.domain_constraints)
 
     if components.remove_rigid_body_modes:
-        remove_rigid_body_modes(state, components.rho_ratio)
+        remove_rigid_body_modes(
+            state, components.rho_ratio, components.front is not None
+        )
 
     update_surfaces(cfg, state)
 
 
-def update(cfg, state):
+def update(cfg: DictConfig, state: State) -> None:
     if state.it < 0:
         return
 
@@ -184,12 +217,15 @@ def update(cfg, state):
         update_active_domain(cfg, state, components.domain_constraints)
 
     if components.remove_rigid_body_modes:
-        remove_rigid_body_modes(state, components.rho_ratio)
+        front = components.front is not None
+        removed = remove_rigid_body_modes(state, components.rho_ratio, front)
+        if front:
+            state.calved_thk = state.calved_thk + removed
 
     update_surfaces(cfg, state)
 
 
-def finalize(cfg, state):
+def finalize(cfg: DictConfig, state: State) -> None:
     """Run the optional finalize callback of each selected component."""
     components = state.thk_components
     for component in reversed(components.pipeline):

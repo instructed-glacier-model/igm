@@ -23,7 +23,6 @@ def _cfg(ratio_density, ice_density=None, water_density=None):
             "slope_type": "superbee",
             "divflux_smooth_sigma": 0.0,
             "ratio_density": ratio_density,
-            "calving_front": False,
         }
     }
     if ice_density is not None or water_density is not None:

@@ -10,7 +10,6 @@ import tensorflow as tf
 
 from . import grounded, initial_ice, interior, state_mask
 
-
 DomainConstraints = {
     "grounded": grounded,
     "initial_ice": initial_ice,
