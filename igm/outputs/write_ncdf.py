@@ -8,6 +8,7 @@ import tensorflow as tf
 from netCDF4 import Dataset
 
 from igm.utils.math.getmag import getmag
+from igm.utils.ncdf_dims import vertical_dim_name, vertical_size_reference
 
 
 def initialize(cfg, state):
@@ -57,6 +58,7 @@ def initialize(cfg, state):
     state.var_info_ncdf_ex["weight_particles"] = ["weight_particles", "no"]
     state.var_info_ncdf_ex["T"] = ["Ice temperature", "K"]
     state.var_info_ncdf_ex["omega"] = ["Water content fraction", "1"]
+    state.var_info_ncdf_ex["E"] = ["Ice enthalpy", "J kg-1"]
     state.var_info_ncdf_ex["E_pmp"] = ["Pressure melting point enthalpy", "J kg-1"]
     state.var_info_ncdf_ex["T_pmp"] = ["Pressure melting point temperature", "K"]
     state.var_info_ncdf_ex["T_pa"] = ["Pressure-adjusted temperature", "K"]
@@ -130,16 +132,24 @@ def run(cfg, state):
             if hasattr(state, "pyproj_srs"):
                 nc.pyproj_srs = state.pyproj_srs
 
-            if hasattr(cfg.processes, "iceflow"):
-                if "Nz" in cfg.processes.iceflow:
-                    nc.createDimension("z", cfg.processes.iceflow.numerics.Nz)
-                    E = nc.createVariable("z", np.dtype("float32").char, ("z",))
-                    E.units = "m"
-                    E.long_name = "z"
-                    E.axis = "Z"
-                    E[:] = np.arange(
-                        cfg.processes.iceflow.numerics.Nz
-                    )  # TODO: fix this, that's not what we want
+            nz_ref = vertical_size_reference(cfg)
+
+            def vertical_dim(size):
+                """Name of the vertical dimension of length `size`, creating it once.
+
+                A run may hold several independent vertical grids (iceflow and
+                enthalpy resolve different numbers of layers), so the dimension is
+                keyed by its own length rather than assumed to be the iceflow one.
+                """
+                name = vertical_dim_name(size, nz_ref)
+                if name not in nc.dimensions:
+                    nc.createDimension(name, size)
+                    axis = nc.createVariable(name, np.dtype("float32").char, (name,))
+                    axis.units = "m"
+                    axis.long_name = name
+                    axis.axis = "Z"
+                    axis[:] = np.arange(size)
+                return name
 
             # one chunk per save, so each append compresses only the new slice
             complevel = cfg.outputs.write_ncdf.complevel
@@ -162,10 +172,11 @@ def run(cfg, state):
                         )
                         E[0, :, :] = val
                     elif val.ndim == 3:
+                        zdim = vertical_dim(val.shape[0])
                         E = nc.createVariable(
                             var,
                             np.dtype("float32").char,
-                            ("time", "z", "y", "x"),
+                            ("time", zdim, "y", "x"),
                             chunksizes=(1,) + val.shape,
                             **compression_args,
                         )

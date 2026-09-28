@@ -4,6 +4,11 @@ import tensorflow as tf
 import os
 
 from igm.utils.math.getmag import getmag
+from igm.utils.ncdf_dims import (
+    vertical_dim_name,
+    vertical_dims_in_use,
+    vertical_size_reference,
+)
 
 
 def initialize(cfg, state):
@@ -36,6 +41,7 @@ def initialize(cfg, state):
         "weight_particles": ["weight_particles", "no"],
         "T": ["Ice temperature", "K"],
         "omega": ["Water content fraction", "1"],
+        "E": ["Ice enthalpy", "J kg-1"],
         "E_pmp": ["Pressure melting point enthalpy", "J kg-1"],
         "T_pmp": ["Pressure melting point temperature", "K"],
         "T_pa": ["Pressure-adjusted temperature", "K"],
@@ -110,13 +116,23 @@ def update_netcdf_ex(cfg, state):
     file_path = cfg.outputs.local.output_file
     var_list = cfg.outputs.local.vars_to_save
 
+    nz_ref = vertical_size_reference(cfg)
+
     def create_data_vars():
         data_vars = {}
         for var in var_list:
             if not hasattr(state, var):
                 continue
             arr = getattr(state, var).numpy()
-            dims = ("y", "x") if arr.ndim == 2 else ("z", "y", "x")
+            if arr.ndim == 2:
+                dims = ("y", "x")
+            elif arr.ndim == 3:
+                dims = (vertical_dim_name(arr.shape[0], nz_ref), "y", "x")
+            else:
+                raise ValueError(
+                    f"Cannot write '{var}' to NetCDF: expected a 2-D (y, x) or 3-D "
+                    f"(z, y, x) field, got shape {arr.shape}."
+                )
             data = xr.DataArray(arr, dims=dims)
             data = data.expand_dims(time=[getattr(state, "t", tf.constant(0)).numpy()])
             attrs = {}
@@ -136,11 +152,20 @@ def update_netcdf_ex(cfg, state):
             "time": ("time", [getattr(state, "t", tf.constant(0)).numpy()]),
         }
 
-        if hasattr(cfg, "processes") and hasattr(cfg.processes, "iceflow"):
-            coords["z"] = ("z", np.arange(cfg.processes.iceflow.numerics.Nz))
+        data_vars = create_data_vars()
+
+        if nz_ref is not None:
+            coords["z"] = ("z", np.arange(nz_ref))
+
+        # One coordinate per vertical dimension actually present in the data. A run may
+        # carry several: iceflow and enthalpy use independent vertical grids, so fields
+        # on the enthalpy grid get their own dimension rather than being forced onto
+        # `z` (which would make xarray reject the whole dataset over conflicting sizes).
+        for name, size in vertical_dims_in_use(data_vars).items():
+            coords[name] = (name, np.arange(size))
 
         ds = xr.Dataset(
-            data_vars=create_data_vars(),
+            data_vars=data_vars,
             coords=coords,
             attrs={"pyproj_srs": getattr(state, "pyproj_srs", "")},
         )

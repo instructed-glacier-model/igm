@@ -27,7 +27,12 @@ setup(
     packages=find_packages(include=["igm", "igm.*"]),
     include_package_data=True,
     package_data={"igm": package_files("igm/processes/iceflow/emulate/emulators")},
-    entry_points={"console_scripts": ["igm_run = igm.igm_run:main"]},
+    entry_points={
+        "console_scripts": [
+            "igm_run = igm.igm_run:main",
+            "igm_viz = igm.viz.anim_plotly:main",
+        ]
+    },
     description="IGM - a glacier evolution model",
     long_description=readme,
     long_description_content_type="text/markdown",
@@ -59,5 +64,6 @@ setup(
     extras_require={
         "dev": ["pytest"],
         "vtk": ["pyvista"],  # optional VTP output in data_assimilation
+        "viz": ["dash"],  # required by the igm_viz entry point
     },
 )
