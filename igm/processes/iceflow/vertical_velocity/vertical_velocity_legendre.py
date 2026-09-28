@@ -6,6 +6,7 @@
 import tensorflow as tf
 
 from igm.utils.grad.grad import grad_xy
+from igm.processes.iceflow.vertical_velocity.base import ice_base
 
 
 def compute_vertical_velocity_legendre(cfg, state):
@@ -19,7 +20,7 @@ def compute_vertical_velocity_legendre(cfg, state):
     discr_v = state.iceflow.discr_v
 
     # Basal vertical velocity from kinematic boundary condition: w_b = u_b · ∇b
-    dbdx, dbdy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    dbdx, dbdy = grad_xy(ice_base(state), state.dX, state.dX, False, "extrapolate")
     w_b = state.uvelbase * dbdx + state.vvelbase * dbdy
 
     # Horizontal divergence in Legendre basis: ∂u/∂x + ∂v/∂y

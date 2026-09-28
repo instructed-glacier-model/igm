@@ -15,6 +15,7 @@ from igm.processes.iceflow.vertical_velocity.vertical_velocity_legendre import (
 from igm.processes.iceflow.vertical_velocity.vertical_velocity_v2 import (
     compute_vertical_velocity_twolayers,
 )
+from igm.processes.iceflow.vertical_velocity.base import ice_base
 
 
 def compute_vertical_velocity_v1(cfg, state):
@@ -55,7 +56,9 @@ def compute_vertical_velocity_kinematic_v1(cfg, state):
     temd = levels[1:] - levels[:-1]
     dz = tf.stack([state.thk * z for z in temd], axis=0)
 
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    sloptopgx, sloptopgy = grad_xy(
+        ice_base(state), state.dX, state.dX, False, "extrapolate"
+    )
 
     sloplayx = [sloptopgx]
     sloplayy = [sloptopgy]
@@ -65,7 +68,9 @@ def compute_vertical_velocity_kinematic_v1(cfg, state):
 
         cumdz = tf.reduce_sum(dz[:l], axis=0)
 
-        sx, sy = grad_xy(state.topg + cumdz, state.dx, state.dx, False, "extrapolate")
+        sx, sy = grad_xy(
+            ice_base(state) + cumdz, state.dx, state.dx, False, "extrapolate"
+        )
 
         sloplayx.append(sx)
         sloplayy.append(sy)
@@ -107,7 +112,9 @@ def compute_vertical_velocity_incompressibility_v1(cfg, state):
     dVdz = -dUdx - dVdy
 
     # get the basal vertical velocities
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    sloptopgx, sloptopgy = grad_xy(
+        ice_base(state), state.dX, state.dX, False, "extrapolate"
+    )
     wvelbase = state.U[0] * sloptopgx + state.V[0] * sloptopgy
 
     # get the vertical thickness layers

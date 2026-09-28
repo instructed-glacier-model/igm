@@ -101,6 +101,7 @@ from omegaconf import DictConfig
 
 from igm.common import State
 from igm.utils.grad.grad import grad_xy
+from igm.processes.iceflow.vertical_velocity.base import ice_base
 
 
 def compute_vertical_velocity_v3(cfg: DictConfig, state: State) -> tf.Tensor:
@@ -109,7 +110,7 @@ def compute_vertical_velocity_v3(cfg: DictConfig, state: State) -> tf.Tensor:
     discr_v = state.iceflow.discr_v
 
     # Compute basal vertical velocity
-    dbdx, dbdy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    dbdx, dbdy = grad_xy(ice_base(state), state.dX, state.dX, False, "extrapolate")
     w_b = state.uvelbase * dbdx + state.vvelbase * dbdy
 
     # Compute divergence flux
