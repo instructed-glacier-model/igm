@@ -1,0 +1,206 @@
+method:
+  Type: string
+  Units: dimless
+  Description: "Sub-shelf melt law: `prescribed`, `quadratic`, `pico`, `picop` or `plume`."
+update_freq:
+  Type: float
+  Units: yr
+  Description: "Re-evaluate the sub-shelf melt law every X years; the geometry, the grounding-line weights and `bmb` are updated every step. 0 evaluates the law every step."
+include_grounded_melt:
+  Type: boolean
+  Units: dimless
+  Description: "Use the thermodynamic basal melt of the enthalpy process (`basal_melt_rate`) under grounded ice, when it is available."
+melt_enhancer:
+  Type: float
+  Units: dimless
+  Description: "Multiplicative factor applied to the sub-shelf melt rate."
+allow_refreezing:
+  Type: boolean
+  Units: dimless
+  Description: "Keep negative sub-shelf melt rates (marine-ice accretion) instead of clipping them at zero. PICO refreezes in its outer boxes under cold shelves: set it to true to keep that."
+ocean_connected_only:
+  Type: boolean
+  Units: dimless
+  Description: "Apply ocean melt only under floating ice connected, through water, to a domain side with a zero thickness boundary (or, when no such side touches water, to ice-free water), not over subglacial lakes. Periodic sides are not wrapped around."
+grounding_line:
+  treatment:
+    Type: string
+    Units: dimless
+    Description: "Melt near the grounding line: `nmp` no ocean melt in cells crossed by the grounding line and `fmp` full ocean melt in every cell containing floating ice (Seroussi and Morlighem, 2018), `pmp` ocean melt weighted by the floating fraction (Leguy et al., 2021). The grounded part of each cell receives the thermodynamic melt."
+  sub_samples:
+    Type: integer
+    Units: dimless
+    Description: "Samples per direction and per quarter cell of the bilinear flotation function, used to estimate the floating fraction of each node's cell."
+physics:
+  c_ocean:
+    Type: float
+    Units: J kg^{-1} K^{-1}
+    Description: "Specific heat capacity of sea water."
+  L_ice:
+    Type: float
+    Units: J kg^{-1}
+    Description: "Latent heat of fusion of ice."
+prescribed:
+  form:
+    Type: string
+    Units: dimless
+    Description: "Prescribed melt: `constant`, `field` (a 2-D state variable) or `mismip_plus` (MISMIP+ Ice1, Asay-Davis et al., 2016)."
+  value:
+    Type: float
+    Units: m yr^{-1} ice eq.
+    Description: "Uniform melt rate of the `constant` form."
+  field:
+    Type: string
+    Units: dimless
+    Description: "Name of the state variable holding the melt rate of the `field` form (m ice eq. yr^{-1}, positive for melt). Do not use `bmelt`, an alias of the enthalpy `basal_melt_rate`."
+  mismip_plus:
+    omega:
+      Type: float
+      Units: yr^{-1}
+      Description: "Melt-rate factor Omega of m = Omega tanh(H_c/H0) max(z0 - z_d, 0)."
+    H0:
+      Type: float
+      Units: m
+      Description: "Water-column thickness scale H0."
+    z0:
+      Type: float
+      Units: m
+      Description: "Depth z0 below which melting occurs, relative to the water level."
+quadratic:
+  averaging:
+    Type: string
+    Units: dimless
+    Description: "Thermal forcing <TF> in m = gamma0 (rho_w c_o/(rho_i L))^2 (TF + dT)|<TF> + dT|: `local` (TF itself), `shelf` (mean over each ice shelf) or `basin` (mean over the ice shelves of each basin of the `basins` field, the ISMIP6 non-local form of Jourdain et al., 2020)."
+  gamma0:
+    Type: float
+    Units: m yr^{-1}
+    Description: "Heat-exchange velocity. The default, 14477 m yr^{-1}, is the value used by Kori-ULB for the ISMIP6 non-local MeanAnt calibration of Jourdain et al. (2020)."
+  delta_T:
+    Type: float
+    Units: K
+    Description: "Offset added to the thermal forcing."
+  water_equivalent:
+    Type: boolean
+    Units: dimless
+    Description: "Interpret the melt given by gamma0 in m water equivalent, as in Jourdain et al. (2020), and convert it to ice."
+pico:
+  n_boxes:
+    Type: integer
+    Units: dimless
+    Description: "Maximum number of boxes of an ice shelf."
+  gamma_T:
+    Type: float
+    Units: m s^{-1}
+    Description: "Turbulent heat-exchange velocity."
+  overturning:
+    Type: float
+    Units: m^{6} s^{-1} kg^{-1}
+    Description: "Overturning strength C."
+  rho_star:
+    Type: float
+    Units: kg m^{-3}
+    Description: "Reference sea-water density of the linear equation of state."
+  alpha:
+    Type: float
+    Units: K^{-1}
+    Description: "Thermal expansion coefficient."
+  beta:
+    Type: float
+    Units: (g kg^{-1})^{-1}
+    Description: "Haline contraction coefficient."
+  reference_distance:
+    Type: float
+    Units: m
+    Description: "Distance from the grounding line, measured along grid paths (edge-neighbour steps) as the PICO distances are, for which a shelf has `n_boxes` boxes. 0 uses the largest distance in the domain, as Reese et al. (2018) do over all Antarctic ice shelves; set it for regional domains, whose largest shelf would otherwise always get `n_boxes` boxes."
+  continental_shelf_depth:
+    Type: float
+    Units: m
+    Description: "Deepest bed, relative to the water level, of the ice-free ocean whose temperature and salinity feed the ice shelves."
+  maximum_ice_rise_area:
+    Type: float
+    Units: km^{2}
+    Description: "Grounded-ice areas smaller than this are ice rises (e.g. pinning points): they are not grounding line, the distances cross them, and shelves joined by one form one shelf, as in PISM (default 1e5 km^{2} there). 0 treats all grounded ice as grounding line, as in Reese et al. (2018)."
+  freezing_point:
+    a:
+      Type: float
+      Units: °C (g kg^{-1})^{-1}
+      Description: "Salinity coefficient of the potential-temperature freezing point T_f = a S + b - c p of PICO (Reese et al., 2018)."
+    b:
+      Type: float
+      Units: °C
+      Description: "Constant of the PICO freezing point."
+    c:
+      Type: float
+      Units: °C Pa^{-1}
+      Description: "Pressure coefficient of the PICO freezing point, with the pressure p = rho_w g |z| at the ice draft z."
+picop:
+  M0:
+    Type: float
+    Units: m yr^{-1} K^{-2}
+    Description: "Melt scale of the Lazeroms et al. (2018) plume."
+  gamma1:
+    Type: float
+    Units: dimless
+    Description: "Coefficient of the effective heat-exchange (Stanton) number."
+  gamma2:
+    Type: float
+    Units: m^{-1}
+    Description: "Coefficient of the effective heat-exchange (Stanton) number."
+  Cd_Gamma_T:
+    Type: float
+    Units: dimless
+    Description: "Product sqrt(C_d) Gamma_T."
+  Cd_Gamma_TS0:
+    Type: float
+    Units: dimless
+    Description: "Product sqrt(C_d) Gamma_TS0."
+  E0:
+    Type: float
+    Units: dimless
+    Description: "Entrainment coefficient."
+  Cd:
+    Type: float
+    Units: dimless
+    Description: "Drag coefficient."
+  x0:
+    Type: float
+    Units: dimless
+    Description: "Dimensionless position of the melt-rate transition."
+plume:
+  gamma_T:
+    Type: float
+    Units: dimless
+    Description: "Effective Stanton number."
+  E0:
+    Type: float
+    Units: dimless
+    Description: "Entrainment coefficient."
+  Cd:
+    Type: float
+    Units: dimless
+    Description: "Drag coefficient."
+  C_eps:
+    Type: float
+    Units: dimless
+    Description: "Slope correction parameter."
+  alpha:
+    Type: float
+    Units: K^{-1}
+    Description: "Thermal expansion coefficient."
+  beta:
+    Type: float
+    Units: (g kg^{-1})^{-1}
+    Description: "Haline contraction coefficient."
+grounding_line_depth:
+  epsilon:
+    Type: float
+    Units: m^{2} yr^{-1}
+    Description: "Diffusion regularising the advection of the grounding-line depth along the ice flow (picop and plume)."
+  tol:
+    Type: float
+    Units: m
+    Description: "Convergence tolerance of the grounding-line depth iteration."
+  max_iter:
+    Type: integer
+    Units: dimless
+    Description: "Maximum number of Jacobi sweeps of the grounding-line depth iteration."

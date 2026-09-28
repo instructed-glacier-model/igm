@@ -4,6 +4,9 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+
+from igm.processes.thk.sources import mass_balance
+
 from ..utils import create_density_matrix
 from ..cook.infer_params_cook import infer_params_cook
 
@@ -29,7 +32,7 @@ def optimize_initialize(cfg, state):
 
     if "divfluxobs" in cfg.assimilations.data_assimilation.cost_list:
         if not hasattr(state, "divfluxobs"):
-            state.divfluxobs = state.smb - state.dhdt
+            state.divfluxobs = mass_balance(state) - state.dhdt
 
     if hasattr(state, "thkinit"):
         state.thk = state.thkinit

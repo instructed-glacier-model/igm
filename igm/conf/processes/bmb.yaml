@@ -1,0 +1,87 @@
+bmb:
+  # Choose the sub-shelf melt law: prescribed | quadratic | pico | picop | plume
+  method: prescribed
+
+  update_freq: 0.0                     # re-evaluate the melt law every X years (geometry and weights: every step) [yr]
+  include_grounded_melt: true          # use the enthalpy basal melt (state.basal_melt_rate) under grounded ice
+  melt_enhancer: 1.0                   # multiplicative factor on the sub-shelf melt
+  allow_refreezing: false              # keep negative sub-shelf melt (refreezing, e.g. in the outer PICO boxes) instead of clipping it
+  ocean_connected_only: true           # no ocean melt under floating ice not connected to the open ocean
+
+  grounding_line:
+    treatment: nmp                     # nmp | fmp (Seroussi & Morlighem, 2018) | pmp (Leguy et al., 2021)
+    sub_samples: 4                     # samples per direction and quarter cell of the floating fraction
+
+  physics:
+    c_ocean: 3974.0                    # specific heat capacity of sea water [J kg-1 K-1]
+    L_ice: 3.34e+5                     # latent heat of fusion of ice [J kg-1]
+
+  # ------------------------------------------------------------------
+  # prescribed — constant, 2-D field, or MISMIP+ Ice1 melt
+  # ------------------------------------------------------------------
+  prescribed:
+    form: constant                     # constant | field | mismip_plus
+    value: 0.0                         # constant melt [m ice eq. yr-1]
+    field: prescribed_melt_rate        # state variable holding the melt [m ice eq. yr-1]
+    mismip_plus:                       # m = omega tanh(H_c / H0) max(z0 - z_d, 0)
+      omega: 0.2                       # [yr-1]
+      H0: 75.0                         # [m]
+      z0: -100.0                       # relative to the water level [m]
+
+  # ------------------------------------------------------------------
+  # quadratic — m = gamma0 (rho_w c_o / (rho_i L))^2 (TF + dT) |<TF> + dT|
+  # ------------------------------------------------------------------
+  quadratic:
+    averaging: shelf                   # local | shelf | basin (state.basins; ISMIP6 non-local)
+    gamma0: 1.4477e+4                  # heat-exchange velocity; ISMIP6 non-local MeanAnt (Jourdain et al., 2020) [m yr-1]
+    delta_T: 0.0                       # thermal-forcing offset [K]
+    water_equivalent: true             # gamma0 gives melt in m w.e. (ISMIP6), converted to ice
+
+  # ------------------------------------------------------------------
+  # pico — box model of Reese et al. (2018)
+  # ------------------------------------------------------------------
+  pico:
+    n_boxes: 5                         # maximum number of boxes
+    gamma_T: 2.0e-5                    # turbulent heat-exchange velocity [m s-1]
+    overturning: 1.0e+6                # overturning strength C [m6 s-1 kg-1]
+    rho_star: 1033.0                   # reference sea-water density [kg m-3]
+    alpha: 7.5e-5                      # thermal expansion coefficient [K-1]
+    beta: 7.7e-4                       # haline contraction coefficient [(g/kg)-1]
+    reference_distance: 0.0            # grounding-line distance (along grid paths) with n_boxes boxes; 0 = largest in the domain [m]
+    continental_shelf_depth: -800.0    # deepest bed of the ocean feeding the shelves [m]
+    maximum_ice_rise_area: 0.0         # grounded areas smaller than this are ice rises, not grounding line (PISM: 1e5); 0 = none [km2]
+    freezing_point:                    # T_f = a S + b - c p, potential temperature (Reese et al., 2018)
+      a: -0.0572                       # [°C (g/kg)-1]
+      b: 0.0788                        # [°C]
+      c: 7.77e-8                       # [°C Pa-1], with p = rho_w g |z| at the ice draft
+
+  # ------------------------------------------------------------------
+  # picop — PICO box properties with the plume melt of Lazeroms et al. (2018)
+  # ------------------------------------------------------------------
+  picop:
+    M0: 10.0                           # melt scale [m yr-1 K-2]
+    gamma1: 0.545                      # [-]
+    gamma2: 3.5e-5                     # [m-1]
+    Cd_Gamma_T: 1.1e-3                 # sqrt(C_d) Gamma_T [-]
+    Cd_Gamma_TS0: 6.0e-4               # sqrt(C_d) Gamma_TS0 [-]
+    E0: 3.6e-2                         # entrainment coefficient [-]
+    Cd: 2.5e-3                         # drag coefficient [-]
+    x0: 0.56                           # [-]
+
+  # ------------------------------------------------------------------
+  # plume — buoyant-plume melt of Lazeroms et al. (2019)
+  # ------------------------------------------------------------------
+  plume:
+    gamma_T: 5.9e-4                    # effective Stanton number [-]
+    E0: 3.6e-2                         # entrainment coefficient [-]
+    Cd: 2.5e-3                         # drag coefficient [-]
+    C_eps: 0.6                         # slope correction [-]
+    alpha: 3.87e-5                     # thermal expansion coefficient [K-1]
+    beta: 7.86e-4                      # haline contraction coefficient [(g/kg)-1]
+
+  # Depth of the grounding line feeding each shelf node (picop and plume):
+  # carried along the ice flow from the grounding line.
+  grounding_line_depth:
+    epsilon: 1.0e-5                    # regularising diffusion [m2 yr-1]
+    tol: 0.01                          # convergence tolerance [m]
+    max_iter: 10000                    # maximum number of Jacobi sweeps

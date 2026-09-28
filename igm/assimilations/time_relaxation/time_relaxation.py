@@ -37,6 +37,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.utils.grad.compute_divflux import compute_divflux
+from igm.processes.thk.sources import mass_balance
 from igm.processes.time.time import compute_dt_from_cfl
 
 # ===================================================================== #
@@ -457,7 +458,7 @@ def _ensure_derived(state):
     the forward model's just-updated velocities (velsurf_mag, divflux).
     Always recompute — the previous iteration's values are stale.
 
-    Also exposes the apparent mass balance ``state.amb = state.smb −
+    Also exposes the apparent mass balance ``state.amb = state.smb (+ bmb) −
     state.dhdt_obs`` (masked by ``state.icemask`` if present), so that
     Frank–van Pelt-style steps with ``residual.target: amb`` work
     out-of-the-box once an upstream SMB module (e.g. ``smb_simple``) and
@@ -472,7 +473,7 @@ def _ensure_derived(state):
             state.ubar, state.vbar, state.thk, state.dx, state.dx
         )
     if hasattr(state, "smb") and hasattr(state, "dhdt_obs"):
-        amb = state.smb - state.dhdt_obs
+        amb = mass_balance(state) - state.dhdt_obs
         if hasattr(state, "icemask"):
             amb = amb * state.icemask
         state.amb = amb

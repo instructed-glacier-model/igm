@@ -65,6 +65,24 @@ def initialize(cfg, state):
     state.var_info_ncdf_ex["T_pa_b"] = ["Pressure-adjusted temperature at bed", "K"]
     state.var_info_ncdf_ex["E_s"] = ["Surface enthalpy BC", "J kg-1"]
     state.var_info_ncdf_ex["T_s"] = ["Surface temperature", "K"]
+    state.var_info_ncdf_ex["basal_melt_rate"] = [
+        "Basal melt rate (enthalpy)",
+        "m/y ice eq",
+    ]
+    state.var_info_ncdf_ex["bmb"] = ["Basal Mass Balance", "m/y ice eq"]
+    state.var_info_ncdf_ex["shelf_melt_rate"] = ["Sub-shelf melt rate", "m/y ice eq"]
+    state.var_info_ncdf_ex["grounded_fraction"] = ["Grounded fraction of the cell", "1"]
+    state.var_info_ncdf_ex["ocean_temp"] = ["Ocean temperature at the ice base", "°C"]
+    state.var_info_ncdf_ex["ocean_salinity"] = [
+        "Ocean salinity at the ice base",
+        "g/kg",
+    ]
+    state.var_info_ncdf_ex["ocean_thermal_forcing"] = ["Ocean thermal forcing", "K"]
+    state.var_info_ncdf_ex["pico_box"] = ["PICO box number", "1"]
+    state.var_info_ncdf_ex["grounding_line_depth"] = [
+        "Grounding-line depth of the plume",
+        "m",
+    ]
 
     # Opening a NETCDF4/HDF5 file is relatively expensive for short GPU
     # timesteps.  An output may opt into reusing the handle between saves;

@@ -1,0 +1,38 @@
+ocean:
+  # Choose the ocean forcing: profile | fields
+  method: profile
+
+  # Linearised freezing point T_f = lambda1*S + lambda2 + lambda3*z, with z the
+  # depth relative to the water level (m, < 0). Defaults: ISOMIP+ (Asay-Davis et al., 2016).
+  freezing_point:
+    lambda1: -0.0573                   # °C (g/kg)-1
+    lambda2: 0.0832                    # °C
+    lambda3: 7.61e-4                   # °C m-1
+
+  # Uniform ocean-temperature anomaly delta_T(t), interpolated linearly in time
+  # and added to every method. First row is a header.
+  anomaly_array:
+    - ["time", "delta_temp"]
+    - [0.0, 0.0]
+
+  # ------------------------------------------------------------------
+  # profile — horizontally uniform, piecewise-linear T(z) and S(z).
+  # First row is a header; z is relative to the water level (m, < 0).
+  # Default: ISOMIP+ WARM (Asay-Davis et al., 2016).
+  # COLD: [[z, temp, salinity], [0, -1.9, 33.8], [-720, -1.9, 34.55]].
+  # ------------------------------------------------------------------
+  profile:
+    array:
+      - ["z", "temp", "salinity"]
+      - [0.0, -1.9, 33.8]
+      - [-720.0, 1.0, 34.7]
+
+  # ------------------------------------------------------------------
+  # fields — 2-D state variables provided by an input module (e.g. in the
+  # load_ncdf input file). Set exactly one of `temp` and `thermal_forcing`.
+  # ------------------------------------------------------------------
+  fields:
+    temp: thetao                       # potential temperature [°C]; "" if a thermal forcing is given
+    salinity: so                       # salinity [g kg-1]; "" to use salinity_ref
+    thermal_forcing: ""                # thermal forcing [K]; if set, temp = TF + T_f(S, z)
+    salinity_ref: 34.5                 # uniform salinity when `salinity` is "" [g kg-1]

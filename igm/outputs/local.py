@@ -48,6 +48,15 @@ def initialize(cfg, state):
         "T_pa_b": ["Pressure-adjusted temperature at bed", "K"],
         "E_s": ["Surface enthalpy BC", "J kg-1"],
         "T_s": ["Surface temperature", "K"],
+        "basal_melt_rate": ["Basal melt rate (enthalpy)", "m/y ice eq"],
+        "bmb": ["Basal Mass Balance", "m/y ice eq"],
+        "shelf_melt_rate": ["Sub-shelf melt rate", "m/y ice eq"],
+        "grounded_fraction": ["Grounded fraction of the cell", "1"],
+        "ocean_temp": ["Ocean temperature at the ice base", "°C"],
+        "ocean_salinity": ["Ocean salinity at the ice base", "g/kg"],
+        "ocean_thermal_forcing": ["Ocean thermal forcing", "K"],
+        "pico_box": ["PICO box number", "1"],
+        "grounding_line_depth": ["Grounding-line depth of the plume", "m"],
     }
 
     state.var_info_ncdf_ts = {}
@@ -198,7 +207,8 @@ def update_netcdf_ts(cfg, state):
 
     file_path = cfg.outputs.local.output_ts_file
 
-    vol = np.sum(state.thk) * (state.dx**2) / 10**9
+    # A calving front keeps the ice of its partial cells in Href.
+    vol = np.sum(state.thk + getattr(state, "Href", 0.0)) * (state.dx**2) / 10**9
     area = np.sum(state.thk > 1) * (state.dx**2) / 10**6
 
     if not hasattr(state, "already_called_update_write_ts"):
