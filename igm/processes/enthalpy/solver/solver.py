@@ -20,6 +20,8 @@ def update_enthalpy(
     friction_heat: tf.Tensor,
     E_pmp: tf.Tensor,
     E_s: tf.Tensor,
+    ocean: tf.Tensor,
+    E_shelf: tf.Tensor,
 ) -> None:
     """
     Update the enthalpy field over a time step.
@@ -32,14 +34,17 @@ def update_enthalpy(
         friction_heat: Areal frictional heating rate at the bed (W m^-2).
         E_pmp: Pressure melting point enthalpy (J kg^-1).
         E_s: Surface enthalpy boundary condition (J kg^-1).
+        ocean: Columns in contact with the ocean (floating ice, ice-free ocean).
+        E_shelf: Basal enthalpy of these columns (J kg^-1).
 
-    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1), which
+    is 0 in contact with the ocean (the water drained there is discarded).
     """
     # Horizontal advection (explicit)
     update_horizontal(cfg, state)
 
     # Vertical advection-diffusion (implicit)
-    update_vertical(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
+    update_vertical(cfg, state, strain_heat, friction_heat, E_pmp, E_s, ocean, E_shelf)
 
     # Drainage
     update_drainage(cfg, state, E_pmp)
@@ -48,3 +53,6 @@ def update_enthalpy(
     allow_basal_refreezing = cfg.processes.enthalpy.solver.allow_basal_refreezing
     if not allow_basal_refreezing:
         state.basal_melt_rate = tf.maximum(state.basal_melt_rate, 0.0)
+
+    # The ocean-induced melt of floating ice is that of the bmb process.
+    state.basal_melt_rate = tf.where(ocean, 0.0, state.basal_melt_rate)
