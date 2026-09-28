@@ -16,6 +16,7 @@ process (``state.basal_melt_rate``, used when present and
 ``include_grounded_melt``); under floating ice exposed to the ocean it is
 minus the sub-shelf melt rate of the law ``cfg.processes.bmb.method``:
 
+    zero         no ocean melt (a land-only run: bmb = -basal_melt_rate)
     prescribed   constant, 2-D field, or MISMIP+ melt
     quadratic    local or non-local quadratic thermal forcing (ISMIP6)
     pico         PICO box model (Reese et al., 2018)

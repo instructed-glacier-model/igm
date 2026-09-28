@@ -1,5 +1,6 @@
 bmb:
-  # Choose the sub-shelf melt law: prescribed | quadratic | pico | picop | plume
+  # Choose the sub-shelf melt law: zero | prescribed | quadratic | pico | picop | plume
+  # (zero: no ocean melt; with include_grounded_melt, bmb = -basal_melt_rate)
   method: prescribed
 
   update_freq: 0.0                     # re-evaluate the melt law every X years (geometry and weights: every step) [yr]

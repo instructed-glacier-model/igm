@@ -12,7 +12,7 @@ from typing import Tuple
 
 from omegaconf import DictConfig
 
-from . import pico, picop, plume, prescribed, quadratic
+from . import pico, picop, plume, prescribed, quadratic, zero
 
 MeltLaws = {
     "pico": pico,
@@ -20,6 +20,7 @@ MeltLaws = {
     "plume": plume,
     "prescribed": prescribed,
     "quadratic": quadratic,
+    "zero": zero,
 }
 
 

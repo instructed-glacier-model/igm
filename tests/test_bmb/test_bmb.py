@@ -192,3 +192,19 @@ def test_a_retreat_between_evaluations_keeps_the_ocean_melt(
     bmb.update(cfg, state)  # not re-evaluated: t - tlast < update_freq
     assert (fresh.bmb.numpy()[:, first - 1] == -5.0).all()
     np.testing.assert_allclose(state.bmb.numpy(), fresh.bmb.numpy())
+
+
+def test_zero_law_applies_only_the_grounded_melt(
+    cfg_factory, state_factory, channel_factory
+):
+    """method: zero — no ocean melt; bmb reduces to the grounded melt."""
+    cfg, state = _channel_state(
+        cfg_factory, state_factory, channel_factory, method="zero"
+    )
+    _run(cfg, state)
+    ice = state.thk.numpy() > 0
+    fraction = state.grounded_fraction.numpy()
+    np.testing.assert_allclose(
+        state.bmb.numpy()[ice], -GROUNDED_MELT * fraction[ice], rtol=1e-6
+    )
+    np.testing.assert_array_equal(state.shelf_melt_rate.numpy(), 0.0)

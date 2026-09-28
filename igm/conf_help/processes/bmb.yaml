@@ -1,7 +1,7 @@
 method:
   Type: string
   Units: dimless
-  Description: "Sub-shelf melt law: `prescribed`, `quadratic`, `pico`, `picop` or `plume`."
+  Description: "Sub-shelf melt law: `zero` (no ocean melt; with `include_grounded_melt`, `bmb = -basal_melt_rate`), `prescribed`, `quadratic`, `pico`, `picop` or `plume`."
 update_freq:
   Type: float
   Units: yr
