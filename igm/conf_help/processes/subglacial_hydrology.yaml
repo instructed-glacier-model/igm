@@ -13,7 +13,7 @@ N_min:
 till_storage.h_water_till_max:
   Type: float
   Units: m
-  Description: "Maximum till water layer thickness (capacity). Till saturation s = h_water_till / h_water_till_max drives the Tulaczyk effective-pressure parameterisation."
+  Description: "Maximum till water layer thickness (capacity). Till saturation s = h_water_till / h_water_till_max drives the Tulaczyk effective-pressure parameterisation. The till is saturated (h_water_till = h_water_till_max) under floating ice and ice-free ocean, as in PISM."
 till_storage.drainage_rate:
   Type: float
   Units: m/yr
