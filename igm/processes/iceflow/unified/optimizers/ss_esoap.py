@@ -308,6 +308,11 @@ class OptimizerSSESOAP(Optimizer):
         # cache avoids inlining the full pair of conditional branches once for
         # every trainable tensor into minimize_impl's already-large graph.
         self._matrix_step_fns = {}
+        # Iterations applied over the optimizer's lifetime.  The layer state
+        # (moments, Kronecker factors, eigenbases) persists across minimize
+        # calls, so the first-step basis shortcut and the bias corrections
+        # must count from the first call, not from each call's iteration 0.
+        self._global_iter = tf.Variable(0, dtype=tf.int32, trainable=False)
 
         # Layer states - allocated in minimize() before the tf.function
         self._layer_states: Optional[List[_SSESOAPLayerState]] = None
@@ -890,8 +895,8 @@ class OptimizerSSESOAP(Optimizer):
                     tf.equal(tf.math.floormod(iter, self.check_freq), 0),
                 )
 
-            step_f = tf.cast(iter + 1, self.precision)
-            first_step = tf.equal(iter, 0)
+            step_f = tf.cast(self._global_iter + 1, self.precision)
+            first_step = tf.equal(self._global_iter, 0)
             bc1 = 1.0 - tf.math.pow(self.beta1, step_f)
             bc2 = 1.0 - tf.math.pow(self.beta2, step_f)
 
@@ -946,6 +951,7 @@ class OptimizerSSESOAP(Optimizer):
                 if self.weight_decay > 0.0:
                     update = update + (lr * self.weight_decay) * w
                 w.assign_sub(update)
+            self._global_iter.assign_add(1)
 
             costs = costs.write(iter, cost_avg)
 
