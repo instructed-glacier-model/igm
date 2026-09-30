@@ -104,7 +104,9 @@ class Halt:
                 failure = tf.logical_or(failure, is_sat)
 
             # Success criteria (checked and returned for display)
-            success = tf.constant(self.success_mode == "all" and len(self.crit_success) > 0)
+            success = tf.constant(
+                self.success_mode == "all" and len(self.crit_success) > 0
+            )
             for crit in self.crit_success:
                 is_sat, val = crit.check(step_state)
                 success_values.append(val)

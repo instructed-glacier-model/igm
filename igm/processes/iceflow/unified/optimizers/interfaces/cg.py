@@ -10,9 +10,11 @@ from ..cg import OptimizerCG
 
 class InterfaceCG(InterfaceOptimizer):
     @staticmethod
-    def get_optimizer_args(cfg: DictConfig,
-                           cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
-                           map: Mapping) -> Dict[str, Any]:
+    def get_optimizer_args(
+        cfg: DictConfig,
+        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
+        map: Mapping,
+    ) -> Dict[str, Any]:
         u = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
 
@@ -24,7 +26,7 @@ class InterfaceCG(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "iter_max": nbit,
-            "alpha_min": u.lbfgs.alpha_min,   # reuse same key for simplicity
+            "alpha_min": u.lbfgs.alpha_min,  # reuse same key for simplicity
             "line_search_method": u.line_search,
             "print_cost": u.print_cost,
             "print_cost_freq": u.print_cost_freq,
@@ -34,7 +36,9 @@ class InterfaceCG(InterfaceOptimizer):
         }
 
     @staticmethod
-    def set_optimizer_params(cfg: DictConfig, status: Status, optimizer: Optimizer) -> bool:
+    def set_optimizer_params(
+        cfg: DictConfig, status: Status, optimizer: Optimizer
+    ) -> bool:
         u = cfg.processes.iceflow.unified
         if status in (Status.INIT, Status.WARM_UP):
             iter_max = u.nbit_init

@@ -16,9 +16,7 @@ class _StageInterface:
     @staticmethod
     def set_optimizer_params(cfg, status, optimizer):
         unified = cfg.processes.iceflow.unified
-        iterations = (
-            unified.nbit_init if status == Status.INIT else unified.nbit
-        )
+        iterations = unified.nbit_init if status == Status.INIT else unified.nbit
         optimizer.iter_max.assign(iterations)
         return iterations > 0
 
@@ -67,9 +65,7 @@ def test_sequential_interface_refreshes_outer_iteration_budget(monkeypatch):
         ]
     )
 
-    should_run = InterfaceSequential.set_optimizer_params(
-        cfg, Status.INIT, optimizer
-    )
+    should_run = InterfaceSequential.set_optimizer_params(cfg, Status.INIT, optimizer)
 
     assert should_run
     assert int(optimizer.iter_max) == 10_010

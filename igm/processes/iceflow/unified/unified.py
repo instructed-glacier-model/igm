@@ -23,7 +23,9 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
 
     # Drift detection needs running input statistics; otherwise it is never computed.
     cfg_at = getattr(cfg_unified, "adaptive_time", None)
-    at_method = str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    at_method = (
+        str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    )
     if at_method == "shift_distribution" and not should_normalize(cfg):
         raise ValueError(
             "adaptive_time.method=shift_distribution needs running input statistics "

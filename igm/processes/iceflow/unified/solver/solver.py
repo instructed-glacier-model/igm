@@ -36,7 +36,9 @@ def get_status(
     # "shift_distribution" = retrain_freq + distribution-shift early trigger,
     # "credit" = per-step input-change accumulator (see credit_tracker.py).
     cfg_at = getattr(cfg_unified, "adaptive_time", None)
-    method = str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    method = (
+        str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    )
 
     if init:
         return Status.INIT
@@ -47,7 +49,8 @@ def get_status(
         # exceeds kappa, or after retrain_freq_max steps (safety ceiling)
         if state.it > 0 and (
             float(getattr(state, "_ct_credit", 0.0)) >= cfg_at.credit.kappa
-            or int(getattr(state, "_ct_steps_since_retrain", 0)) >= cfg_at.credit.retrain_freq_max
+            or int(getattr(state, "_ct_steps_since_retrain", 0))
+            >= cfg_at.credit.retrain_freq_max
         ):
             return Status.DEFAULT
     elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
@@ -131,7 +134,7 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     if do_solve and use_adaptive:
         training_inputs, bs = select_patches(cfg, state, inputs)
         for start in range(0, int(training_inputs.shape[0]), bs):
-            state.cost = optimizer.minimize(training_inputs[start:start + bs])
+            state.cost = optimizer.minimize(training_inputs[start : start + bs])
     elif do_solve:
         state.cost = optimizer.minimize(inputs)
 

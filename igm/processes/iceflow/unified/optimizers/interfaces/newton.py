@@ -27,8 +27,10 @@ class InterfaceNewton(InterfaceOptimizer):
         halt = Halt(**halt_args)
 
         if map.name == "network":
-            warnings.warn("❌ The Newton optimizer is not stable with the 'network' mapping. \
-                             Consider using the 'cg_newton' optimizer instead.")
+            warnings.warn(
+                "❌ The Newton optimizer is not stable with the 'network' mapping. \
+                             Consider using the 'cg_newton' optimizer instead."
+            )
         return {
             "cost_fn": cost_fn,
             "map": map,

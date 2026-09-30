@@ -61,9 +61,7 @@ class InterfaceGaussNewton(InterfaceOptimizer):
         preconditioner_name = requested_preconditioner
         if requested_preconditioner == "auto":
             architecture = str(unified.network.architecture).lower()
-            preconditioner_name = (
-                "nystrom" if architecture == "dahunet" else "identity"
-            )
+            preconditioner_name = "nystrom" if architecture == "dahunet" else "identity"
             if gauss_newton.print_timing:
                 print(
                     f"[gauss_newton] preconditioner auto -> {preconditioner_name} "
