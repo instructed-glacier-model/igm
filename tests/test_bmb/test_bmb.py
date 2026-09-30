@@ -208,3 +208,37 @@ def test_zero_law_applies_only_the_grounded_melt(
         state.bmb.numpy()[ice], -GROUNDED_MELT * fraction[ice], rtol=1e-6
     )
     np.testing.assert_array_equal(state.shelf_melt_rate.numpy(), 0.0)
+
+
+def test_local_quadratic_fast_path_matches_generic_path_and_reuses_its_trace(
+    cfg_factory, state_factory, channel_factory
+):
+    options = {
+        "method": "quadratic",
+        "include_grounded_melt": False,
+        "quadratic": {"averaging": "local"},
+    }
+    fast_cfg = cfg_factory(update_freq=0.0, **options)
+    reference_cfg = cfg_factory(update_freq=1.0, **options)
+    thk, topg = channel_factory(front=32)
+    fast = _run(fast_cfg, state_factory(fast_cfg, thk, topg))
+    reference = _run(
+        reference_cfg,
+        state_factory(reference_cfg, thk, topg),
+    )
+
+    for name in ("bmb", "grounded_fraction", "shelf_melt_rate"):
+        np.testing.assert_array_equal(
+            getattr(fast, name).numpy(),
+            getattr(reference, name).numpy(),
+        )
+
+    baseline = fast.bmb.numpy().copy()
+    trace_count = fast._bmb_local_quadratic_update.experimental_get_tracing_count()
+    fast.ocean_thermal_forcing += tf.constant(0.25, fast.ocean_thermal_forcing.dtype)
+    bmb.update(fast_cfg, fast)
+
+    assert not np.array_equal(fast.bmb.numpy(), baseline)
+    assert (
+        fast._bmb_local_quadratic_update.experimental_get_tracing_count() == trace_count
+    )

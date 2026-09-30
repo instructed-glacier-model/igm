@@ -29,7 +29,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
             "cfg.processes.ocean.profile.array needs a header row followed by "
             "at least one row [z, temp, salinity]."
         )
-    state.ocean_profile = rows[np.argsort(rows[:, 0])]
+    state.ocean_profile = tf.constant(rows[np.argsort(rows[:, 0])])
 
 
 def evaluate(

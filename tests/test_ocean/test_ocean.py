@@ -67,6 +67,24 @@ def test_warm_profile_is_interpolated_at_the_ice_base():
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_profile_update_reads_current_time_without_retracing():
+    cfg = _cfg(anomaly_array=[["time", "delta_temp"], [0.0, 0.0], [100.0, 2.0]])
+    state = _run(
+        cfg,
+        _state(lsurf=[[-400.0]], topg=[[-900.0]], thk=[[450.0]]),
+    )
+    baseline = state.ocean_thermal_forcing.numpy().copy()
+    trace_count = ocean._profile_update.experimental_get_tracing_count()
+
+    state.t.assign(25.0)
+    ocean.update(cfg, state)
+
+    np.testing.assert_allclose(state.ocean_thermal_forcing.numpy() - baseline, 0.5)
+    assert ocean._profile_update.experimental_get_tracing_count() == trace_count
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_depth_is_relative_to_the_water_level_and_finite_without_ocean():
     state = _state(lsurf=[[-350.0]], topg=[[-800.0]], thk=[[400.0]], water_level=10.0)
     np.testing.assert_allclose(

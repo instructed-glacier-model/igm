@@ -41,7 +41,7 @@ evaluation. Run ``bmb`` after ``enthalpy`` (and after ``iceflow`` for picop
 and plume) and right before ``thk``.
 """
 
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import tensorflow as tf
 from omegaconf import DictConfig
@@ -49,6 +49,7 @@ from omegaconf import DictConfig
 from igm.common import State
 
 from .geometry import compute_geometry
+from .geometry.geometry import open_edges
 from .grounding_line import TREATMENTS, basal_mass_balance, extend
 from .laws import get_melt_law
 
@@ -76,12 +77,59 @@ def initialize(cfg: DictConfig, state: State) -> None:
     if hasattr(law, "initialize"):
         law.initialize(cfg, state)
 
+    state._bmb_open_edge = open_edges(cfg, state.thk.shape)
     for name in ("bmb", "shelf_melt_rate", "shelf_melt_cache", "grounded_fraction"):
         setattr(state, name, tf.zeros_like(state.thk))
     state.tlast_bmb = tf.Variable(float("-inf"), trainable=False)
+    if _uses_local_quadratic_fast_path(cfg):
+        state._bmb_local_quadratic_update = _make_local_quadratic_update(
+            cfg,
+            state.tlast_bmb,
+            state._bmb_open_edge,
+        )
+        state._bmb_local_quadratic_cfg = cfg
 
 
 def update(cfg: DictConfig, state: State) -> None:
+    if _uses_local_quadratic_fast_path(cfg):
+        compiled = getattr(state, "_bmb_local_quadratic_update", None)
+        if (
+            compiled is None
+            or getattr(state, "_bmb_local_quadratic_cfg", None) is not cfg
+        ):
+            open_edge = open_edges(cfg, state.thk.shape)
+            state._bmb_open_edge = open_edge
+            compiled = _make_local_quadratic_update(cfg, state.tlast_bmb, open_edge)
+            state._bmb_local_quadratic_update = compiled
+            state._bmb_local_quadratic_cfg = cfg
+        if cfg.processes.bmb.include_grounded_melt and hasattr(
+            state, "basal_melt_rate"
+        ):
+            grounded_melt = state.basal_melt_rate
+        else:
+            grounded_melt = tf.zeros_like(state.thk)
+        (
+            state.bmb,
+            state.grounded_fraction,
+            state.shelf_melt_rate,
+            state.shelf_melt_cache,
+        ) = compiled(
+            tf.convert_to_tensor(state.thk),
+            tf.convert_to_tensor(state.topg),
+            tf.convert_to_tensor(state.water_level),
+            tf.convert_to_tensor(state.lsurf),
+            tf.convert_to_tensor(state.ocean_thermal_forcing),
+            tf.convert_to_tensor(grounded_melt),
+            tf.convert_to_tensor(state.t),
+            tf.convert_to_tensor(state.shelf_melt_cache),
+        )
+        return
+
+    _update_generic(cfg, state)
+
+
+def _update_generic(cfg: DictConfig, state: State) -> None:
+    """Update every BMB configuration through the general process path."""
     p = cfg.processes.bmb
     geom = compute_geometry(cfg, state)
 
@@ -107,6 +155,60 @@ def update(cfg: DictConfig, state: State) -> None:
         state.shelf_melt_cache,
         grounded_melt,
     )
+
+
+def _uses_local_quadratic_fast_path(cfg: DictConfig) -> bool:
+    p = cfg.processes.bmb
+    return (
+        str(p.method).strip().lower() == "quadratic"
+        and p.quadratic.averaging == "local"
+        and p.update_freq <= 0.0
+    )
+
+
+def _make_local_quadratic_update(
+    cfg: DictConfig,
+    tlast_bmb: tf.Variable,
+    open_edge: tf.Tensor,
+):
+    """Compile the general update around the static local-quadratic config.
+
+    Its component kernels already use XLA. Compiling this outer graph with XLA
+    adds tens of seconds of trace time without a useful steady-state gain.
+    """
+
+    @tf.function(autograph=False, jit_compile=False)
+    def compiled(
+        thk: tf.Tensor,
+        topg: tf.Tensor,
+        water_level: tf.Tensor,
+        lsurf: tf.Tensor,
+        thermal_forcing: tf.Tensor,
+        grounded_melt: tf.Tensor,
+        model_time: tf.Tensor,
+        shelf_melt_cache: tf.Tensor,
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        dynamic_state = SimpleNamespace(
+            thk=thk,
+            topg=topg,
+            water_level=water_level,
+            lsurf=lsurf,
+            ocean_thermal_forcing=thermal_forcing,
+            basal_melt_rate=grounded_melt,
+            t=model_time,
+            tlast_bmb=tlast_bmb,
+            shelf_melt_cache=shelf_melt_cache,
+            _bmb_open_edge=open_edge,
+        )
+        _update_generic(cfg, dynamic_state)
+        return (
+            dynamic_state.bmb,
+            dynamic_state.grounded_fraction,
+            dynamic_state.shelf_melt_rate,
+            dynamic_state.shelf_melt_cache,
+        )
+
+    return compiled
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

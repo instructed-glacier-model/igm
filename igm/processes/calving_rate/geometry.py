@@ -75,27 +75,56 @@ def front_geometry(cfg: DictConfig, state: State) -> FrontGeometry:
     p = cfg.processes.calving_rate
     thk = tf.convert_to_tensor(state.thk)
     dtype = thk.dtype
-    topg = tf.cast(state.topg, dtype)
-    water_level = tf.cast(state.water_level, dtype)
-    rho_ratio = 1.0 / get_density_ratio(cfg)
+    if hasattr(state, "_calving_open_edge"):
+        open_edge = state._calving_open_edge
+    else:
+        open_edge = open_edges(cfg, thk.shape)
+    has_velocity = hasattr(state, "ubar") and hasattr(state, "vbar")
+    ubar = tf.cast(state.ubar, dtype) if has_velocity else tf.zeros_like(thk)
+    vbar = tf.cast(state.vbar, dtype) if has_velocity else tf.zeros_like(thk)
+    return _front_geometry(
+        thk,
+        tf.cast(state.topg, dtype),
+        tf.cast(state.water_level, dtype),
+        tf.cast(state.usurf, dtype),
+        ubar,
+        vbar,
+        tf.cast(state.dx, dtype),
+        tf.convert_to_tensor(open_edge),
+        1.0 / get_density_ratio(cfg),
+        bool(p.ocean_connected_only),
+        int(p.band),
+        has_velocity,
+    )
 
+
+@tf.function(autograph=False, jit_compile=True)
+def _front_geometry(
+    thk: tf.Tensor,
+    topg: tf.Tensor,
+    water_level: tf.Tensor,
+    usurf: tf.Tensor,
+    ubar: tf.Tensor,
+    vbar: tf.Tensor,
+    dx: tf.Tensor,
+    open_edge: tf.Tensor,
+    rho_ratio: float,
+    connected_only: bool,
+    band_width: int,
+    has_velocity: bool,
+) -> FrontGeometry:
+    """Build front geometry from tensors in one compiled device graph."""
     ice = thk > 0.0
     marine = topg < water_level
-    supported = iceflow_node_mask(thk, state.usurf, water_level, rho_ratio)
+    supported = iceflow_node_mask(thk, usurf, water_level, rho_ratio)
     floating = ice & (flotation_function(thk, topg, water_level, rho_ratio) <= 0.0)
-    ocean = open_ocean(
-        ~ice & marine,
-        open_edges(cfg, thk.shape),
-        bool(p.ocean_connected_only),
-    )
+    ocean = open_ocean(~ice & marine, open_edge, connected_only)
     seed = (ocean & any_neighbour(ice)) | (ice & any_neighbour(ocean))
-    band = dilate(seed, int(p.band)) & marine
-    if hasattr(state, "ubar") and hasattr(state, "vbar"):
-        ubar = tf.cast(state.ubar, dtype)
-        vbar = tf.cast(state.vbar, dtype)
+    band = dilate(seed, band_width) & marine
+    if has_velocity:
         speed = tf.where(supported, getmag(ubar, vbar), tf.zeros_like(thk))
         ubar, vbar = extend_velocity(
-            ubar, vbar, supported, band, int(p.band), linear=True
+            ubar, vbar, supported, band, band_width, linear=True
         )
         front_speed = tf.where(supported | band, getmag(ubar, vbar), tf.zeros_like(thk))
     else:
@@ -110,5 +139,5 @@ def front_geometry(cfg: DictConfig, state: State) -> FrontGeometry:
         speed=speed,
         front_speed=front_speed,
         band=band,
-        dx=tf.cast(state.dx, dtype),
+        dx=dx,
     )

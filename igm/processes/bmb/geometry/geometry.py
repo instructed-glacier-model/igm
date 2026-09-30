@@ -105,7 +105,10 @@ def _geometry(
 
 def compute_geometry(cfg: DictConfig, state: State) -> Geometry:
     thk = state.thk
-    open_edge = open_edges(cfg, thk.shape)
+    if hasattr(state, "_bmb_open_edge"):
+        open_edge = state._bmb_open_edge
+    else:
+        open_edge = open_edges(cfg, thk.shape)
     fields = _geometry(
         tf.convert_to_tensor(thk),
         tf.convert_to_tensor(state.topg),

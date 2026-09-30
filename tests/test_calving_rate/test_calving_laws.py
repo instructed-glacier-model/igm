@@ -16,6 +16,7 @@ from omegaconf import OmegaConf
 import igm
 from igm.common.runner.modules.src import check_module_needs
 from igm.processes.calving_rate import calving_rate
+from igm.processes.calving_rate import geometry as calving_geometry
 from igm.processes.calving_rate.laws import available_calving_laws
 from igm.processes.calving_rate.strain_rates import principal_strain_rates
 from igm.processes.thk.surfaces import update_surfaces
@@ -145,6 +146,22 @@ def test_ice_speed_law_prescribes_the_front_velocity():
     # The ice-free front cell: the velocity extrapolated linearly (u = EXX x).
     front = np.hypot(EXX * 12 * DX, EYY * 10 * DX)
     assert rate[10, 12] == pytest.approx(front - 5.0, rel=1e-5)
+
+
+def test_compiled_geometry_reads_current_tensors_without_retracing():
+    cfg = _cfg("ice_speed")
+    state = _shelf()
+    calving_rate.initialize(cfg, state)
+    baseline = state.calving_rate.numpy().copy()
+    trace_count = calving_geometry._front_geometry.experimental_get_tracing_count()
+
+    state.ubar = state.ubar + tf.constant(100.0, state.ubar.dtype)
+    calving_rate.update(cfg, state)
+
+    assert not np.array_equal(state.calving_rate.numpy(), baseline)
+    assert (
+        calving_geometry._front_geometry.experimental_get_tracing_count() == trace_count
+    )
 
 
 def test_a_hole_in_the_shelf_does_not_calve():

@@ -40,7 +40,7 @@ from igm.common import State
 from igm.utils.math.interp1d_tf import interp1d_tf
 
 from . import fields, profile
-from .seawater import freezing_temperature
+from .seawater import freezing_coefficients, freezing_point, freezing_temperature
 
 OceanMethods = {"fields": fields, "profile": profile}
 
@@ -65,7 +65,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
             "cfg.processes.ocean.anomaly_array needs a header row followed by "
             "at least one row [time, delta_temp]."
         )
-    state.ocean_anomaly = anomaly[np.argsort(anomaly[:, 0])]
+    state.ocean_anomaly = tf.constant(anomaly[np.argsort(anomaly[:, 0])])
 
     # Filled by the first update, once time and the ice surfaces exist.
     for name in ("ocean_temp", "ocean_salinity", "ocean_thermal_forcing"):
@@ -73,6 +73,23 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 
 def update(cfg: DictConfig, state: State) -> None:
+    if cfg.processes.ocean.method.lower() == "profile":
+        (
+            state.ocean_temp,
+            state.ocean_salinity,
+            state.ocean_thermal_forcing,
+        ) = _profile_update(
+            tf.convert_to_tensor(state.thk),
+            tf.convert_to_tensor(state.lsurf),
+            tf.convert_to_tensor(state.topg),
+            tf.convert_to_tensor(state.water_level),
+            tf.convert_to_tensor(state.t),
+            tf.convert_to_tensor(state.ocean_profile),
+            tf.convert_to_tensor(state.ocean_anomaly),
+            freezing_coefficients(cfg),
+        )
+        return
+
     thk = state.thk
     z = ocean_depth(thk, state.lsurf, state.topg, state.water_level)
     temp, salinity = get_method(cfg).evaluate(cfg, state, z)
@@ -93,3 +110,23 @@ def ocean_depth(
 ) -> tf.Tensor:
     """Depth of the ice base, or of the sea floor where there is no ice (m)."""
     return tf.minimum(tf.where(thk > 0.0, lsurf, topg) - water_level, 0.0)
+
+
+@tf.function(autograph=False, jit_compile=True)
+def _profile_update(
+    thk: tf.Tensor,
+    lsurf: tf.Tensor,
+    topg: tf.Tensor,
+    water_level: tf.Tensor,
+    model_time: tf.Tensor,
+    ocean_profile: tf.Tensor,
+    anomaly: tf.Tensor,
+    coefficients: tuple[float, float, float],
+) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Evaluate a profile ocean and its thermal forcing in one graph."""
+    z = ocean_depth(thk, lsurf, topg, water_level)
+    temp = interp1d_tf(ocean_profile[:, 0], ocean_profile[:, 1], z)
+    salinity = interp1d_tf(ocean_profile[:, 0], ocean_profile[:, 2], z)
+    temp += interp1d_tf(anomaly[:, 0], anomaly[:, 1], model_time)
+    thermal_forcing = temp - freezing_point(salinity, z, coefficients)
+    return temp, salinity, thermal_forcing

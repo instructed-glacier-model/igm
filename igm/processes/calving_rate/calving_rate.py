@@ -52,6 +52,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+from igm.processes.bmb.geometry.geometry import open_edges
 from igm.utils.math.neighbours import any_neighbour, neighbour_mean
 
 from .geometry import FrontGeometry, front_geometry
@@ -85,6 +86,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
         raise ValueError("cfg.processes.calving_rate.max_rate must be positive.")
     _check_law_parameters(name, p)
     _check_band(cfg, p)
+    state._calving_open_edge = open_edges(cfg, state.thk.shape)
     state.calving_rate = tf.zeros_like(state.thk)
     state.frontal_melt_rate = tf.zeros_like(state.thk)
     # The velocity-based laws need a first ice-flow solve.
