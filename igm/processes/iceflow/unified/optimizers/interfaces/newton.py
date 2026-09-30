@@ -4,11 +4,11 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 import warnings
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
@@ -35,7 +35,7 @@ class InterfaceNewton(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "damping": cfg_unified.newton.damping,
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
@@ -51,6 +51,7 @@ class InterfaceNewton(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
 
@@ -59,7 +60,7 @@ class InterfaceNewton(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

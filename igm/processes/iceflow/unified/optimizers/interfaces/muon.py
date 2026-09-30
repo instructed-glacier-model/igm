@@ -5,10 +5,10 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
@@ -34,7 +34,7 @@ class InterfaceMuon(InterfaceOptimizer):
             "momentum": cfg_unified.muon.momentum,
             "ns_steps": cfg_unified.muon.ns_steps,
             "lr_1d": cfg_unified.muon.lr_1d,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -44,7 +44,7 @@ class InterfaceMuon(InterfaceOptimizer):
 
     @staticmethod
     def set_optimizer_params(
-        cfg: DictConfig, status: Status, optimizer: Optimizer
+        cfg: DictConfig, status: Status, optimizer: Optimizer, t: Optional[float] = None
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
 
@@ -53,11 +53,11 @@ class InterfaceMuon(InterfaceOptimizer):
         if status == Status.INIT or status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
 
         optimizer.update_parameters(iter_max=iter_max, lr=lr)
 

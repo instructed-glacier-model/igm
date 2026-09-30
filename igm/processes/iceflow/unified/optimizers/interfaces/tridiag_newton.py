@@ -2,13 +2,13 @@
 # Copyright (C) 2021-2026 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import tensorflow as tf
 from omegaconf import DictConfig
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 from ...operators import (
@@ -86,7 +86,7 @@ class InterfaceTridiagNewton(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -109,6 +109,7 @@ class InterfaceTridiagNewton(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
 
@@ -117,7 +118,7 @@ class InterfaceTridiagNewton(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 
 from igm.common import State, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
-from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts
+from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts, check_nbit
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .error_estimator import ErrorEstimator, InterfaceErrorEstimator
 from .solver import solve_iceflow
@@ -20,6 +20,13 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     """Initialize iceflow module in unified mode."""
 
     cfg_unified = cfg.processes.iceflow.unified
+
+    # Iterations per retrain: an integer, or a schedule over model time
+    check_nbit(cfg_unified.nbit)
+    if cfg_unified.optimizer == "sequential":
+        for cfg_stage in cfg_unified.sequential.stages:
+            if "nbit" in cfg_stage:
+                check_nbit(cfg_stage.nbit)
 
     # Drift detection needs running input statistics; otherwise it is never computed.
     cfg_at = getattr(cfg_unified, "adaptive_time", None)

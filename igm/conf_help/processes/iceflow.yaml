@@ -370,8 +370,8 @@ unified:
     Description: "Type of optimizer used to solve the ice flow."
     Units: dimless
   nbit:
-    Type: integer
-    Description: "Number of iterations done to solve the ice flow."
+    Type: integer or [[t, n], ...]
+    Description: "Number of iterations done to solve the ice flow at each retrain. Either an integer, or a piecewise-constant schedule over model time [[t_0, n_0], [t_1, n_1], ...] with strictly increasing t_k (years, as time.start): n_k applies from t_k on, and n_0 also before t_0. For example [[0.0, 20], [1.0, 5]] trains 20 iterations per retrain during the first year, then 5. A value of 0 means no training at a retrain step."
     Units: dimless
   nbit_init:
     Type: integer

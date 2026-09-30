@@ -121,7 +121,7 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     update_credit_observer(cfg, state)
 
     status = get_status(cfg, state, init, distribution_shifted)
-    do_solve = set_optimizer_params(cfg, status, optimizer)
+    do_solve = set_optimizer_params(cfg, status, optimizer, getattr(state, "t", None))
     if do_solve and optimizer.name == "cg_newton":
         optimizer.cold_restart(getattr(state, "t", None), init)
 
