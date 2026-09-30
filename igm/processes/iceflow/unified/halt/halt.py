@@ -63,6 +63,11 @@ class Halt:
         self.failure_detected = tf.Variable(False, trainable=False)
         self.criterion_names = self._build_criterion_names()
 
+    def add_success(self, criterion: Criterion) -> None:
+        """Add a success criterion; call it before the first solve traces the optimizer."""
+        self.crit_success.append(criterion)
+        self.criterion_names = self._build_criterion_names()
+
     def _build_criterion_names(self) -> List[str]:
         """Build list of criterion names."""
         names = []

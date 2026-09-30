@@ -10,6 +10,7 @@ from .mappings import Mappings, InterfaceMappings
 from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts, check_nbit
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .error_estimator import ErrorEstimator, InterfaceErrorEstimator
+from .init_stop import InitStop
 from .solver import solve_iceflow
 from .solver.solver import should_normalize
 from .utils import get_cost_fn
@@ -96,8 +97,15 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
             normalization_method=cfg_unified.normalization.method,
         )
 
+    # Stop the initial training on its error against a direct solve (optional)
+    if cfg_unified.init_stop.enabled:
+        init_stop = InitStop.from_cfg(cfg, state)
+
     # Solve once
     solve_iceflow(cfg, state, init=True)
+
+    if cfg_unified.init_stop.enabled:
+        init_stop.finish()
 
     # Evaluate once
     evaluate_iceflow(cfg, state)

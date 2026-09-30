@@ -103,6 +103,22 @@ iceflow:
     optimizer: adam
     nbit: 5
     nbit_init: 300
+    init_stop:
+      enabled: false
+      target_grounded: 1.0
+      target_floating: 2.5
+      consecutive: 1
+      speed_floor: 10.0
+      freq: 50
+      patience: 500
+      min_gain: 0.05
+      reference:
+        nbit: 200
+        tol: 1.0
+        cg_tol: 1.0e-2
+        line_search: armijo
+      log: init_stop.csv
+      display: true
     nbit_warmup: -1
     retrain_freq: 5
     retrain_threshold: 1.0e+10 # for now it corresponds to a z-score (1.0e+10 is default as its quite high and will default to the retrain_freq most likely)
