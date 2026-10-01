@@ -43,23 +43,70 @@ from igm.utils.grad.compute_divflux import compute_divflux
 #  Residuals                                                            #
 # ===================================================================== #
 #
-#   linear     r = T - M
-#   relative   r = (T - M) / max(|T|, eps)
-#   log_ratio  r = log(max(M, eps) / max(T, eps))
+#  Dead zone (soft thresholding).  Before a residual is evaluated, the
+#  modelled field M is replaced by an effective field M~ that is moved
+#  toward the target T by a local tolerance tau:
+#
+#     d   = T - M                           (raw misfit)
+#     tau = max(atol, rtol * |T|)           (local tolerance)
+#     M~  = T - sign(d) * max(|d| - tau, 0)
+#
+#  where atol carries the units of the field and rtol is dimensionless.
+#  A point is considered converged if |T - M| <= tau, in which case
+#  M~ = T and the residual is exactly zero.  Outside the dead zone the
+#  misfit is reduced by tau (M~ = M + sign(d) * tau), so M~ always lies
+#  between M and T and r stays continuous across the edge of the band.
+#  For atol = rtol = 0 there is no dead zone and M~ = M.
+#
+#  The residual forms are then evaluated with M~ in place of M:
+#
+#   linear     r = T - M~
+#   relative   r = (T - M~) / max(|T|, eps)
+#   log_ratio  r = log(max(M~, eps) / max(T, eps))
+#
+#  For the linear form this is equivalent to
+#     r = sign(d) * max(|d| - tau, 0).
 #
 
-def _resid_linear(T, M, eps):
+def _is_zero(x):
+    return x is None or (isinstance(x, (int, float)) and x == 0)
+
+
+def _shrink_toward_target(T, M, atol=0.0, rtol=0.0):
+    """Return M_eff: M moved toward T by the local tolerance tau.
+
+    tau   = max(atol, rtol * |T|)
+    d     = T - M
+    d_eff = sign(d) * max(|d| - tau, 0)     (soft threshold)
+    M_eff = T - d_eff
+
+    atol has the units of the field; rtol is dimensionless.
+    Where |d| <= tau, M_eff == T and the residual is exactly zero.
+    """
+    if _is_zero(atol) and _is_zero(rtol):
+        return M                                   # no dead zone: unchanged
+    atol = tf.cast(0.0 if atol is None else atol, T.dtype)
+    rtol = tf.cast(0.0 if rtol is None else rtol, T.dtype)
+    tau = tf.maximum(atol, rtol * tf.abs(T))
+    d = T - M
+    d_eff = tf.sign(d) * tf.maximum(tf.abs(d) - tau, 0.0)
+    return T - d_eff
+
+
+def _resid_linear(T, M, eps, atol=0.0, rtol=0.0):
+    M = _shrink_toward_target(T, M, atol, rtol)
     return T - M
 
 
-def _resid_relative(T, M, eps):
+def _resid_relative(T, M, eps, atol=0.0, rtol=0.0):
+    M = _shrink_toward_target(T, M, atol, rtol)
     return (T - M) / tf.maximum(tf.abs(T), tf.cast(eps, T.dtype))
 
 
-def _resid_log_ratio(T, M, eps):
+def _resid_log_ratio(T, M, eps, atol=0.0, rtol=0.0):
+    M = _shrink_toward_target(T, M, atol, rtol)
     e = tf.cast(eps, T.dtype)
     return tf.math.log(tf.maximum(M, e) / tf.maximum(T, e))
-
 
 _RESIDUALS = {
     "linear":    _resid_linear,
@@ -194,6 +241,8 @@ class _Step:
     target: str
     current: str
     eps: float
+    atol: float
+    rtol: float
     # update
     update_kind: str
     alpha: float
@@ -257,6 +306,8 @@ def _build_steps(steps_cfg):
             target=str(res["target"]),
             current=str(res.get("current", "")),
             eps=float(res.get("eps", 1.0e-3)),
+            atol=float(res.get("atol", 0.0)),
+            rtol=float(res.get("rtol", 0.0)),
             update_kind=str(upd.get("kind", "additive")),
             alpha=float(upd.get("alpha", 0.0)),
             r_max=(float(r_max_raw) if r_max_raw is not None else None),
@@ -332,7 +383,7 @@ def _compute_residual(s, state):
             "not on state."
         )
     M = getattr(state, s.current)
-    return _RESIDUALS[s.residual_kind](T, M, s.eps)
+    return _RESIDUALS[s.residual_kind](T, M, s.eps, s.atol, s.rtol)
 
 
 def _apply_step(s, state, dt, residual_cache):
@@ -521,7 +572,7 @@ def _collect_output_hooks(cfg):
     outputs_cfg = getattr(cfg, "outputs", None)
     if outputs_cfg is None:
         return hooks
-    for name in ("write_ncdf", "write_ts", "write_vtp"):
+    for name in ("local", "write_ncdf", "write_ts", "write_vtp"):
         if hasattr(outputs_cfg, name):
             mod = importlib.import_module(f"igm.outputs.{name}")
             hooks.append(mod.run)
