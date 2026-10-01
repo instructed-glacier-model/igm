@@ -254,6 +254,7 @@ iceflow:
       tau_min: 0.1
       self_scaling: true
       damping: 1.0e-08
+      relative_damping: 1.0e-06
       weight_decay: 0.0
       lr_drop_iter: -1
       lr_drop_factor: 1.0

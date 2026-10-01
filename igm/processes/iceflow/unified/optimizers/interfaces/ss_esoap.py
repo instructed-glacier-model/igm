@@ -28,6 +28,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
         tau_min: 0.1          # lower clip on the self-scaling factor
         self_scaling: true    # set false for the adaptive-basis-SOAP ablation
         damping: 1.0e-8
+        relative_damping: 1.0e-6  # extra ridge before eigh, relative to trace(A) / m (0: off)
         weight_decay: 0.0
         lr_drop_iter: -1      # disabled; otherwise drop once at this iteration
         lr_drop_factor: 1.0   # multiplier applied after lr_drop_iter
@@ -74,6 +75,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
             "tau_min": cfg_opt.tau_min,
             "self_scaling": cfg_opt.self_scaling,
             "damping": cfg_opt.damping,
+            "relative_damping": cfg_opt.relative_damping,
             "weight_decay": cfg_opt.weight_decay,
             "lr_drop_iter": cfg_opt.lr_drop_iter,
             "lr_drop_factor": cfg_opt.lr_drop_factor,

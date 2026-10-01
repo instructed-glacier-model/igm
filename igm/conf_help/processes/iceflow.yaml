@@ -928,6 +928,10 @@ unified:
       Type: float
       Description: "Regularization added to the SS-eSOAP Kronecker factors."
       Units: dimless
+    relative_damping:
+      Type: float
+      Description: "Additional ridge added to an SS-eSOAP Kronecker factor A before its eigendecomposition, relative to its scale: A + (damping + relative_damping trace(A)/m) I. The factors are rank-deficient (a decaying sum of G G^T), and with the absolute damping below float32 resolution their null space is a cluster of eigenvalues at rounding-noise level, on which cuSOLVER's float32 eigendecomposition can fail to converge and stop the run; the default 1e-6 lifts that cluster above the noise. 0 keeps the absolute damping only (the behaviour before this option)."
+      Units: dimless
     weight_decay:
       Type: float
       Description: "Decoupled weight decay applied by SS-eSOAP."
