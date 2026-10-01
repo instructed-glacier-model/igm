@@ -262,6 +262,6 @@ def compute_vertical_velocity_twolayers(cfg, state):
     div_flux = compute_divflux_d(state.ubar, state.vbar, state.thk, state.dx, state.dx)
 
     ub_z = ub_x * dbdx + ub_y * dbdy
-    us_z = us_x * dsdx + us_y * dsdy - div_flux[-1]
+    us_z = us_x * dsdx + us_y * dsdy - div_flux  # was div_flux[-1]: the last ROW broadcast over the grid (bug)
 
     return tf.stack([ub_z, us_z], axis=0)

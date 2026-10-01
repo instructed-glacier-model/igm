@@ -217,5 +217,7 @@ iceflow:
       print_cost_freq: 1
   vertical_velocity:
     enabled: false
-    version: 2
-    method: kinematic
+    version: 3                # 1 and 2 are legacy
+    method: fluxform          # v3: fluxform (layer-flux divergence with the thk scheme) | incompressibility (centred matrix form); v1/v2: kinematic | incompressibility
+    slope_stencil: staggered  # fluxform: layer slope on the staggered grid of the ice-flow energy | central
+    smooth_sigma: 1.0         # ice-masked Gaussian filter of W, std in grid cells (0 = off)

@@ -705,8 +705,16 @@ vertical_velocity:
   version:
     Type: integer
     Units: dimless
-    Description: "Version of the vertical_velocity method (1: original by GJ; 2: improved by CMS; 3: unified by TG)."
+    Description: "Version of the vertical_velocity method (1: original by GJ; 2: improved by CMS; 3: unified by TG, validated against a manufactured solution; 1 and 2 are legacy)."
   method:
     Type: string
     Units: dimless
-    Description: "Method to retrieve the vertical velocity: kinematic (layer-following) or incompressibility (divergence-free). Version 3 only supports incompressibility."
+    Description: "Method to retrieve the vertical velocity. Version 3: fluxform (layer-flux divergence taken with the thk module's slope-limited scheme, exactly consistent with the thickness update and less noisy) or incompressibility (centred matrix form). Versions 1-2: kinematic (layer-following) or incompressibility (divergence-free)."
+  slope_stencil:
+    Type: string
+    Units: dimless
+    Description: "fluxform only. Stencil of the layer slope grad(z_l) in w = u·grad(z_l) − div(Q_l): staggered (corner gradient of the ice-flow energy averaged to the cell centres, the slope the velocities were solved against; least grid-scale noise) or central (unstaggered, as the matrix form)."
+  smooth_sigma:
+    Type: float
+    Units: cells
+    Description: "Ice-masked Gaussian filter (standard deviation in grid cells) applied to W after its computation; 0 disables it. The default of 1 cell removes the one-cell numerical texture of W (it sits at one cell at any resolution) without bias. Set 0 to keep W exactly consistent with the thickness update (fluxform)."

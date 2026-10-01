@@ -96,6 +96,7 @@ class VerticalDiscr(ABC):
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype = normalize_precision(precision)
         basis_fct = self._compute_discr(cfg)
+        self.basis_fct = basis_fct  # kept to evaluate fields at arbitrary ζ (e.g. flux-form vertical velocity)
 
         if "enthalpy" in cfg.processes:
             self.enthalpy = compute_discr_enthalpy(cfg, basis_fct, self.dtype)
