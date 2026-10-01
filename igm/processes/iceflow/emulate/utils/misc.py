@@ -5,6 +5,7 @@ from omegaconf import DictConfig
 import importlib_resources
 import igm.processes.iceflow.emulate.emulators as emulators
 import logging
+import warnings
 
 
 def get_effective_pressure_precentage(thk, percentage=0.8) -> tf.Tensor:
@@ -48,6 +49,13 @@ def get_pretrained_emulator_path(cfg: DictConfig, state) -> str:
     cfg_emulator = cfg.processes.iceflow.emulator
     dir_name = get_emulator_path(cfg)
 
+    if cfg.processes.iceflow.physics.sliding.u_ref != 1.0:
+        warnings.warn(
+            "Legacy emulators were trained with the u_ref = 1 convention. Set "
+            "processes.iceflow.physics.sliding.u_ref to 1.0 and tau_ref to match "
+            "(e.g. 0.0464)."
+        )
+
     dir_path = ""
     if cfg_emulator.name == "":
         print(importlib_resources.files(emulators).joinpath(dir_name))
@@ -79,8 +87,14 @@ def load_model_from_path(path: str, cfg_inputs: Optional[List[str]]) -> tf.keras
         inputs.append(part[0])
     fid.close()
 
+    # Legacy emulators call the friction input `slidingco`; the unified stack calls it `tau_ref`
+    if cfg_inputs is not None and "tau_ref" in cfg_inputs:
+        inputs = ["tau_ref" if name == "slidingco" else name for name in inputs]
+
     if cfg_inputs is not None:
-        assert cfg_inputs == inputs
+        assert (
+            cfg_inputs == inputs
+        ), f"Emulator at {path} expects inputs {inputs}, got {list(cfg_inputs)}"
 
     return tf.keras.models.load_model(os.path.join(path, "model.h5"), compile=False)
 
