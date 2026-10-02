@@ -1,6 +1,10 @@
 local:
   file_format_list: ['netcdf']
   output_file: output.nc
+  keep_open: false
+  complevel: 0              # lossless compression level (1-9, with shuffle); 0 = uncompressed
+  compression: zlib         # codec when complevel > 0: zlib, zstd or bzip2
+  significant_digits: null  # lossy: keep this many significant digits in float fields
   vars_to_save:
     - topg
     - usurf
