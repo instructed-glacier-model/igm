@@ -46,6 +46,8 @@ time_relaxation:
   #       target:  <state attribute>          # e.g. usurf_obs, amb, velsurf_magobs
   #       current: <state attribute>          # e.g. usurf, divflux, velsurf_mag
   #       eps:     1.0e-3                     # only used by relative / log_ratio
+  #	  rtol:	   0.0			      # 0 = fit exactly
+  #	  atol:	   0.0			      # 0 = fit exaclty
   #     update:
   #       kind:    additive | multiplicative | multiplicative_linear | replace
   #       alpha:   <number>                   # rate (per_step) or per-application gain
