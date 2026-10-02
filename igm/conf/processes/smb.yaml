@@ -14,6 +14,20 @@ smb:
     file: param.txt
     array: []
 
+    # Block from Insolation correction (Henz et al. 2025, TC, https://doi.org/10.5194/tc-19-5913-2025)
+    # switch the ELA correction for insolation on/off
+    correction_for_insolation_enabled: false
+    correction_for_insolation:
+      # solar elevation angle above the horizon [degrees]
+      solar_elevation: 60.0
+      # solar azimuth, clockwise from north [degrees] (180 = sun from the south, e.g. for the Northern hemisphere)
+      solar_azimuth: 180.0
+      # ELA shift per degree of incidence-angle difference to a flat surface [m / degree]
+      # (replaces the old aspect_enhancement_factor: old factor f  ->  5.0 * f here)
+      ela_per_degree_incidence: 5.0 # comming from Henz et al. 2025 https://doi.org/10.5194/tc-19-5913-2025
+      # save check_insolation_correction.png (topography + ELA shift) at the first SMB update
+      plot_insolation_check: false
+
   # ------------------------------------------------------------------
   # oggm — temperature-index melt model using OGGM calibration json.
   # Requires state.precipitation and state.air_temp (e.g. from a climate
