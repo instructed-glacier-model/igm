@@ -88,7 +88,7 @@ def run(cfg, state):
     # dt = xr.DataTree(name="root", dataset=ds)
 
     if cfg.inputs.local.icemask.include:
-        include_icemask(state, mask_shapefile=cfg.inputs.local.icemask.shapefile, 
+        include_icemask(state, mask_shapefile=state.original_cwd.joinpath(cfg.core.folder_data, cfg.inputs.local.icemask.shapefile), 
                                mask_invert=cfg.inputs.local.icemask.invert)
 
 

@@ -2,6 +2,10 @@ method:
   Type: string
   Units: dimless
   Description: "SMB implementation to use: `simple`, `oggm`, or `accpdd`."
+smb_outside_icemask:
+  Type: float
+  Units: m yr^{-1} ice eq.
+  Description: "SMB imposed outside the icemask (if an icemask is provided) where the computed SMB is positive, to prevent ice build-up in masked-out areas, which results from accumulation plus incoming ice flux. Lower it (e.g. -50) if ice still builds up outside the mask."
 simple:
   update_freq:
     Type: float
@@ -51,12 +55,12 @@ accpdd:
     Description: "Temperature threshold above which precipitation falls as rain."
   melt_factor_snow:
     Type: float
-    Units: mm °C^{-1} d^{-1}
-    Description: "Degree-day melt factor for snow."
+    Units: m yr^{-1} °C^{-1} w.e.
+    Description: "Degree-day melt factor for snow, in water equivalent. The default corresponds to 3 mm w.e. d-1 °C-1 (value in mm w.e. d-1 °C-1 × 0.365242)."
   melt_factor_ice:
     Type: float
-    Units: mm °C^{-1} d^{-1}
-    Description: "Degree-day melt factor for ice."
+    Units: m yr^{-1} °C^{-1} w.e.
+    Description: "Degree-day melt factor for ice, in water equivalent. The default corresponds to 8 mm w.e. d-1 °C-1 (value in mm w.e. d-1 °C-1 × 0.365242)."
   shift_hydro_year:
     Type: float
     Units: yr

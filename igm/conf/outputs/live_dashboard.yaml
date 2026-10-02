@@ -3,7 +3,7 @@ live_dashboard:
   update_freq: 1          # update every N save events (1 = every save)
   figsize: [14, 9]        # figure size in inches (2d mode only)
   dpi: 100                # figure resolution (2d mode only)
-  vel_max: 500.0          # velocity colorbar max (m/a)
+  vel_max: 500.0          # velocity colorbar max (m/yr)
   thk_max: 800.0          # thickness colorbar max (m)
   save_frames: false      # also save PNG frames
   headless: false         # use non-interactive Agg backend (for CI / no-display environments)

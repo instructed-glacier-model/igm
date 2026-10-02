@@ -33,15 +33,15 @@ ymax:
 icemask_include:
   Type: boolean
   Units: dimless
-  Description: "Include ice mask in the NetCDF file."
+  Description: "Generate an ice mask from the ESRI Shapefile given by icemask_shapefile."
 icemask_shapefile:
   Type: string
   Units: dimless
-  Description: "Shapefile for ice mask."
+  Description: "ESRI Shapefile used to generate the ice mask, looked up in the data folder (core.folder_data)."
 icemask_invert:
   Type: boolean
   Units: dimless
-  Description: "Invert the ice mask."
+  Description: "False: the shapefile polygons are areas that should remain ice free. True: they are areas that should contain glaciers."
 water_level:
   include:
     Type: boolean

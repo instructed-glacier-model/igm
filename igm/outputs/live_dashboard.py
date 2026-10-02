@@ -16,6 +16,8 @@ Two modes selectable via config (mode: "2d" or "3d"):
        with on-screen text overlay for live stats
 """
 
+import os
+import sys
 import numpy as np
 import tensorflow as tf
 import time as clock
@@ -44,15 +46,46 @@ def _live_ela(thk, smb, usurf):
 #  2D MODE  (matplotlib)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _warn(state, msg):
+    if hasattr(state, "logger"):
+        state.logger.warning(msg)
+    else:
+        print("WARNING: " + msg)
+
+
+def _has_display():
+    # on Linux, a GUI window needs an X11 or Wayland display (absent over plain SSH)
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return True
+
+
+def _surface_speed(state):
+    # surface speed when the iceflow module provides it, depth-averaged otherwise
+    if hasattr(state, "uvelsurf"):
+        u, v = np.array(state.uvelsurf), np.array(state.vvelsurf)
+    else:
+        u, v = np.array(state.ubar), np.array(state.vbar)
+    return np.sqrt(u**2 + v**2)
+
+
 def _init_2d(cfg, state):
     import matplotlib
     p = cfg.outputs.live_dashboard
-    matplotlib.use("Agg" if p.headless else "TkAgg")
+    if not state._dash_headless:
+        try:
+            matplotlib.use("TkAgg")
+        except ImportError:
+            _warn(state, "live_dashboard: TkAgg backend unavailable (tkinter missing), "
+                         "switching to headless mode (PNG frames saved in the run directory).")
+            state._dash_headless = True
+    if state._dash_headless:
+        matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm, LightSource
     from matplotlib.gridspec import GridSpec
 
-    if not p.headless:
+    if not state._dash_headless:
         plt.ion()
     plt.style.use("dark_background")
 
@@ -85,10 +118,12 @@ def _init_2d(cfg, state):
     for ax in [ax_thk, ax_vel]:
         ax.set_aspect("equal")
 
-    # hillshade (static)
-    ls = LightSource(azdeg=315, altdeg=35)
-    hs = ls.hillshade(np.array(state.topg), vert_exag=2,
-                      dx=float(state.dx), dy=float(state.dx))
+    # hillshade (static), standard illumination: azimuth 315 deg, altitude 45 deg.
+    # LightSource assumes row 0 is north while IGM rows increase northwards
+    # (shown with origin="lower"), hence the flips.
+    ls = LightSource(azdeg=315, altdeg=45)
+    hs = np.flipud(ls.hillshade(np.flipud(np.array(state.topg)), vert_exag=2,
+                                dx=float(state.dx), dy=float(state.dx)))
 
     # ── thickness panel ──
     ax_thk.imshow(hs, origin="lower", cmap="gray", extent=extent, vmin=0, vmax=1)
@@ -107,13 +142,13 @@ def _init_2d(cfg, state):
     ax_vel.imshow(hs, origin="lower", cmap="gray", extent=extent, vmin=0, vmax=1)
     im_vel = ax_vel.imshow(
         np.full_like(np.array(state.thk), np.nan),
-        origin="lower", cmap="inferno", extent=extent,
+        origin="lower", cmap="viridis", extent=extent,
         norm=LogNorm(vmin=1, vmax=p.vel_max), alpha=0.9,
     )
-    cb2 = fig.colorbar(im_vel, ax=ax_vel, fraction=0.046, pad=0.04, label="Speed (m/a)")
+    cb2 = fig.colorbar(im_vel, ax=ax_vel, fraction=0.046, pad=0.04, label="Ice surface speed (m yr$^{-1}$)")
     cb2.ax.yaxis.label.set_color("white"); cb2.ax.yaxis.label.set_fontsize(14)
     cb2.ax.tick_params(colors="white", labelsize=11)
-    ax_vel.set_title("Velocity", color="#58a6ff", fontsize=18, fontweight="bold")
+    ax_vel.set_title("Surface velocity", color="#58a6ff", fontsize=18, fontweight="bold")
     ax_vel.set_xticks([]); ax_vel.set_yticks([])
 
     # ── time-series panel (full width, dual y-axis) ──
@@ -156,7 +191,7 @@ def _init_2d(cfg, state):
     state._dash_save_count = 0
     state._dash_wall_start = clock.time()
 
-    if not p.headless:
+    if not state._dash_headless:
         fig.canvas.draw()
         fig.canvas.flush_events()
 
@@ -181,9 +216,7 @@ def _update_2d(cfg, state):
     thk = np.array(state.thk)
     dx = float(state.dx)
     extent = state._dash_extent
-    ubar = np.array(state.ubar)
-    vbar = np.array(state.vbar)
-    vel = np.sqrt(ubar**2 + vbar**2)
+    vel = _surface_speed(state)
 
     # thickness
     state._dash_ax_thk.images[-1].set_data(np.where(thk > 0, thk, np.nan))
@@ -260,14 +293,14 @@ def _update_2d(cfg, state):
     area = _ice_area_km2(thk, dx)
     info_str = (f"dt = {dt:.2f}   "
                 f"Vol = {vol:.3f} km³   Area = {area:.1f} km²   "
-                f"Vmax = {vmax:.0f} m/a   Wall = {elapsed:.0f} s")
+                f"Vmax = {vmax:.0f} m/yr   Wall = {elapsed:.0f} s")
     ax_ts.set_title(info_str, color="gray", fontsize=12, fontfamily="monospace", pad=6)
 
-    if not p.headless:
+    if not state._dash_headless:
         state._dash_fig.canvas.draw_idle()
         state._dash_fig.canvas.flush_events()
 
-    if p.headless or cfg.outputs.live_dashboard.save_frames:
+    if state._dash_headless or cfg.outputs.live_dashboard.save_frames:
         state._dash_fig.savefig(f"dashboard_{int(t):06d}.png", facecolor="#0e1117",
                                 bbox_inches="tight", pad_inches=0.1)
 
@@ -275,7 +308,7 @@ def _update_2d(cfg, state):
 def _finalize_2d(cfg, state):
     import matplotlib.pyplot as plt
     if hasattr(state, "_dash_fig"):
-        if not cfg.outputs.live_dashboard.headless:
+        if not state._dash_headless:
             plt.ioff()
         plt.close(state._dash_fig)
 
@@ -316,12 +349,12 @@ def _init_3d(cfg, state):
     ice_z = np.where(thk > 1.0, usurf, np.nan)
     ice_mesh = _build_surface_mesh(x, y, ice_z)
     ice_mesh["speed"] = np.zeros(ice_mesh.n_points)
-    plotter.add_mesh(ice_mesh, scalars="speed", cmap="inferno",
+    plotter.add_mesh(ice_mesh, scalars="speed", cmap="viridis",
                      clim=[0, p.vel_max], name="ice",
                      lighting=True, smooth_shading=True,
                      show_scalar_bar=False)
     # add scalar bar once (won't be touched by updates)
-    plotter.add_scalar_bar("Speed (m/a)", color="white",
+    plotter.add_scalar_bar("Ice surface speed (m/yr)", color="white",
                            title_font_size=14, label_font_size=12,
                            vertical=False, width=0.4, height=0.06,
                            position_x=0.55, position_y=0.02)
@@ -405,9 +438,7 @@ def _update_3d(cfg, state):
     thk = np.array(state.thk)
     usurf = np.array(state.usurf, dtype=np.float64)
     dx = float(state.dx)
-    ubar = np.array(state.ubar)
-    vbar = np.array(state.vbar)
-    vel = np.sqrt(ubar**2 + vbar**2)
+    vel = _surface_speed(state)
 
     plotter = state._dash_plotter
     x = state._dash_x
@@ -418,7 +449,7 @@ def _update_3d(cfg, state):
     ice_mesh = _build_surface_mesh(x, y, ice_z)
     ice_mesh["speed"] = np.where(thk.ravel(order='F') > 1.0,
                                   vel.ravel(order='F'), 0.0)
-    plotter.add_mesh(ice_mesh, scalars="speed", cmap="inferno",
+    plotter.add_mesh(ice_mesh, scalars="speed", cmap="viridis",
                      clim=[0, p.vel_max], name="ice",
                      lighting=True, smooth_shading=True,
                      show_scalar_bar=False)
@@ -446,7 +477,7 @@ def _update_3d(cfg, state):
     # stats text
     info = (
         f"Vol = {vol:.3f} km³   Area = {area:.1f} km²\n"
-        f"Vmax = {vmax:.0f} m/a   dt = {dt:.2f}\n"
+        f"Vmax = {vmax:.0f} m/yr   dt = {dt:.2f}\n"
         f"Wall = {elapsed:.0f} s"
     )
     plotter.add_text(info, position="upper_left", font_size=10,
@@ -496,6 +527,15 @@ def _finalize_3d(cfg, state):
 
 def initialize(cfg, state):
     state._dash_mode = cfg.outputs.live_dashboard.mode
+    state._dash_headless = bool(cfg.outputs.live_dashboard.headless)
+    if not state._dash_headless and not _has_display():
+        _warn(state, "live_dashboard: no display found (e.g. SSH session without X "
+                     "forwarding), switching to headless mode: PNG frames "
+                     "(dashboard_XXXXXX.png) are saved in the run directory.")
+        state._dash_headless = True
+    if state._dash_mode == "3d" and state._dash_headless:
+        _warn(state, "live_dashboard: 3d mode needs a display, using 2d mode instead.")
+        state._dash_mode = "2d"
     if state._dash_mode == "3d":
         _init_3d(cfg, state)
     else:

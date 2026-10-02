@@ -16,12 +16,12 @@ thr_temp_rain:
   Description: "Threshold temperature for liquid precipitation."
 melt_factor_snow:
   Type: float
-  Units: m yr^{-1} K^{-1}
-  Description: "Degree-day factor for snow (ice eq.)."
+  Units: m yr^{-1} K^{-1} w.e.
+  Description: "Degree-day factor for snow (water eq.); the default corresponds to 3 mm w.e. d-1 K-1."
 melt_factor_ice:
   Type: float
-  Units: m yr^{-1} K^{-1}
-  Description: "Degree-day factor for ice (ice eq.)."
+  Units: m yr^{-1} K^{-1} w.e.
+  Description: "Degree-day factor for ice (water eq.); the default corresponds to 8 mm w.e. d-1 K-1."
 shift_hydro_year:
   Type: float
   Units: dimless

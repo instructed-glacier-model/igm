@@ -93,4 +93,4 @@ def run(cfg, state):
     complete_data(state, water_level=cfg.inputs.load_ncdf.water_level)
 
     if cfg.inputs.load_ncdf.icemask_include:
-        include_icemask(state, mask_shapefile=cfg.inputs.load_ncdf.icemask_shapefile, mask_invert=cfg.inputs.load_ncdf.icemask_invert)
+        include_icemask(state, mask_shapefile=os.path.join(state.original_cwd, cfg.core.folder_data, cfg.inputs.load_ncdf.icemask_shapefile), mask_invert=cfg.inputs.load_ncdf.icemask_invert)

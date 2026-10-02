@@ -2,7 +2,7 @@ seeding:
   method:
     Type: string
     Units: dimless
-    Description: "Method for seeding particles (accumulation or all)."
+    Description: "Seeding method: `accumulation` (seed at the surface of the accumulation area, where thk > 1 m and smb > 0, every `frequency` years) or `all` (seed the whole ice volume in layers spaced by `height` at the first time step, then at the surface wherever the cumulated accumulation exceeds `height`)."
   frequency:
     Type: float
     Units: y
@@ -17,8 +17,8 @@ seeding:
     Description: "Initialize the date of last seeding. If default value, the seeding will start the first year of the simulation. Changing this value allows to defer it"
   height:
     Type: float
-    Units: dimless
-    Description: "Height of the seeding layer in the method full."
+    Units: m
+    Description: "Method `all` only: vertical spacing of the seeded layers, and cumulated accumulation (m ice eq.) that triggers a new surface seeding."
 tracking:
   method:
     Type: string
@@ -27,17 +27,17 @@ tracking:
   library:
     Type: string
     Units: dimless
-    Description: "Library used for tracking (cuda, tensorflow, etc.)."
+    Description: "Library used to interpolate velocities at particle positions: `tensorflow` (default, portable, CPU or GPU), `cuda` (compiled TensorFlow custom op, NVIDIA GPU), or `cupy` (Numba CUDA kernel, requires `cupy` and `numba`)."
 removal:
   method:
     Type: string
     Units: dimless
-    Description: "Method for removing particles (ablation, etc.)."
+    Description: "Particle removal: empty string (none) or `ablation` (remove particles that have returned to the ice surface, i.e. relative height r = 1)."
 output:
   library:
     Type: string
     Units: dimless
-    Description: "Library used for outputting particles (numpy, pyvista, etc.)."
+    Description: "Library used to write particle files: `numpy` (default, CSV only) or `cudf` (RAPIDS, GPU; supports the formats set by `format`)."
   add_topography:
     Type: boolean
     Units: dimless
@@ -45,8 +45,8 @@ output:
   format:
     Type: string
     Units: dimless
-    Description: "Type of output format for particles (csv, parquet)."
+    Description: "Output file format with `library: cudf`: `csv`, `feather`, or `parquet` (ignored with `numpy`, which always writes CSV)."
   add_fields:
     Type: list
     Units: dimless
-    Description: "List of fields to write in the output file (englt, velbar, weight)."
+    Description: "Extra particle fields to track and write: `weight`, `englt` (englacial time, yr), `velmag` (3D speed, m yr^{-1})."

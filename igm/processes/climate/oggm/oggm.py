@@ -34,6 +34,13 @@ def initialize(cfg, state):
 
     ds = xr.open_dataset(os.path.join(path_RGI, "climate_historical.nc"))
 
+    if "temp_std" not in ds:
+        raise ValueError(
+            "climate_historical.nc has no 'temp_std' variable. OGGM directories for "
+            "RGI 6 provide ERA5 climate without it, so climate method 'oggm' is not "
+            "supported with RGI 6: use an RGI 7 glacier ID."
+        )
+
     time = ds["time"].values.astype("float32").squeeze()  # unit: year
     prcp = ds["prcp"].values.astype("float32").squeeze()  # unit: kg * m^(-2)
     temp = ds["temp"].values.astype("float32").squeeze()  # unit: degree Celsius

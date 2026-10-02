@@ -1,4 +1,4 @@
 vars_to_save:
   Type: list
-  Description: "List of variables to be saved as geotiff files."
+  Description: "List of variables to be saved as geotiff files. Any 2D state variable can be saved; see the full list at https://igm-model.org/latest/modules/variables/igm/"
   Units: dimless
