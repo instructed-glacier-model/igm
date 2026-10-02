@@ -18,8 +18,9 @@ smb:
     # switch the ELA correction for insolation on/off
     correction_for_insolation_enabled: false
     correction_for_insolation:
-      # solar elevation angle above the horizon [degrees]
-      solar_elevation: 60.0
+      # solar elevation angle above the horizon [degrees], 
+      # --> this is depending on the average latitude of the study region
+      solar_elevation: 60.0 # for Alps latitude, midsummer midday value (see Henz et al. 2025)
       # solar azimuth, clockwise from north [degrees] (180 = sun from the south, e.g. for the Northern hemisphere)
       solar_azimuth: 180.0
       # ELA shift per degree of incidence-angle difference to a flat surface [m / degree]

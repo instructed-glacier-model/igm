@@ -27,11 +27,11 @@ simple:
     solar_elevation:
       Type: float
       Units: ° (degree)
-      Description: "Solar elevation angle above the horizon (one single value as a midsummer midday value, see Henz et al. 2025) [degrees]."
+      Description: "Solar elevation angle above the horizon (one single value as a midsummer midday value, depending on latitude, see Henz et al. 2025) [degrees]."
     solar_azimuth:
       Type: float
       Units: ° (degree)
-      Description: "Solar azimuth angle [degrees]."
+      Description: "Solar azimuth angle [degrees]. Clockwise from north (180 = sun from the south, e.g. for the Northern hemisphere)."
     ela_per_degree_incidence:
       Type: float
       Units: m °^{-1}
