@@ -53,7 +53,7 @@ def update(cfg, state):
         # if an icemask exists, then force negative smb aside to prevent leaks
         if hasattr(state, "icemask"):
             state.smb = tf.where(
-                state.icemask > 0.5,
+                (state.smb < 0) | (state.icemask > 0.5),
                 state.smb,
                 cfg.processes.smb.smb_outside_icemask,
             )
