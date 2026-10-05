@@ -10,9 +10,15 @@ import xarray as xr
 import pandas as pd
 import scipy.signal
 
-from igm.inputs.oggm_shop.read_glathida import read_glathida_v6, read_glathida_v7
+from igm.inputs.oggm_shop.read_glathida import read_glathida
 from igm.inputs.oggm_shop.masks_subentities import process_masks_subentities
  
+def _warn(state, msg):
+    if hasattr(state, "logger"):
+        state.logger.warning(msg)
+    else:
+        print("WARNING: " + msg)
+
 def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
  
     # Prepare output dictionary
@@ -30,7 +36,9 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
     ds_vars["thk"] = thk
 
     # Process masks
-    if cfg.inputs.oggm_shop.sub_entity_mask:
+    if cfg.inputs.oggm_shop.sub_entity_mask and RGI_version != 7:
+        _warn(state, "sub_entity_mask is only available for RGI 7: ignored.")
+    if cfg.inputs.oggm_shop.sub_entity_mask and RGI_version == 7:
         mask_vars = process_masks_subentities(ds, cfg, RGI_product, path_RGI)
         ds_vars.update(mask_vars)
     else:
@@ -70,15 +78,14 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
  
     # Ice thickness observations from GlaThiDa
     if cfg.inputs.oggm_shop.incl_glathida:
-        if RGI_version == 6:
-            with open(os.path.join(path_RGI, "glacier_grid.json")) as f:
-                proj = json.load(f)["proj"]
-            thkobs = read_glathida_v6(ds.x.values, ds.y.values, ds_vars["usurf"].values, \
-                                      proj, cfg.inputs.oggm_shop.path_glathida, state)
+        path_glathida = os.path.join(path_RGI, "glathida_data.csv")
+        if os.path.exists(path_glathida):
+            thkobs = read_glathida(ds.x.values, ds.y.values, path_glathida)
+            thkobs = xr.DataArray(np.where(ds_vars["icemask"], thkobs, np.nan), dims=("y", "x"))
         else:
-            path_glathida = os.path.join(path_RGI, "glathida_data.csv")
-            thkobs = read_glathida_v7(ds.x.values, ds.y.values, path_glathida)
-        thkobs = xr.DataArray(np.where(ds_vars["icemask"], thkobs, np.nan), dims=("y", "x"))
+            thkobs = np.full(ds["topo"].shape, np.nan)
+        if np.all(np.isnan(thkobs)):
+            _warn(state, "No GlaThiDa thickness data for this glacier: thkobs is empty.")
     else:
         thkobs = np.full(ds["topo"].shape, np.nan)   
     ds_vars["thkobs"] = thkobs

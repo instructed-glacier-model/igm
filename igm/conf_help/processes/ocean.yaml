@@ -1,0 +1,43 @@
+method:
+  Type: string
+  Units: dimless
+  Description: "Ocean forcing to use: `profile` (horizontally uniform, piecewise-linear T(z) and S(z)) or `fields` (2-D fields provided by an input module)."
+freezing_point:
+  lambda1:
+    Type: float
+    Units: °C (g kg^{-1})^{-1}
+    Description: "Salinity coefficient of the linearised freezing point T_f = lambda1 S + lambda2 + lambda3 z. The defaults of the three coefficients are the ISOMIP+ values (Asay-Davis et al., 2016)."
+  lambda2:
+    Type: float
+    Units: °C
+    Description: "Constant of the linearised freezing point."
+  lambda3:
+    Type: float
+    Units: °C m^{-1}
+    Description: "Depth coefficient of the linearised freezing point, with z the depth relative to the water level (negative below it)."
+anomaly_array:
+  Type: list
+  Units: yr, °C
+  Description: "Uniform ocean-temperature anomaly delta_T(t) added to every method, as rows [time, delta_temp] after a header row; interpolated linearly in time and held constant outside the listed times."
+profile:
+  array:
+    Type: list
+    Units: m, °C, g kg^{-1}
+    Description: "Rows [z, temp, salinity] after a header row, with z the depth relative to the water level (negative below it). Interpolated linearly in depth and held constant outside the listed depths. The default is the ISOMIP+ WARM profile (Asay-Davis et al., 2016)."
+fields:
+  temp:
+    Type: string
+    Units: dimless
+    Description: "Name of the state variable holding the ocean potential temperature (°C). Leave empty when a thermal forcing is given instead."
+  salinity:
+    Type: string
+    Units: dimless
+    Description: "Name of the state variable holding the ocean salinity (g kg^{-1}). Leave empty to use `salinity_ref`."
+  thermal_forcing:
+    Type: string
+    Units: dimless
+    Description: "Name of the state variable holding the thermal forcing (K), e.g. from ISMIP6. When set, the temperature is rebuilt as TF + T_f(S, z), so the published `ocean_thermal_forcing` equals it plus the anomaly."
+  salinity_ref:
+    Type: float
+    Units: g kg^{-1}
+    Description: "Uniform salinity used when `salinity` is empty."

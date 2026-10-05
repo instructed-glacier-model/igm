@@ -5,10 +5,9 @@
 
 """Periodic-aware component-block stencils used by Newton-CG."""
 
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import tensorflow as tf
-
 
 OFFSETS: Tuple[Tuple[int, int], ...] = (
     (0, 0),
@@ -23,6 +22,56 @@ OFFSETS: Tuple[Tuple[int, int], ...] = (
 )
 COMPONENT_BANDS_KEY = "component_blocks"
 COMPONENT_CENTER_KEY = "component_center"
+
+
+def axis_period(n: int, periodic: bool, duplicated_endpoint: bool) -> Optional[int]:
+    """Effective period of a stencil axis, or None when it does not wrap."""
+    if not periodic:
+        return None
+    return max(n - 1, 1) if duplicated_endpoint else max(n, 1)
+
+
+def wrap_offset(
+    offset: Tuple[int, int],
+    period_y: Optional[int],
+    period_x: Optional[int],
+) -> Tuple[int, int]:
+    """Reduce a stencil offset to the neighbour it reaches on the wrapped grid."""
+    dy, dx = offset
+    if period_y is not None:
+        dy %= period_y
+    if period_x is not None:
+        dx %= period_x
+    return dy, dx
+
+
+def component_band_multipliers(
+    ny: int,
+    nx: int,
+    *,
+    periodic_y: bool = False,
+    periodic_x: bool = False,
+    duplicated_endpoints: bool = True,
+) -> Tuple[float, ...]:
+    """Per-offset weights that count aliased periodic couplings exactly once.
+
+    On a periodic axis with fewer than three active cells, distinct 9-point
+    offsets reach the same neighbour (with one active row, a cell is its own
+    north and south neighbour), so the colour-based extraction assigns each
+    aliased offset the full folded coupling and a plain sum over the bands
+    would count it several times. Keeping only the first offset of every
+    aliased group restores the exact operator; with three or more active
+    cells per periodic axis every weight is one.
+    """
+    period_y = axis_period(ny, periodic_y, duplicated_endpoints)
+    period_x = axis_period(nx, periodic_x, duplicated_endpoints)
+    seen = set()
+    multipliers = []
+    for offset in OFFSETS:
+        signature = wrap_offset(offset, period_y, period_x)
+        multipliers.append(0.0 if signature in seen else 1.0)
+        seen.add(signature)
+    return tuple(multipliers)
 
 
 def as_dtype(precision) -> tf.DType:
@@ -61,11 +110,7 @@ def _cycle_square_colors(n: int) -> Tuple[List[int], int]:
             states = next_states
 
         for path in states.values():
-            if (
-                path[-1] != path[0]
-                and path[-1] != path[1]
-                and path[-2] != path[0]
-            ):
+            if path[-1] != path[0] and path[-1] != path[1] and path[-2] != path[0]:
                 return path, n_colors
 
     raise RuntimeError(f"Could not color periodic stencil of length {n}.")
@@ -135,12 +180,8 @@ def build_component_selectors(
     duplicated_endpoints: bool = True,
 ):
     """Build spatial colors and neighbour-color lookup tables."""
-    colors_y, n_colors_y = _axis_colors(
-        ny, periodic_y, duplicated_endpoints
-    )
-    colors_x, n_colors_x = _axis_colors(
-        nx, periodic_x, duplicated_endpoints
-    )
+    colors_y, n_colors_y = _axis_colors(ny, periodic_y, duplicated_endpoints)
+    colors_x, n_colors_x = _axis_colors(nx, periodic_x, duplicated_endpoints)
     valid = tf.logical_and(
         colors_y[:, tf.newaxis] >= 0,
         colors_x[tf.newaxis, :] >= 0,
@@ -190,8 +231,15 @@ def extract_component_bands(
     color: tf.Tensor,
     neighbour_colors: List[tf.Tensor],
     n_colors: int,
+    multipliers: Optional[Sequence[float]] = None,
 ) -> tf.Tensor:
-    """Extract a dense-component 9-point stencil by graph coloring."""
+    """Extract a dense-component 9-point stencil by graph coloring.
+
+    ``multipliers`` (see ``component_band_multipliers``) weights each offset
+    band so couplings aliased by a degenerate periodic axis count once.
+    """
+    if multipliers is None:
+        multipliers = (1.0,) * len(OFFSETS)
     bands_by_input = []
 
     for input_component in range(n_components):
@@ -209,15 +257,16 @@ def extract_component_bands(
 
         response_stack = tf.stack(responses, axis=0)
         input_bands = []
-        for offset_colors in neighbour_colors:
+        for offset_colors, multiplier in zip(neighbour_colors, multipliers):
             selector = tf.one_hot(
                 tf.cast(offset_colors, tf.int32),
                 n_colors,
                 dtype=dtype,
             )
-            input_bands.append(
-                tf.einsum("yxc,cboyx->boyx", selector, response_stack)
-            )
+            band = tf.einsum("yxc,cboyx->boyx", selector, response_stack)
+            if multiplier != 1.0:
+                band *= tf.cast(multiplier, dtype)
+            input_bands.append(band)
         bands_by_input.append(tf.stack(input_bands, axis=0))
 
     # (offset, batch, output-component, input-component, y, x)

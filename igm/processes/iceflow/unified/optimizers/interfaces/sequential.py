@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -61,6 +61,7 @@ class InterfaceSequential(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
         # Lazy import to avoid circular imports
         from . import InterfaceOptimizers
@@ -77,7 +78,7 @@ class InterfaceSequential(InterfaceOptimizer):
 
             cfg_merged = InterfaceSequential._merge_cfg_stage(cfg, cfg_stage)
             InterfaceOptimizers[optimizer_name].set_optimizer_params(
-                cfg_merged, status, optimizer_stage
+                cfg_merged, status, optimizer_stage, t
             )
 
         # Refresh the outer budget after stage-specific updates.

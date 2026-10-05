@@ -1,11 +1,27 @@
 file_format_list:
   Type: list
   Units: dimless
-  Description: "List of file formats to be used for output (e.g., ['netcdf','tif'])."
+  Description: "List of file formats to be used for output, among 'netcdf', 'zarr' and 'tif' (e.g., ['netcdf','tif']). 'zarr' needs the optional `zarr` package and writes a Zarr store next to `output_file` (output.nc -> output.zarr)."
 output_file:
   Type: string
   Units: dimless
-  Description: "Output ncdf data file."
+  Description: "Output ncdf data file. Each save is appended in place, so its cost does not grow with the length of the run."
+keep_open:
+  Type: boolean
+  Units: dimless
+  Description: "Keep the NetCDF files open between saves (about 3x faster saves) and close them after the final save. Each save is still flushed to disk. While the run holds the files, other programs can only open them with the environment variable HDF5_USE_FILE_LOCKING=FALSE; with false (default), they can be opened between saves."
+complevel:
+  Type: integer
+  Units: dimless
+  Description: "Lossless compression level (1-9, with byte shuffle) for the saved NetCDF fields, using the codec `compression`; 0 (default) disables compression. Level 1 already gives most of the gain (2.4x smaller files on the Aletsch example, more where much of the domain is ice-free); higher levels gain little."
+compression:
+  Type: string
+  Units: dimless
+  Description: "Codec used when `complevel` > 0: 'zlib' (default, readable by any NetCDF tool), 'zstd' (as fast as no compression, files ~10% larger than with zlib, which doubles the time per save) or 'bzip2' (much slower, no smaller). zstd and bzip2 need netCDF-C 4.9+ with its HDF5 filter plugins, to write the file and to read it back."
+significant_digits:
+  Type: integer
+  Units: dimless
+  Description: "Lossy: keep only this many significant decimal digits in the float fields (netCDF-C quantization), so that they compress much better (3 digits: files 4x instead of 2.4x smaller with zlib, relative error below 0.05%); null (default) keeps full precision. Only reduces file size together with `complevel` > 0."
 vars_to_save:
   Type: list
   Units: dimless

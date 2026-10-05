@@ -1,13 +1,32 @@
 calving_rate:
 
-  law: water_depth                       # zero | water_depth | eigen | thickness_threshold
+  law: zero                            # zero | constant | water_depth | eigen | von_mises | ice_speed
 
-  #   zero                -> c = 0
-  #   water_depth         -> c = k * D_w                         Brown/Meier/Post 1982
-  #   eigen               -> c = K2 * max(e1,0) * max(e2,0)      Levermann 2012
-  #   thickness_threshold -> c = c_max where thk < Hcr    
+  #   zero        -> c = 0
+  #   constant    -> c = value
+  #   water_depth -> c = k max(z_wl - z_b, 0)                     Brown et al. (1982)
+  #   eigen       -> c = K max(e1, 0) max(e2, 0), floating ice    Levermann et al. (2012)
+  #   von_mises   -> c = |u| sigma / sigma_max                    Morlighem et al. (2016)
+  #   ice_speed   -> c = max(factor |u| - front_velocity, 0)      CalvingMIP-style
 
-  k: 5.0                                 # 1/yr; water_depth
-  K2: 1.0e3                              # m*yr; eigen proportionality constant
-  Hcr: 250.0                             # m; thickness_threshold cutoff 
-  c_max: 20000.0                         # m/yr; safety cap on the output field
+  ocean_connected_only: true           # calve only fronts facing the open ocean (not holes or rifts in a shelf)
+  band: 3                              # rings beyond the front cells, each side, where the rate is defined (>= thk.front.level_set.band)
+  max_rate: 1.0e+5                     # m/yr; safety cap on c
+
+  constant:
+    value: 0.0                         # m/yr
+  water_depth:
+    k: 5.0                             # 1/yr
+  eigen:
+    K: 1.0e+3                          # m yr (Levermann et al., 2012: 3e1 to 1e4 m yr)
+  von_mises:
+    sigma_max_floating: 0.15           # MPa, tensile strength of floating ice (ISSM default)
+    sigma_max_grounded: 1.0            # MPa, tensile strength of grounded ice (ISSM default)
+  ice_speed:
+    factor: 1.0                        # c = factor |u| - front_velocity
+    front_velocity: 0.0                # m/yr, prescribed front velocity W (> 0 advance, < 0 retreat)
+
+  frontal_melt:
+    method: none                       # none | constant | field
+    value: 0.0                         # m/yr, constant frontal melt rate
+    field: frontal_melt_forcing        # state variable holding the frontal melt rate (m/yr)

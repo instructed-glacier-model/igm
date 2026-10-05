@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 from igm.common import State
 
 from .dissipation import compute_dissipation
+from .shelf import compute_shelf
 from .solver import update_enthalpy
 from .surface import compute_surface
 from .temperature import compute_pa, compute_pmp, compute_temperature
@@ -35,13 +36,16 @@ def update(cfg: DictConfig, state: State) -> None:
     E_s, _ = compute_surface(cfg, state)
 
     # Pressure melting point enthalpy
-    E_pmp, _ = compute_pmp(cfg, state)
+    E_pmp, T_pmp = compute_pmp(cfg, state)
+
+    # Columns in contact with the ocean and their basal enthalpy
+    ocean, E_shelf = compute_shelf(cfg, state, T_pmp)
 
     # Volumetric strain heating and basal frictional heating
     strain_heat, friction_heat = compute_dissipation(cfg, state)
 
     # (ii) SOLVE FOR ENTHALPY (state.E, state.basal_melt_rate)
-    update_enthalpy(cfg, state, strain_heat, friction_heat, E_pmp, E_s)
+    update_enthalpy(cfg, state, strain_heat, friction_heat, E_pmp, E_s, ocean, E_shelf)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

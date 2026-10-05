@@ -4,19 +4,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
 try:
     from ...mappings import MappingDataAssimilation, MappingCombinedDataAssimilation
-except Exception:  # pragma: no cover - keeps the interface compatible across IGM branches.
+except (
+    Exception
+):  # pragma: no cover - keeps the interface compatible across IGM branches.
     try:
         from ...mappings.data_assimilation import MappingDataAssimilation
     except Exception:  # pragma: no cover
@@ -26,7 +28,9 @@ except Exception:  # pragma: no cover - keeps the interface compatible across IG
 
 def _is_data_assimilation_mapping(map: Mapping) -> bool:
     da_types = tuple(
-        t for t in (MappingDataAssimilation, MappingCombinedDataAssimilation) if t is not None
+        t
+        for t in (MappingDataAssimilation, MappingCombinedDataAssimilation)
+        if t is not None
     )
     return bool(da_types) and isinstance(map, da_types)
 
@@ -38,7 +42,10 @@ def _select(cfg: DictConfig, path: str, default: Any) -> Any:
 
 def _spg_path(cfg: DictConfig, map: Mapping) -> str:
     da_path = "assimilations.field_inversion.optimization.spg"
-    if _is_data_assimilation_mapping(map) and OmegaConf.select(cfg, da_path, default=None) is not None:
+    if (
+        _is_data_assimilation_mapping(map)
+        and OmegaConf.select(cfg, da_path, default=None) is not None
+    ):
         return da_path
     return "processes.iceflow.unified.spg"
 
@@ -61,11 +68,11 @@ class InterfaceSPG(InterfaceOptimizer):
                 _select(
                     cfg,
                     "assimilations.field_inversion.optimization.nbitmax",
-                    cfg_unified.nbit,
+                    nbit_at(cfg_unified.nbit),
                 )
             )
         else:
-            iter_max = int(cfg_unified.nbit)
+            iter_max = int(nbit_at(cfg_unified.nbit))
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -79,9 +86,13 @@ class InterfaceSPG(InterfaceOptimizer):
             "alpha_min": float(_select(cfg, f"{spg_path}.alpha_min", 1e-12)),
             "alpha_max": float(_select(cfg, f"{spg_path}.alpha_max", 1e12)),
             "armijo_c": float(_select(cfg, f"{spg_path}.armijo_c", 1e-4)),
-            "backtrack_factor": float(_select(cfg, f"{spg_path}.backtrack_factor", 0.5)),
+            "backtrack_factor": float(
+                _select(cfg, f"{spg_path}.backtrack_factor", 0.5)
+            ),
             "max_backtracks": int(_select(cfg, f"{spg_path}.max_backtracks", 20)),
-            "nonmonotone_window": int(_select(cfg, f"{spg_path}.nonmonotone_window", 10)),
+            "nonmonotone_window": int(
+                _select(cfg, f"{spg_path}.nonmonotone_window", 10)
+            ),
             "bb_variant": str(_select(cfg, f"{spg_path}.bb_variant", "alternating")),
             "step_tol": float(_select(cfg, f"{spg_path}.step_tol", 0.0)),
             "use_da_display": bool(_select(cfg, f"{spg_path}.use_da_display", True)),
@@ -99,18 +110,31 @@ class InterfaceSPG(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
         spg_path = _spg_path(cfg, optimizer.map)
 
         if status == Status.INIT:
             iter_max = int(cfg_unified.nbit_init)
-            alpha0 = float(_select(cfg, f"{spg_path}.alpha0_init", _select(cfg, f"{spg_path}.alpha0", 1.0)))
+            alpha0 = float(
+                _select(
+                    cfg,
+                    f"{spg_path}.alpha0_init",
+                    _select(cfg, f"{spg_path}.alpha0", 1.0),
+                )
+            )
         elif status == Status.WARM_UP:
             iter_max = int(cfg_unified.nbit_init)
-            alpha0 = float(_select(cfg, f"{spg_path}.alpha0_init", _select(cfg, f"{spg_path}.alpha0", 1.0)))
+            alpha0 = float(
+                _select(
+                    cfg,
+                    f"{spg_path}.alpha0_init",
+                    _select(cfg, f"{spg_path}.alpha0", 1.0),
+                )
+            )
         elif status == Status.DEFAULT:
-            iter_max = int(cfg_unified.nbit)
+            iter_max = int(nbit_at(cfg_unified.nbit, t))
             alpha0 = float(_select(cfg, f"{spg_path}.alpha0", 1.0))
         elif status == Status.IDLE:
             return False

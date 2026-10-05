@@ -182,6 +182,18 @@ class OptimizerSSESOAP(Optimizer):
                          recovers an adaptive-basis SOAP, useful for ablation).
         damping:         Ridge added before eigendecomposition, and floor on
                          the eigenvalues appearing in the tau denominator.
+        relative_damping: Additional ridge before eigendecomposition, relative
+                         to the factor's scale: A + (damping + relative_damping
+                         * trace(A) / m) I. A Kronecker factor is a decaying sum
+                         of rank-limited products G G^T, so many of its
+                         eigenvalues are numerically zero; with an absolute
+                         damping below float32 resolution (~1e-7 ||A||) they
+                         form a large cluster at rounding-noise level, on which
+                         cuSOLVER's float32 heevd can fail to converge and stop
+                         the run. The relative ridge (1e-6 by default) lifts the
+                         cluster above the noise and leaves the resolved part of
+                         the spectrum unchanged. 0 keeps the absolute damping
+                         only (the behaviour before this option).
         weight_decay:    Decoupled weight decay (lambda), 0 by default.
         lr_drop_iter:     Optional zero-based iteration for a one-time learning
                           rate drop. Negative disables the schedule.
@@ -223,6 +235,7 @@ class OptimizerSSESOAP(Optimizer):
         tau_min: float = 0.1,
         self_scaling: bool = True,
         damping: float = 1e-8,
+        relative_damping: float = 1e-6,
         weight_decay: float = 0.0,
         lr_drop_iter: int = -1,
         lr_drop_factor: float = 1.0,
@@ -258,6 +271,10 @@ class OptimizerSSESOAP(Optimizer):
         self.tau_trigger = tf.constant(tau_trigger, dtype=p)
         self.tau_min = tf.constant(tau_min, dtype=p)
         self.damping = tf.constant(damping, dtype=p)
+        if not float(relative_damping) >= 0.0:
+            raise ValueError("relative_damping must be >= 0")
+        self._relative_damping = float(relative_damping)
+        self.relative_damping = tf.constant(relative_damping, dtype=p)
         self._check_freq = max(1, int(check_freq))
         self._warmup = int(warmup)
         self._check_every_step = self._check_freq == 1 and self._warmup <= 0
@@ -308,6 +325,11 @@ class OptimizerSSESOAP(Optimizer):
         # cache avoids inlining the full pair of conditional branches once for
         # every trainable tensor into minimize_impl's already-large graph.
         self._matrix_step_fns = {}
+        # Iterations applied over the optimizer's lifetime.  The layer state
+        # (moments, Kronecker factors, eigenbases) persists across minimize
+        # calls, so the first-step basis shortcut and the bias corrections
+        # must count from the first call, not from each call's iteration 0.
+        self._global_iter = tf.Variable(0, dtype=tf.int32, trainable=False)
 
         # Layer states - allocated in minimize() before the tf.function
         self._layer_states: Optional[List[_SSESOAPLayerState]] = None
@@ -342,9 +364,13 @@ class OptimizerSSESOAP(Optimizer):
     # SS-eSOAP internals                                                 #
     # ------------------------------------------------------------------ #
 
-    def _off_diagonal_ratio(
-        self, A: tf.Tensor, diagonal: tf.Tensor
-    ) -> tf.Tensor:
+    def _regularized(self, A: tf.Tensor) -> tf.Tensor:
+        """A + (damping + relative_damping * trace(A) / m) I, the factor given to eigh."""
+        size = A.shape[0]
+        ridge = self.damping + self.relative_damping * tf.linalg.trace(A) / size
+        return A + ridge * tf.eye(size, dtype=self.precision)
+
+    def _off_diagonal_ratio(self, A: tf.Tensor, diagonal: tf.Tensor) -> tf.Tensor:
         """
         Relative off-diagonal mass of A from diag(Q^T A Q).
 
@@ -356,9 +382,7 @@ class OptimizerSSESOAP(Optimizer):
         so checking the trigger needs no additional matrix product.
         """
         fro_sq = tf.reduce_sum(tf.square(A))
-        off_sq = tf.maximum(
-            fro_sq - tf.reduce_sum(tf.square(diagonal)), self._zero
-        )
+        off_sq = tf.maximum(fro_sq - tf.reduce_sum(tf.square(diagonal)), self._zero)
         rho = tf.sqrt(off_sq) / (tf.sqrt(fro_sq) + self.eps)
         return rho
 
@@ -423,12 +447,8 @@ class OptimizerSSESOAP(Optimizer):
         trainable tensors.  State persistence remains in ``_matrix_step``.
         """
         # --- 1. Kronecker factors ------------------------------------- #
-        L = self.beta2 * L_old + (1.0 - self.beta2) * tf.matmul(
-            G, G, transpose_b=True
-        )
-        R = self.beta2 * R_old + (1.0 - self.beta2) * tf.matmul(
-            G, G, transpose_a=True
-        )
+        L = self.beta2 * L_old + (1.0 - self.beta2) * tf.matmul(G, G, transpose_b=True)
+        R = self.beta2 * R_old + (1.0 - self.beta2) * tf.matmul(G, G, transpose_a=True)
 
         # The incremental path removes two cubic trigger products.  Restrict it
         # to genuinely large, two-sided factors: for tiny/skewed matrices the
@@ -436,6 +456,7 @@ class OptimizerSSESOAP(Optimizer):
         use_incremental_diagonal = min(G.shape[0], G.shape[1]) >= 128
 
         if use_incremental_diagonal:
+
             def _initial_basis_stats():
                 # QL and QR are identities before the first update.  Reading
                 # factor diagonals is exact and skips redundant identity GEMMs.
@@ -487,17 +508,18 @@ class OptimizerSSESOAP(Optimizer):
             def _skip_direct():
                 return -self._one, DL_old, DR_old
 
-            rho, DL, DR = tf.cond(
-                should_check, _check_direct, _skip_direct
-            )
+            rho, DL, DR = tf.cond(should_check, _check_direct, _skip_direct)
 
         # --- 2. Adaptive eigenbasis update ---------------------------- #
         def _rebase():
             # The explicit identity uses well-cached elementwise GPU kernels.
             # MatrixSetDiag is allocation-light but adds substantial CUDA JIT
             # latency to cold, short solves on the tested TensorFlow build.
-            L_reg = L + self.damping * tf.eye(G.shape[0], dtype=self.precision)
-            R_reg = R + self.damping * tf.eye(G.shape[1], dtype=self.precision)
+            if self._relative_damping > 0.0:
+                L_reg, R_reg = self._regularized(L), self._regularized(R)
+            else:
+                L_reg = L + self.damping * tf.eye(G.shape[0], dtype=self.precision)
+                R_reg = R + self.damping * tf.eye(G.shape[1], dtype=self.precision)
             eL, QL_new = tf.linalg.eigh(L_reg)
             eR, QR_new = tf.linalg.eigh(R_reg)
             # basis transition matrices: X_new = (QL_new^T QL_old) X (QR_old^T QR_new)
@@ -519,9 +541,7 @@ class OptimizerSSESOAP(Optimizer):
             return QL, QR, M, S, Gp, V, DL, DR
 
         rebased = rho > self.tau_trigger
-        QL, QR, M, S, Gp, V, DL, DR = tf.cond(
-            rebased, _rebase, _keep
-        )
+        QL, QR, M, S, Gp, V, DL, DR = tf.cond(rebased, _rebase, _keep)
 
         if use_incremental_diagonal:
             G_rot = tf.cond(
@@ -548,9 +568,10 @@ class OptimizerSSESOAP(Optimizer):
             # the eigenbasis (S, Gp are already rotated; L^-1, R^-1 diagonal).
             Y_rot = G_rot - Gp
             c = tf.reduce_sum(Y_rot * S)
-            d_outer = tf.maximum(DL, self.damping)[:, tf.newaxis] * tf.maximum(
-                DR, self.damping
-            )[tf.newaxis, :]
+            d_outer = (
+                tf.maximum(DL, self.damping)[:, tf.newaxis]
+                * tf.maximum(DR, self.damping)[tf.newaxis, :]
+            )
             a = tf.reduce_sum(tf.square(S) / d_outer)
             valid = tf.logical_and(c > self._zero, a > self._zero)
             ratio = c / tf.where(valid, a, self._one)
@@ -615,12 +636,16 @@ class OptimizerSSESOAP(Optimizer):
         rho, DL, DR = tf.cond(should_check, _check, _skip)
 
         def _rebase():
-            eL, QL_new = tf.linalg.eigh(
-                L + self.damping * tf.eye(m, dtype=self.precision)
-            )
-            eR, QR_new = tf.linalg.eigh(
-                R + self.damping * tf.eye(n, dtype=self.precision)
-            )
+            if self._relative_damping > 0.0:
+                eL, QL_new = tf.linalg.eigh(self._regularized(L))
+                eR, QR_new = tf.linalg.eigh(self._regularized(R))
+            else:
+                eL, QL_new = tf.linalg.eigh(
+                    L + self.damping * tf.eye(m, dtype=self.precision)
+                )
+                eR, QR_new = tf.linalg.eigh(
+                    R + self.damping * tf.eye(n, dtype=self.precision)
+                )
             P_L = tf.matmul(QL_new, QL, transpose_a=True)
             P_R = tf.matmul(QR, QR_new, transpose_a=True)
             X = tf.stack([M, S, Gp])
@@ -636,9 +661,7 @@ class OptimizerSSESOAP(Optimizer):
         def _keep():
             return QL, QR, M, S, Gp, V, DL, DR
 
-        QL, QR, M, S, Gp, V, DL, DR = tf.cond(
-            rho > self.tau_trigger, _rebase, _keep
-        )
+        QL, QR, M, S, Gp, V, DL, DR = tf.cond(rho > self.tau_trigger, _rebase, _keep)
 
         G_rot = tf.matmul(tf.matmul(QL, G, transpose_a=True), QR)
         M = self.beta1 * M + (1.0 - self.beta1) * G_rot
@@ -647,9 +670,10 @@ class OptimizerSSESOAP(Optimizer):
         if self.self_scaling:
             Y_rot = G_rot - Gp
             c = tf.reduce_sum(Y_rot * S)
-            d_outer = tf.maximum(DL, self.damping)[:, tf.newaxis] * tf.maximum(
-                DR, self.damping
-            )[tf.newaxis, :]
+            d_outer = (
+                tf.maximum(DL, self.damping)[:, tf.newaxis]
+                * tf.maximum(DR, self.damping)[tf.newaxis, :]
+            )
             a = tf.reduce_sum(tf.square(S) / d_outer)
             valid = tf.logical_and(c > self._zero, a > self._zero)
             ratio = c / tf.where(valid, a, self._one)
@@ -771,9 +795,7 @@ class OptimizerSSESOAP(Optimizer):
         # Static rank branch: resolved at trace time, no tf.cond overhead.
         if state.is_matrix:
             if not state.uses_balanced_matrix:
-                return self._legacy_matrix_step(
-                    grad, state, should_check, bc1, bc2, lr
-                )
+                return self._legacy_matrix_step(grad, state, should_check, bc1, bc2, lr)
             return self._matrix_step(
                 grad, state, should_check, first_step, bc1, bc2, lr
             )
@@ -835,9 +857,7 @@ class OptimizerSSESOAP(Optimizer):
         should_update_reference = tf.logical_and(
             tf.logical_or(at_reference, at_window_end), cost_is_finite
         )
-        reference_cost = tf.where(
-            should_update_reference, cost, reference_cost
-        )
+        reference_cost = tf.where(should_update_reference, cost, reference_cost)
         dropped = tf.logical_or(dropped, should_drop)
         return active_lr, reference_cost, dropped, should_drop
 
@@ -890,8 +910,8 @@ class OptimizerSSESOAP(Optimizer):
                     tf.equal(tf.math.floormod(iter, self.check_freq), 0),
                 )
 
-            step_f = tf.cast(iter + 1, self.precision)
-            first_step = tf.equal(iter, 0)
+            step_f = tf.cast(self._global_iter + 1, self.precision)
+            first_step = tf.equal(self._global_iter, 0)
             bc1 = 1.0 - tf.math.pow(self.beta1, step_f)
             bc2 = 1.0 - tf.math.pow(self.beta2, step_f)
 
@@ -904,17 +924,13 @@ class OptimizerSSESOAP(Optimizer):
             # while_loop otherwise serializes all gradient outputs before the
             # optimizer can launch.  Large counts use one compact loop body to
             # prevent graph construction from scaling with n_batches.
-            batch_indices = (
-                range(n_batches) if n_batches <= 4 else tf.range(n_batches)
-            )
+            batch_indices = range(n_batches) if n_batches <= 4 else tf.range(n_batches)
             for b in batch_indices:
                 batch = inputs[b * B : (b + 1) * B, :, :, :]
                 batch = tf.ensure_shape(batch, batch_shape)
                 cost, grad_u, grad_theta = self._get_grad(batch)
 
-                grad_theta_accum = [
-                    a + g for a, g in zip(grad_theta_accum, grad_theta)
-                ]
+                grad_theta_accum = [a + g for a, g in zip(grad_theta_accum, grad_theta)]
 
                 grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
                 cost_sum = cost_sum + cost
@@ -946,6 +962,7 @@ class OptimizerSSESOAP(Optimizer):
                 if self.weight_decay > 0.0:
                     update = update + (lr * self.weight_decay) * w
                 w.assign_sub(update)
+            self._global_iter.assign_add(1)
 
             costs = costs.write(iter, cost_avg)
 

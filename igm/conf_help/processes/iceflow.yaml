@@ -350,33 +350,91 @@ unified:
   bc:
     dirichlet:
       left:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the left (west) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the left (west) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       right:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the right (east) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the right (east) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       top:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the top (north) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the top (north) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
       bottom:
-        Type: float
-        Description: "Value enforced on the DOFs of the velocity at the bottom (south) border; note that this sets the degrees of freedom, not the velocity field itself."
+        Type: float or [u, v]
+        Description: "Value enforced on the DOFs of the velocity at the bottom (south) border: a scalar sets both components, a pair [u, v] each one; null leaves the border free. Note that this sets the degrees of freedom, not the velocity field itself."
         Units: m y^{-1}
   optimizer:
     Type: string
     Description: "Type of optimizer used to solve the ice flow."
     Units: dimless
   nbit:
-    Type: integer
-    Description: "Number of iterations done to solve the ice flow."
+    Type: integer or [[t, n], ...]
+    Description: "Number of iterations done to solve the ice flow at each retrain. Either an integer, or a piecewise-constant schedule over model time [[t_0, n_0], [t_1, n_1], ...] with strictly increasing t_k (years, as time.start): n_k applies from t_k on, and n_0 also before t_0. For example [[0.0, 20], [1.0, 5]] trains 20 iterations per retrain during the first year, then 5. A value of 0 means no training at a retrain step."
     Units: dimless
   nbit_init:
     Type: integer
-    Description: "Number of iterations done initially to solve the ice flow."
+    Description: "Number of iterations done initially to solve the ice flow. With init_stop enabled, the maximum number of iterations of the initial training."
     Units: dimless
+  init_stop:
+    enabled:
+      Type: boolean
+      Description: "Stop the initial training of the network on its true error. At initialisation, the ice flow of the initial state is solved directly (identity mapping and cg_newton); every freq iterations of the initial training, the network's surface speed s is compared with the direct one s_ref, as the median of |s - s_ref| / (s_ref + speed_floor) over grounded and over floating ice. The training stops when both errors meet their targets at consecutive checks in a row, or when they stop improving (patience); nbit_init is the cap. Needs mapping=network and a single optimizer (not sequential); the warm-up steps are not affected. On GPU, enabling it changes the training at rounding level (XLA compiles the training step differently once the check waits for the weights), as another seed would; disabled, nothing changes."
+      Units: dimless
+    target_grounded:
+      Type: float
+      Description: "Target error over grounded ice (median of |s - s_ref| / (s_ref + speed_floor), in percent)."
+      Units: "%"
+    target_floating:
+      Type: float
+      Description: "Target error over floating ice (median of |s - s_ref| / (s_ref + speed_floor), in percent)."
+      Units: "%"
+    consecutive:
+      Type: integer
+      Description: "Number of checks in a row at which both targets must be met before the training stops. The error over floating ice can vary a lot from one check to the next, so a value above 1 (e.g. 3) avoids stopping on a lucky check."
+      Units: dimless
+    speed_floor:
+      Type: float
+      Description: "Speed added to the reference speed in the denominator of the relative error, so that slow ice does not dominate it."
+      Units: m y^{-1}
+    freq:
+      Type: integer
+      Description: "Training iterations between two checks of the error (a multiple of unified.halt.freq). Each check costs one evaluation of the network on the whole domain."
+      Units: dimless
+    patience:
+      Type: integer
+      Description: "Also stop when the error has not improved by more than min_gain over this many training iterations (0: never stop on a plateau). The error is max(grounded / target_grounded, floating / target_floating)."
+      Units: dimless
+    min_gain:
+      Type: float
+      Description: "Relative decrease of the error that counts as an improvement for the patience."
+      Units: dimless
+    reference:
+      nbit:
+        Type: integer
+        Description: "Maximum number of Newton iterations of the direct solve (identity mapping and cg_newton, from a zero velocity, with the settings of unified.cg_newton)."
+        Units: dimless
+      tol:
+        Type: float
+        Description: "The direct solve stops when the RMSE change of the velocity between Newton iterations stays below tol three times in a row."
+        Units: m y^{-1}
+      cg_tol:
+        Type: float
+        Description: "Tolerance (relative residual) of the CG solve of each Newton step of the direct solve: an inexact Newton method. The other solver settings are those of unified.cg_newton (preconditioner, hvp_mode, ...), which the network does not use; for a MOLHO basis with Nz = 2, preconditioner: barotropic_multigrid with hvp_mode: banded is much faster than the defaults."
+        Units: dimless
+      line_search:
+        Type: string
+        Description: "Line search of the direct solve."
+        Units: dimless
+    log:
+      Type: string
+      Description: "CSV file of the checks (iterations, error_grounded, error_floating, in percent), in the run folder; an empty string writes none."
+      Units: dimless
+    display:
+      Type: boolean
+      Description: "Rich display of the settings, the direct solve, one row per check and a summary. Without it, one summary line is printed."
+      Units: dimless
   nbit_warmup:
     Type: integer
     Description: "Number of iterations done for a warm-up period to solve the ice flow, allowing intense initial training."
@@ -428,6 +486,10 @@ unified:
       Type: boolean
       Description: "Reuse the previous Newton step direction as the initial guess for the next CG linear solve."
       Units: dimless
+    cold_restart_interval:
+      Type: float
+      Description: "Physical-time interval in years between zero-velocity restarts for identity/Newton-CG; zero disables restarts."
+      Units: years
     cg_max_iter:
       Type: integer
       Description: "Maximum number of conjugate-gradient iterations in the CG-Newton optimizer."
@@ -475,6 +537,10 @@ unified:
     probe_mode:
       Type: string
       Description: "Method used by the component and spatial colouring probes when hvp_mode=banded: autodiff uses exact reverse-over-reverse Hessian-vector products and is the production MOLHO mode; fd uses central finite differences in double precision; forward uses exact forward-over-reverse products for validation. The number of probes depends on Nz and the periodic grid dimensions."
+      Units: dimless
+    probe_batch:
+      Type: integer
+      Description: "Number of MOLHO stencil probes evaluated per batched autodiff HVP call. Zero evaluates probes individually. Requires an identity mapping with batch size one and probe_mode=autodiff; memory use grows with the batch."
       Units: dimless
     preconditioner:
       Type: string
@@ -862,6 +928,10 @@ unified:
       Type: float
       Description: "Regularization added to the SS-eSOAP Kronecker factors."
       Units: dimless
+    relative_damping:
+      Type: float
+      Description: "Additional ridge added to an SS-eSOAP Kronecker factor A before its eigendecomposition, relative to its scale: A + (damping + relative_damping trace(A)/m) I. The factors are rank-deficient (a decaying sum of G G^T), and with the absolute damping below float32 resolution their null space is a cluster of eigenvalues at rounding-noise level, on which cuSOLVER's float32 eigendecomposition can fail to converge and stop the run; the default 1e-6 lifts that cluster above the noise. 0 keeps the absolute damping only (the behaviour before this option)."
+      Units: dimless
     weight_decay:
       Type: float
       Description: "Decoupled weight decay applied by SS-eSOAP."
@@ -934,6 +1004,10 @@ unified:
           Type: float
           Description: "Fixed offset for the input Y."
           Units: m
+        effective_pressure:
+          Type: float
+          Description: "Fixed offset for the input effective_pressure (needed when a Budd/Coulomb law puts it in unified.inputs with a network mapping)."
+          Units: MPa
       inputs_variances:
         thk:
           Type: float
@@ -963,6 +1037,10 @@ unified:
           Type: float
           Description: "Fixed variance for the input Y."
           Units: m
+        effective_pressure:
+          Type: float
+          Description: "Fixed variance for the input effective_pressure."
+          Units: MPa^2
   network:
     debug_mode:
       Type: boolean
@@ -1013,6 +1091,10 @@ unified:
     success:
       Type: list
       Description: "List of success criteria."
+      Units: dimless
+    raise_on_failure:
+      Type: boolean
+      Description: "Raise RuntimeError after a failure criterion stops an optimizer instead of returning its last iterate."
       Units: dimless
     failure:
       Type: list

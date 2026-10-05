@@ -74,3 +74,40 @@ def test_N_shape() -> None:
     )
 
     assert N.shape == (ny, nx)
+
+
+def test_till_is_saturated_in_contact_with_the_ocean() -> None:
+    """Floating ice and ice-free ocean saturate the till (PISM); grounded ice
+    follows the ODE; ice-free land has no till water."""
+    from types import SimpleNamespace
+
+    from omegaconf import OmegaConf
+
+    from igm.processes.subglacial_hydrology.till_storage import update_h_water_till
+
+    cfg = OmegaConf.create(
+        {
+            "processes": {
+                "iceflow": {"physics": {"ice_density": 910.0, "water_density": 1028.0}},
+                "subglacial_hydrology": {
+                    "till_storage": {
+                        "h_water_till_max": 2.0,
+                        "drainage_rate": 0.001,
+                        "water_density": 1000.0,
+                    }
+                },
+            }
+        }
+    )
+    # grounded ice, floating ice, ice-free ocean, ice-free land
+    state = SimpleNamespace(
+        thk=tf.constant([[500.0, 200.0, 0.0, 0.0]]),
+        topg=tf.constant([[-100.0, -800.0, -800.0, 50.0]]),
+        water_level=tf.zeros((1, 4)),
+        h_water_till=tf.constant([[0.5, 0.5, 0.5, 0.5]]),
+        basal_melt_rate=tf.constant([[0.01, 0.01, 0.01, 0.01]]),
+        dt=tf.constant(1.0),
+    )
+    h = update_h_water_till(cfg, state).numpy()[0]
+    expected_grounded = 0.5 + 910.0 / 1000.0 * 0.01 - 0.001
+    np.testing.assert_allclose(h, [expected_grounded, 2.0, 2.0, 0.0], rtol=1e-6)

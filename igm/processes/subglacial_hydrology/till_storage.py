@@ -10,14 +10,25 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
-
+from igm.processes.thk.masks import compute_grounded_mask, no_ocean_like
 
 # ---------------------------------------------------------------------------
 # Till water layer evolution
 # ---------------------------------------------------------------------------
 
+
 def update_h_water_till(cfg: DictConfig, state: State) -> tf.Tensor:
     cfg_ts = cfg.processes.subglacial_hydrology.till_storage
+    cfg_physics = cfg.processes.iceflow.physics
+    water_level = getattr(state, "water_level", None)
+    if water_level is None:
+        water_level = no_ocean_like(state.thk)
+    ocean = ~compute_grounded_mask(
+        state.thk,
+        state.topg,
+        water_level,
+        cfg_physics.water_density / cfg_physics.ice_density,
+    )
     return update_h_water_till_tf(
         state.h_water_till,
         cfg_ts.h_water_till_max,
@@ -27,6 +38,7 @@ def update_h_water_till(cfg: DictConfig, state: State) -> tf.Tensor:
         cfg.processes.iceflow.physics.ice_density,
         cfg_ts.water_density,
         state.dt,
+        ocean,
     )
 
 
@@ -40,21 +52,28 @@ def update_h_water_till_tf(
     rho_ice: tf.Tensor,
     rho_water: tf.Tensor,
     dt: tf.Tensor,
+    ocean: tf.Tensor = None,
 ) -> tf.Tensor:
     """Advance the till water layer by one time step (Tulaczyk 2000 ODE).
 
     W^{n+1} = clip(W^n + dt * (rho_ice/rho_water * melt - drainage), 0, W_max)
 
-    Ice-free cells are zeroed regardless of the ODE result.
+    Ice-free cells are zeroed regardless of the ODE result. In contact with
+    the ocean (floating ice and ice-free ocean, the bool ``ocean``) the till
+    is saturated, W = W_max, as in PISM.
     """
     h = h_water_till + dt * (rho_ice / rho_water * basal_melt_rate - drainage_rate)
     h = tf.clip_by_value(h, 0.0, h_water_till_max)
-    return tf.where(h_ice > 0.0, h, 0.0)
+    h = tf.where(h_ice > 0.0, h, 0.0)
+    if ocean is not None:
+        h = tf.where(ocean, tf.cast(h_water_till_max, h.dtype), h)
+    return h
 
 
 # ---------------------------------------------------------------------------
 # Effective pressure from till saturation
 # ---------------------------------------------------------------------------
+
 
 def compute_N_MPa(cfg: DictConfig, state: State) -> tf.Tensor:
     cfg_ts = cfg.processes.subglacial_hydrology.till_storage

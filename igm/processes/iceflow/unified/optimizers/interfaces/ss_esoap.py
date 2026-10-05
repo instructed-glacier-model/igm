@@ -5,10 +5,10 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping, MappingDataAssimilation
 from ...halt import Halt, InterfaceHalt
 
@@ -28,6 +28,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
         tau_min: 0.1          # lower clip on the self-scaling factor
         self_scaling: true    # set false for the adaptive-basis-SOAP ablation
         damping: 1.0e-8
+        relative_damping: 1.0e-6  # extra ridge before eigh, relative to trace(A) / m (0: off)
         weight_decay: 0.0
         lr_drop_iter: -1      # disabled; otherwise drop once at this iteration
         lr_drop_factor: 1.0   # multiplier applied after lr_drop_iter
@@ -74,13 +75,14 @@ class InterfaceSSESOAP(InterfaceOptimizer):
             "tau_min": cfg_opt.tau_min,
             "self_scaling": cfg_opt.self_scaling,
             "damping": cfg_opt.damping,
+            "relative_damping": cfg_opt.relative_damping,
             "weight_decay": cfg_opt.weight_decay,
             "lr_drop_iter": cfg_opt.lr_drop_iter,
             "lr_drop_factor": cfg_opt.lr_drop_factor,
             "lr_auto_drop_patience": cfg_opt.lr_auto_drop_patience,
             "lr_auto_drop_warmup": cfg_opt.lr_auto_drop_warmup,
             "lr_auto_drop_rel_improvement": cfg_opt.lr_auto_drop_rel_improvement,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -96,6 +98,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -108,7 +111,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
             iter_max = cfg_unified.nbit_init
             lr = cfg_opt.lr_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
             lr = cfg_opt.lr
         elif status == Status.IDLE:
             return False

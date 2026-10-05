@@ -9,13 +9,19 @@
 the domain, so outflow is allowed and inflow carries no ice. ``symmetric`` is
 a reflecting/symmetry boundary with zero normal face velocity, hence exactly
 zero mass flux. ``periodic`` connects the opposite domain faces.
+``dirichlet`` holds the exterior thickness at the initial thickness of the
+side's edge cells, so ice enters with the edge velocity (an inflow boundary,
+e.g. the upstream end of a flowline).
 
 Each side is independent. A flowline can consequently use a symmetric left
 ice divide and an open right terminus, while a map-plane domain can combine
 those with symmetric top and bottom sides.
 """
 
-from typing import NamedTuple
+from types import ModuleType
+from typing import List, NamedTuple, Tuple, Union
+
+from omegaconf import DictConfig
 
 import tensorflow as tf
 
@@ -31,24 +37,23 @@ class BoundaryConditions(NamedTuple):
 
 _ALIASES = {
     "closed": "symmetric",
+    "inflow": "dirichlet",
     "no_flux": "symmetric",
     "open": "zero",
     "reflective": "symmetric",
 }
-_VALID_MODES = ("periodic", "symmetric", "zero")
+_VALID_MODES = ("dirichlet", "periodic", "symmetric", "zero")
 
 
-def _normalize(mode):
+def _normalize(mode: str) -> str:
     normalized = str(mode).strip().lower().replace("-", "_")
     return _ALIASES.get(normalized, normalized)
 
 
-def get_boundary_conditions(cfg):
+def get_boundary_conditions(cfg: DictConfig) -> BoundaryConditions:
     """Read the canonical four-side boundary configuration."""
     p = cfg.processes.thk
-    legacy = [
-        name for name in ("flux_mode_h", "flux_mode_u") if hasattr(p, name)
-    ]
+    legacy = [name for name in ("flux_mode_h", "flux_mode_u") if hasattr(p, name)]
     if legacy:
         raise ValueError(
             "Legacy thickness boundary option(s) "
@@ -106,7 +111,11 @@ def get_boundary_conditions(cfg):
     return modes
 
 
-def validate_backend(boundaries, backend, backend_name):
+def validate_backend(
+    boundaries: BoundaryConditions,
+    backend: Union[ModuleType, Tuple[str, ...], List[str]],
+    backend_name: str,
+) -> None:
     """Reject boundary modes a backend does not explicitly support."""
     supported = (
         tuple(backend)
@@ -122,16 +131,14 @@ def validate_backend(boundaries, backend, backend_name):
         )
 
 
-def x_face_velocities(velocity, left, right):
+def x_face_velocities(velocity: tf.Tensor, left: str, right: str) -> tf.Tensor:
     """Interpolate an x velocity and impose its two normal boundaries."""
     if left == "periodic":
         edge = 0.5 * (velocity[:, -1:] + velocity[:, :1])
         left_face, right_face = edge, edge
     else:
         left_face = (
-            tf.zeros_like(velocity[:, :1])
-            if left == "symmetric"
-            else velocity[:, :1]
+            tf.zeros_like(velocity[:, :1]) if left == "symmetric" else velocity[:, :1]
         )
         right_face = (
             tf.zeros_like(velocity[:, -1:])
@@ -148,16 +155,14 @@ def x_face_velocities(velocity, left, right):
     )
 
 
-def y_face_velocities(velocity, top, bottom):
+def y_face_velocities(velocity: tf.Tensor, top: str, bottom: str) -> tf.Tensor:
     """Interpolate a y velocity and impose its two normal boundaries."""
     if top == "periodic":
         edge = 0.5 * (velocity[-1:, :] + velocity[:1, :])
         top_face, bottom_face = edge, edge
     else:
         top_face = (
-            tf.zeros_like(velocity[:1, :])
-            if top == "symmetric"
-            else velocity[:1, :]
+            tf.zeros_like(velocity[:1, :]) if top == "symmetric" else velocity[:1, :]
         )
         bottom_face = (
             tf.zeros_like(velocity[-1:, :])
@@ -175,13 +180,13 @@ def y_face_velocities(velocity, top, bottom):
 
 
 def face_velocities(
-    ubar,
-    vbar,
-    left="zero",
-    right="zero",
-    top="zero",
-    bottom="zero",
-):
+    ubar: tf.Tensor,
+    vbar: tf.Tensor,
+    left: str = "zero",
+    right: str = "zero",
+    top: str = "zero",
+    bottom: str = "zero",
+) -> Tuple[tf.Tensor, tf.Tensor]:
     """Interpolate cell velocities to faces and impose the normal BC."""
     return (
         x_face_velocities(ubar, left, right),
@@ -189,7 +194,7 @@ def face_velocities(
     )
 
 
-def pad_lines(lines, left, right):
+def pad_lines(lines: tf.Tensor, left: str, right: str) -> tf.Tensor:
     """Pad a batch of horizontal lines with one policy-consistent cell."""
     if left == "periodic":
         left_ghost, right_ghost = lines[:, -1:], lines[:, :1]
@@ -198,16 +203,21 @@ def pad_lines(lines, left, right):
             lines[:, :1] if left == "symmetric" else tf.zeros_like(lines[:, :1])
         )
         right_ghost = (
-            lines[:, -1:]
-            if right == "symmetric"
-            else tf.zeros_like(lines[:, -1:])
+            lines[:, -1:] if right == "symmetric" else tf.zeros_like(lines[:, -1:])
         )
     return tf.concat([left_ghost, lines, right_ghost], axis=1)
 
 
 def remove_nonperiodic_corner_couplings(
-    west, east, north, south, left, right, top, bottom
-):
+    west: tf.Tensor,
+    east: tf.Tensor,
+    north: tf.Tensor,
+    south: tf.Tensor,
+    left: str,
+    right: str,
+    top: str,
+    bottom: str,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     """Prepare stencil magnitudes for boundary-aware neighbor access.
 
     Periodic boundary coefficients retain their wrap-around coupling.  Other
@@ -230,7 +240,9 @@ def remove_nonperiodic_corner_couplings(
     return west, east, north, south
 
 
-def neighbor_fields(field, left, right, top, bottom):
+def neighbor_fields(
+    field: tf.Tensor, left: str, right: str, top: str, bottom: str
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     """Return west/east/north/south neighbors with static boundary modes.
 
     The overwhelmingly common non-periodic path uses one padded tensor and

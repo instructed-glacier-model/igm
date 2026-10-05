@@ -5,10 +5,10 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 from ...mappings.data_assimilation import MappingDataAssimilation
@@ -29,7 +29,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         if isinstance(map, MappingDataAssimilation):
             nbit = cfg.assimilations.field_inversion.optimization.nbitmax
         else:
-            nbit = cfg_unified.nbit
+            nbit = nbit_at(cfg_unified.nbit)
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -56,6 +56,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -65,7 +66,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

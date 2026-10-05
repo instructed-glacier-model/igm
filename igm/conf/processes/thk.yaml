@@ -10,7 +10,7 @@ thk:
   remove_rigid_body_modes: false       # calve off floating ice not anchored to grounded ice (icebergs) after each update
 
   boundary:                            # independent thickness-transport domain sides
-    left: zero                         # zero/open | symmetric/no-flux | periodic
+    left: zero                         # zero/open | symmetric/no-flux | dirichlet/inflow (explicit, fronts) | periodic
     right: zero                        # periodic must be set on both left and right
     top: zero                          # rows at the beginning of the y dimension
     bottom: zero                       # periodic must be set on both top and bottom
@@ -28,25 +28,16 @@ thk:
     max_substeps: 128                  # safety cap for deformation-controlled internal substeps
     limit_policy: stop                 # stop the run and retain old H if the requested count exceeds max_substeps | accept
 
-  calving_front: false                 # optional front evolution
-  method: sub_grid                     # sub_grid (Albrecht/PISM) | level_set
-
-  front_slope_type: godunov            # limiter at the front band; godunov avoids pile-up
-  interior_slope_type: superbee        # limiter in deep bulk; equal to front disables hybrid
-  only_marine: true                    # restrict calving to cells with topg < water_level
-  extend_halo: 2                       # iceflow-facing thk padding width; 0 = partial cells only
-  extend_thresh: 0.95                  # halo cells below interior_mean*thresh get padded
-
-  sub_grid:
-    href_cap_factor: 2.0               # Href cap = factor * H_threshold (kills cold-start bursts)
-    promote_iters: 5                   # passes of partial-cell -> full promotion per outer step
-    calve_cliff: true                  # drain thk at front full cells -> actual retreat mechanism
-
-  level_set:                           # Bondzio 2016 / ISSM
-    only_near_front: false             # Gaussian-damp calving forcing away from psi=0
-    band_cells: 3                      # width of that Gaussian, in cells
-    reinit_freq: 5                     # Sussman reinit every N outer steps (0 = never)
-    reinit_iter: 5                     # pseudo-time iterations per reinit
-    reinit_iter_initial: 50            # iterations for the initial psi build from +/-dx mask
-    phi_eps: 1.0e-3                    # floor on phi when recovering thk = M / phi
-    cap_partial: false                 # clip partial-cell thk to interior mean (lossy)
+  front:                               # calving front of marine (and lake) termini
+    method: none                       # none | sub_grid (Albrecht et al., 2011; PISM) | level_set (mass-consistent, after Bondzio et al., 2016)
+    first_order: true                  # first-order upwind fluxes out of cells next to the front (Albrecht et al., 2011, Eq. 2)
+    min_thickness: 0.0                 # m; calve floating front ice thinner than this (Albrecht et al., 2011; PISM thickness_calving); 0 = off
+    fixed: false                       # the front cannot advance beyond its initial position (ice flowing past it is calved)
+    threshold: flux                    # thickness of a filling cell: from the flux into it (continuity) | mean of the neighbours (PISM)
+    sub_grid:
+      max_iterations: 10               # passes redistributing the residual of filled partial cells (PISM part_grid)
+      residual: redistribute           # redistribute (PISM) | discard (Albrecht et al., 2011, variant 1; counted as calved)
+    level_set:
+      reinit_freq: 1                   # re-distance psi every N steps (0 = never); partial cells are frozen, so no mass moves
+      reinit_iter: 5                   # pseudo-time iterations per re-distancing
+      band: 3                          # cells around the front where psi moves with the extended ice velocity

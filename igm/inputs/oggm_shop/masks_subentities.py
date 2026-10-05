@@ -42,12 +42,15 @@ def get_tidewater_termini(gdir, RGI_product, path_RGI):
             tidewatermask = ds.sub_entities.copy(deep=True)
             gdf = gdir.read_shapefile('complex_sub_entities')
             
-            NumEntities = np.max(ds.sub_entities.values)+1
-            for i in range(1,NumEntities+1):
-                if gdf.loc[i-1].term_type == 1:
-                    tidewatermask.values[tidewatermask.values==i] = 1
-                else:
-                    tidewatermask.values[tidewatermask.values==i] = 0
+            NumEntities = int(np.nanmax(ds.sub_entities.values)) + 1
+            # build the mask from the original labels: relabelling in place would
+            # overwrite the cells already set to 0/1 with later entities' values
+            labels = ds.sub_entities.values
+            tidewater_labels = [k for k in range(NumEntities) if gdf.loc[k].term_type == 1]
+            inside = (labels >= 0) & (labels < NumEntities)
+            tidewatermask.values = np.where(
+                inside, np.isin(labels, tidewater_labels), labels
+            ).astype(labels.dtype)
         else:
             tidewatermask = ds.glacier_mask.copy(deep=True)
             gdf = gdir.read_shapefile('outlines')

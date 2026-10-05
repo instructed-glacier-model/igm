@@ -38,9 +38,7 @@ def invert_2x2(
         ],
         axis=1,
     )
-    return adjugate * tf.math.reciprocal(
-        determinant[:, tf.newaxis, tf.newaxis]
-    )
+    return adjugate * tf.math.reciprocal(determinant[:, tf.newaxis, tf.newaxis])
 
 
 def _shift_left_zero(field: tf.Tensor, stride: int) -> tf.Tensor:
@@ -133,9 +131,7 @@ def solve_block_tridiagonal(
     """
     size = diagonal.shape[-1]
     if size is None:
-        raise ValueError(
-            "Block PCR requires a statically known chain length."
-        )
+        raise ValueError("Block PCR requires a statically known chain length.")
 
     dtype = diagonal.dtype
     floor = tf.cast(eigenvalue_floor, dtype)
@@ -160,13 +156,9 @@ def solve_block_tridiagonal(
 
         a, b, c, d = (
             -_matmul_blocks(alpha, a_left),
-            b
-            - _matmul_blocks(alpha, c_left)
-            - _matmul_blocks(gamma, a_right),
+            b - _matmul_blocks(alpha, c_left) - _matmul_blocks(gamma, a_right),
             -_matmul_blocks(gamma, c_right),
-            d
-            - _matvec_blocks(alpha, d_left)
-            - _matvec_blocks(gamma, d_right),
+            d - _matvec_blocks(alpha, d_left) - _matvec_blocks(gamma, d_right),
         )
         stride *= 2
 

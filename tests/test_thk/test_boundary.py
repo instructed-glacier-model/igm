@@ -23,7 +23,6 @@ def _cfg(scheme="explicit", boundary_value=None):
         "slope_type": "superbee",
         "divflux_smooth_sigma": 0.0,
         "ratio_density": 0.91,
-        "calving_front": False,
     }
     if boundary_value is not None:
         thk["boundary"] = boundary_value

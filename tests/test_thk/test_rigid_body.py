@@ -84,29 +84,35 @@ def test_anchored_mask_reaches_the_end_of_a_winding_shelf():
 
 def test_remove_rigid_body_modes_touches_only_the_dropped_columns():
     thk, topg = _geometry()
-    thk_true = thk.copy()
-    thk_padded = thk.copy()
-    thk_padded[1:6, 5] = 30.0  # sub-grid front padding next to the shelf
-    thk_padded[1:3, 9] = 25.0  # padding belonging only to the iceberg
-    href = np.where(thk > 0, 1.0, 0.0).astype(np.float32)
-    href[3, 5] = 0.4  # a partial front cell
-    href[1:3, 9] = 0.3
     state = SimpleNamespace(
-        thk=tf.constant(thk_padded),
-        thk_true=tf.Variable(thk_true),
-        Href=tf.Variable(href),
+        thk=tf.constant(thk), topg=tf.constant(topg), water_level=tf.constant(0.0)
+    )
+    removed = remove_rigid_body_modes(state, RHO_RATIO).numpy()
+    out = state.thk.numpy()
+    assert not out[1:3, 7:9].any() and not out[6:8, 5:7].any()
+    np.testing.assert_array_equal(out[1:6, 0:5], 500.0)  # anchored ice untouched
+    assert out[8, 10] == 50.0  # grounded, however isolated, is never removed
+    np.testing.assert_array_equal(removed, np.where(out != thk, thk, 0.0))
+
+
+def test_with_a_front_filling_nodes_and_partial_cells_are_kept():
+    thk, topg = _geometry()
+    thk[3, 5] = 500.0  # a node that has just filled: no full Q1 cell yet
+    href = np.zeros_like(thk)
+    href[2, 5] = 100.0  # a partial cell next to the shelf
+    href[1, 9] = 80.0  # a partial cell of the iceberg
+    state = SimpleNamespace(
+        thk=tf.constant(thk),
+        Href=tf.constant(href),
         topg=tf.constant(topg),
         water_level=tf.constant(0.0),
     )
-    remove_rigid_body_modes(state, RHO_RATIO)
+    removed = remove_rigid_body_modes(state, RHO_RATIO, front=True).numpy()
     out = state.thk.numpy()
-    assert not out[1:3, 7:9].any() and not state.thk_true.numpy()[1:3, 7:9].any()
-    assert not state.Href.numpy()[6:8, 5:7].any()
-    np.testing.assert_array_equal(out[1:6, 0:5], 500.0)  # anchored ice untouched
-    np.testing.assert_array_equal(out[1:6, 5], 30.0)  # front padding untouched
-    assert state.Href.numpy()[3, 5] == np.float32(0.4)
-    assert not out[1:3, 9].any() and not state.Href.numpy()[1:3, 9].any()
-    assert out[8, 10] == 50.0  # grounded, however isolated, is never removed
+    assert out[3, 5] == 500.0  # kept next to the anchored shelf
+    assert state.Href.numpy()[2, 5] == 100.0
+    assert not out[1:3, 7:9].any() and state.Href.numpy()[1, 9] == 0.0
+    assert removed.sum() == np.float32(thk[1:3, 7:9].sum() + thk[6:8, 5:7].sum() + 80.0)
 
 
 def test_thickness_update_runs_rigid_body_cleanup_only_when_enabled(monkeypatch):
@@ -114,7 +120,7 @@ def test_thickness_update_runs_rigid_body_cleanup_only_when_enabled(monkeypatch)
     monkeypatch.setattr(
         thk_module,
         "remove_rigid_body_modes",
-        lambda state, rho_ratio: calls.append(rho_ratio),
+        lambda state, rho_ratio, front=False: calls.append(rho_ratio),
     )
     monkeypatch.setattr(thk_module, "update_surfaces", lambda cfg, state: None)
     cfg = SimpleNamespace(outputs=None)
@@ -125,6 +131,7 @@ def test_thickness_update_runs_rigid_body_cleanup_only_when_enabled(monkeypatch)
             thk_components=SimpleNamespace(
                 domain_constraints=(),
                 pipeline=(),
+                front=None,
                 remove_rigid_body_modes=enabled,
                 rho_ratio=RHO_RATIO,
             ),

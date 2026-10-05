@@ -1,5 +1,5 @@
-
 import tensorflow as tf
+
 
 @tf.function()
 def interp1d_tf(xs, ys, x):
@@ -39,4 +39,3 @@ def interp1d_tf(xs, ys, x):
     # apply the linear mapping at each input data point
     y = m * x + b
     return tf.cast(tf.reshape(y, tf.shape(x)), dtype)
-

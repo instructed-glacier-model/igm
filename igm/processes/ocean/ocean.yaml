@@ -1,0 +1,6 @@
+description: Ocean temperature, salinity and thermal forcing at the ice base, from depth profiles or input fields
+category: hydrosphere
+type: experimental #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Thomas Gregov]
+needs: [t, thk, topg, lsurf, water_level]
+updates: [ocean_temp, ocean_salinity, ocean_thermal_forcing]

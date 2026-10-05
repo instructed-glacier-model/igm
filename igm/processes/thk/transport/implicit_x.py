@@ -7,7 +7,7 @@
 
 This backend advances
 
-    dH/dt + d(u H)/dx = SMB
+    dH/dt + d(u H)/dx = smb + bmb
 
 and intentionally contains no y-transport term. Every row is one independent
 flowline, and all rows are solved together on the GPU by parallel cyclic
@@ -22,7 +22,7 @@ import tensorflow as tf
 from igm.utils.math.tridiagonal import solve_tridiagonal_pcr
 
 from .. import boundary
-
+from ..sources import mass_balance
 
 SUPPORTED_BOUNDARY_MODES = ("zero", "symmetric")
 
@@ -79,7 +79,7 @@ def _solve_theta_x_step(
     thickness,
     dx,
     dt,
-    smb,
+    source,
     theta,
     left="zero",
     right="zero",
@@ -87,7 +87,7 @@ def _solve_theta_x_step(
     """Advance all independent x-flowlines in one GPU/XLA kernel."""
     coefficients = _build_x_coefficients(ubar, dx, left, right)
     divflux_old = _apply_x(thickness, coefficients)
-    rhs = thickness - dt * (1.0 - theta) * divflux_old + dt * smb
+    rhs = thickness - dt * (1.0 - theta) * divflux_old + dt * source
 
     scale = dt * theta
     diagonal = 1.0 + scale * coefficients.diagonal
@@ -100,7 +100,7 @@ def _solve_theta_x_step(
     thickness_new = tf.nn.relu(thickness_solved)
     correction = thickness_new - thickness_solved
     nonnegative_correction_volume = tf.reduce_sum(correction) * dx * dx
-    divflux = smb - tf.math.divide_no_nan(thickness_new - thickness, dt)
+    divflux = source - tf.math.divide_no_nan(thickness_new - thickness, dt)
     return ImplicitXStepResult(
         thickness_new,
         divflux,
@@ -109,7 +109,7 @@ def _solve_theta_x_step(
     )
 
 
-def _solve_with_options(state, smb, options):
+def _solve_with_options(state, source, options):
     """Adapt state tensors and cached options to the compiled kernel."""
     dtype = state.thk.dtype
     return _solve_theta_x_step(
@@ -117,7 +117,7 @@ def _solve_with_options(state, smb, options):
         state.thk,
         tf.cast(state.dx, dtype),
         tf.cast(state.dt, dtype),
-        tf.cast(smb, dtype),
+        tf.cast(source, dtype),
         tf.cast(options["theta"], dtype),
         options["left"],
         options["right"],
@@ -144,9 +144,9 @@ def _options(cfg, state, boundaries=None):
     }
 
 
-def solve(state, cfg, smb):
+def solve(state, cfg, source):
     """Solve one step, parsing configuration for direct/test callers."""
-    return _solve_with_options(state, smb, _options(cfg, state))
+    return _solve_with_options(state, source, _options(cfg, state))
 
 
 def initialize(cfg, state):
@@ -161,10 +161,8 @@ def initialize(cfg, state):
 def update(cfg, state):
     """Advance each row independently along x; ``state.vbar`` is not used."""
     del cfg
-    if not hasattr(state, "smb"):
-        state.smb = tf.zeros_like(state.thk)
     result = _solve_with_options(
-        state, state.smb, state.thk_components.transport_options
+        state, mass_balance(state), state.thk_components.transport_options
     )
     state.thk = result.thickness
     state.divflux = result.divflux

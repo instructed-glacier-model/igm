@@ -16,6 +16,8 @@ Two modes selectable via config (mode: "2d" or "3d"):
        with on-screen text overlay for live stats
 """
 
+import os
+import sys
 import numpy as np
 import tensorflow as tf
 import time as clock
@@ -44,6 +46,20 @@ def _live_ela(thk, smb, usurf):
 #  2D MODE  (matplotlib)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _warn(state, msg):
+    if hasattr(state, "logger"):
+        state.logger.warning(msg)
+    else:
+        print("WARNING: " + msg)
+
+
+def _has_display():
+    # on Linux, a GUI window needs an X11 or Wayland display (absent over plain SSH)
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return True
+
+
 def _surface_speed(state):
     # surface speed when the iceflow module provides it, depth-averaged otherwise
     if hasattr(state, "uvelsurf"):
@@ -56,12 +72,20 @@ def _surface_speed(state):
 def _init_2d(cfg, state):
     import matplotlib
     p = cfg.outputs.live_dashboard
-    matplotlib.use("Agg" if p.headless else "TkAgg")
+    if not state._dash_headless:
+        try:
+            matplotlib.use("TkAgg")
+        except ImportError:
+            _warn(state, "live_dashboard: TkAgg backend unavailable (tkinter missing), "
+                         "switching to headless mode (PNG frames saved in the run directory).")
+            state._dash_headless = True
+    if state._dash_headless:
+        matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm, LightSource
     from matplotlib.gridspec import GridSpec
 
-    if not p.headless:
+    if not state._dash_headless:
         plt.ion()
     plt.style.use("dark_background")
 
@@ -167,7 +191,7 @@ def _init_2d(cfg, state):
     state._dash_save_count = 0
     state._dash_wall_start = clock.time()
 
-    if not p.headless:
+    if not state._dash_headless:
         fig.canvas.draw()
         fig.canvas.flush_events()
 
@@ -272,11 +296,11 @@ def _update_2d(cfg, state):
                 f"Vmax = {vmax:.0f} m/yr   Wall = {elapsed:.0f} s")
     ax_ts.set_title(info_str, color="gray", fontsize=12, fontfamily="monospace", pad=6)
 
-    if not p.headless:
+    if not state._dash_headless:
         state._dash_fig.canvas.draw_idle()
         state._dash_fig.canvas.flush_events()
 
-    if p.headless or cfg.outputs.live_dashboard.save_frames:
+    if state._dash_headless or cfg.outputs.live_dashboard.save_frames:
         state._dash_fig.savefig(f"dashboard_{int(t):06d}.png", facecolor="#0e1117",
                                 bbox_inches="tight", pad_inches=0.1)
 
@@ -284,7 +308,7 @@ def _update_2d(cfg, state):
 def _finalize_2d(cfg, state):
     import matplotlib.pyplot as plt
     if hasattr(state, "_dash_fig"):
-        if not cfg.outputs.live_dashboard.headless:
+        if not state._dash_headless:
             plt.ioff()
         plt.close(state._dash_fig)
 
@@ -503,6 +527,15 @@ def _finalize_3d(cfg, state):
 
 def initialize(cfg, state):
     state._dash_mode = cfg.outputs.live_dashboard.mode
+    state._dash_headless = bool(cfg.outputs.live_dashboard.headless)
+    if not state._dash_headless and not _has_display():
+        _warn(state, "live_dashboard: no display found (e.g. SSH session without X "
+                     "forwarding), switching to headless mode: PNG frames "
+                     "(dashboard_XXXXXX.png) are saved in the run directory.")
+        state._dash_headless = True
+    if state._dash_mode == "3d" and state._dash_headless:
+        _warn(state, "live_dashboard: 3d mode needs a display, using 2d mode instead.")
+        state._dash_mode = "2d"
     if state._dash_mode == "3d":
         _init_3d(cfg, state)
     else:

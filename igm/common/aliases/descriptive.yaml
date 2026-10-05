@@ -15,6 +15,7 @@ erosion_rate: dtopgdt
 grid_spacing_field: dX
 
 surface_mass_balance: smb
+basal_mass_balance: bmb
 
 avg_velocity_x: ubar
 avg_velocity_y: vbar

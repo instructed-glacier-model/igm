@@ -1,0 +1,6 @@
+description: Basal mass balance of grounded and floating ice, with sub-shelf melt parametrisations (prescribed, quadratic, PICO, PICOP, plume)
+category: hydrosphere
+type: experimental #  `core`, `community`, `experimental`, or `deprecated`
+authors: [Thomas Gregov]
+needs: [] # resolved from the active melt law (laws/<method>.yaml)
+updates: [bmb, shelf_melt_rate, grounded_fraction]

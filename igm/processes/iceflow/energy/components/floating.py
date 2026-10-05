@@ -205,9 +205,7 @@ def _cost(
         water_depth = tf.maximum(
             0.5 * (water_a + water_b) - 0.5 * (lower_a + lower_b), 0.0
         )
-        return 0.5 * g * (
-            rho * face_thk * face_thk - rho_w * water_depth * water_depth
-        )
+        return 0.5 * g * (rho * face_thk * face_thk - rho_w * water_depth * water_depth)
 
     h_sw, h_se, h_nw, h_ne = corners(h)
     lower_sw, lower_se, lower_nw, lower_ne = corners(l)
@@ -215,18 +213,10 @@ def _cost(
     u_sw, u_se, u_nw, u_ne = corners(u_integrated)
     v_sw, v_se, v_nw, v_ne = corners(v_integrated)
 
-    pressure_east = face(
-        h_se, h_ne, lower_se, lower_ne, water_se, water_ne
-    )
-    pressure_west = face(
-        h_sw, h_nw, lower_sw, lower_nw, water_sw, water_nw
-    )
-    pressure_north = face(
-        h_nw, h_ne, lower_nw, lower_ne, water_nw, water_ne
-    )
-    pressure_south = face(
-        h_sw, h_se, lower_sw, lower_se, water_sw, water_se
-    )
+    pressure_east = face(h_se, h_ne, lower_se, lower_ne, water_se, water_ne)
+    pressure_west = face(h_sw, h_nw, lower_sw, lower_nw, water_sw, water_nw)
+    pressure_north = face(h_nw, h_ne, lower_nw, lower_ne, water_nw, water_ne)
+    pressure_south = face(h_sw, h_se, lower_sw, lower_se, water_sw, water_se)
 
     velocity_east = 0.5 * (u_se + u_ne)
     velocity_west = 0.5 * (u_sw + u_nw)

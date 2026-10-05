@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
+
+from typing import Optional
 
 import numpy as np
 import tensorflow as tf
+from omegaconf import DictConfig
+
+from igm.common import State
 
 
-def _reduce_for_cfl(x, percentile, active_mask=None):
+def _reduce_for_cfl(
+    x: tf.Tensor, percentile: float, active_mask: Optional[tf.Tensor] = None
+) -> tf.Tensor:
     """Reduce abs(x) to a single representative speed.
 
     percentile == 100 (default) → exact maximum (legacy behaviour).
@@ -20,9 +27,7 @@ def _reduce_for_cfl(x, percentile, active_mask=None):
     if percentile >= 100.0:
         if active_mask is None:
             return tf.reduce_max(abs_x)
-        return tf.reduce_max(
-            tf.where(active_mask, abs_x, tf.zeros_like(abs_x))
-        )
+        return tf.reduce_max(tf.where(active_mask, abs_x, tf.zeros_like(abs_x)))
     flat = (
         tf.reshape(abs_x, [-1])
         if active_mask is None
@@ -39,9 +44,7 @@ def _reduce_for_cfl(x, percentile, active_mask=None):
     keep_tail = tf.maximum(
         1,
         tf.cast(
-            tf.math.ceil(
-                tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0
-            ),
+            tf.math.ceil(tf.cast(n, tf.float32) * (100.0 - percentile) / 100.0),
             tf.int32,
         ),
     )
@@ -51,14 +54,15 @@ def _reduce_for_cfl(x, percentile, active_mask=None):
 
 @tf.function(autograph=False, reduce_retracing=True)
 def compute_dt_from_cfl(
-    ubar,
-    vbar,
-    cfl,
-    dx,
-    step_max,
-    percentile=100.0,
-    active_mask=None,
-):
+    ubar: tf.Tensor,
+    vbar: tf.Tensor,
+    cfl: float,
+    dx: tf.Tensor,
+    step_max: float,
+    percentile: float = 100.0,
+    active_mask: Optional[tf.Tensor] = None,
+    ablation_speed: Optional[tf.Tensor] = None,
+) -> tf.Tensor:
     """Compute adaptive time step based on CFL condition.
 
     `percentile` < 100 uses the percentile of |velocity| in place of the
@@ -66,11 +70,21 @@ def compute_dt_from_cfl(
     near boundaries, or a transient instability spike) do not crash dt
     toward zero. The standard CFL guarantee then holds for everywhere
     except the top (100-percentile)% of cells.
+
+    `ablation_speed` (m/yr), the calving plus frontal-melt rate of the
+    ``calving_rate`` process, bounds the time step too, so that the front
+    retreats at most `cfl` cells per step relative to the ice. Its maximum
+    over the whole front band is used: conservative when the largest rate
+    sits on band cells no front scheme reads.
     """
     velomax = tf.maximum(
         _reduce_for_cfl(ubar, percentile, active_mask),
         _reduce_for_cfl(vbar, percentile, active_mask),
     )
+    if ablation_speed is not None:
+        velomax = tf.maximum(
+            velomax, tf.cast(tf.reduce_max(ablation_speed), velomax.dtype)
+        )
     return tf.where(
         velomax > 0,
         tf.minimum(cfl * dx / velomax, step_max),
@@ -78,7 +92,17 @@ def compute_dt_from_cfl(
     )
 
 
-def initialize(cfg, state):
+def _ablation_speed(cfg: DictConfig, state: State) -> Optional[tf.Tensor]:
+    """Calving plus frontal-melt rate of the calving_rate process, if active."""
+    if "calving_rate" not in cfg.processes or not hasattr(state, "calving_rate"):
+        return None
+    rate = state.calving_rate
+    if hasattr(state, "frontal_melt_rate"):
+        rate = rate + state.frontal_melt_rate
+    return rate
+
+
+def initialize(cfg: DictConfig, state: State) -> None:
 
     # Initialize the time with starting time
     state.t = tf.Variable(float(cfg.processes.time.start))
@@ -97,7 +121,7 @@ def initialize(cfg, state):
     state.time_save = tf.constant(time_save_values, dtype="float32")
 
 
-def update(cfg, state):
+def update(cfg: DictConfig, state: State) -> None:
     if hasattr(state, "logger"):
         # Avoid a device-to-host synchronization solely for log formatting.
         state.logger.info("Update time step")
@@ -109,10 +133,9 @@ def update(cfg, state):
             cfg.processes.time.cfl,
             state.dx,
             cfg.processes.time.step_max,
-            percentile=float(
-                getattr(cfg.processes.time, "cfl_percentile", 100.0)
-            ),
+            percentile=float(getattr(cfg.processes.time, "cfl_percentile", 100.0)),
             active_mask=getattr(state, "thk_active_mask", None),
+            ablation_speed=_ablation_speed(cfg, state),
         )
     else:
         state.dt_target = cfg.processes.time.step_max
@@ -125,7 +148,7 @@ def update(cfg, state):
         state.saveresult = True
         state.itsave += 1
     else:
-        state.saveresult = False 
+        state.saveresult = False
 
     # the first loop is not advancing
     if state.it >= 0:
@@ -134,5 +157,5 @@ def update(cfg, state):
     state.continue_run = state.t < cfg.processes.time.end
 
 
-def finalize(cfg, state):
+def finalize(cfg: DictConfig, state: State) -> None:
     pass

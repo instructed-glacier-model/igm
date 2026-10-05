@@ -14,6 +14,7 @@ from igm.processes.iceflow.utils.vertical_discretization import (
 from igm.processes.iceflow.vertical_velocity.vertical_velocity_legendre import (
     compute_vertical_velocity_legendre,
 )
+from igm.processes.iceflow.vertical_velocity.base import ice_base
 
 
 def compute_vertical_velocity_v2(cfg, state):
@@ -48,7 +49,7 @@ def compute_vertical_velocity_kinematic_v2(cfg, state):
     dz = compute_dz(state.thk, levels)
 
     W = compute_w_kinematic_tf(
-        state.U, state.V, state.topg, state.thk, dz, state.dx, state.vert_weight
+        state.U, state.V, ice_base(state), state.thk, dz, state.dx, state.vert_weight
     )
 
     return W
@@ -76,8 +77,10 @@ def compute_vertical_velocity_incompressibility_v2(cfg, state):
     dz = compute_dz(state.thk, levels)
 
     dz = tf.concat([tf.expand_dims(tf.zeros_like(state.thk), 0), dz], axis=0)
-    Z = tf.cumsum(dz) + state.topg
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    Z = tf.cumsum(dz) + ice_base(state)
+    sloptopgx, sloptopgy = grad_xy(
+        ice_base(state), state.dX, state.dX, False, "extrapolate"
+    )
 
     dudx = gradx_non_flat_layers_tf(state.U, state.dX, Z, state.vert_weight, state.thk)
     dvdy = grady_non_flat_layers_tf(state.V, state.dX, Z, state.vert_weight, state.thk)
@@ -256,7 +259,7 @@ def compute_vertical_velocity_twolayers(cfg, state):
     us_x = state.uvelsurf
     us_y = state.vvelsurf
 
-    dbdx, dbdy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    dbdx, dbdy = grad_xy(ice_base(state), state.dX, state.dX, False, "extrapolate")
     dsdx, dsdy = grad_xy(state.usurf, state.dX, state.dX, False, "extrapolate")
 
     div_flux = compute_divflux_d(state.ubar, state.vbar, state.thk, state.dx, state.dx)

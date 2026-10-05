@@ -30,8 +30,6 @@ def _cfg(max_deformation=0.5, max_substeps=128):
                         "max_deformation": max_deformation,
                         "max_substeps": max_substeps,
                     },
-                    "calving_front": False,
-                    "method": "sub_grid",
                 }
             }
         }

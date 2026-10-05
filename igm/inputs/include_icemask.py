@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Author: Andreas Henz, andreas.henz@geo.uzh.ch
-# Date: 06.09.2023
+# Date: 06.09.2023, update 24.09.2026
 
 """
 This IGM module loads an icemask shapefile (ESRI Shapefile) and creates a ice mask out of it.
@@ -25,6 +25,7 @@ IMPORTANT: Pay attention to the coordinate system used in the nc file and the sh
 
 import numpy as np
 import tensorflow as tf
+import os
 
 import geopandas as gpd
 from shapely.geometry import Point
@@ -69,19 +70,22 @@ def include_icemask(state, mask_shapefile, mask_invert):
 
 
 def read_shapefile(filepath):
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(
+        f"Icemask shapefile not found: {filepath} "
+        f"(current working directory: {os.getcwd()})"
+        )
+
     try:
-        # Read the shapefile
         gdf = gpd.read_file(filepath)
-
-        # Print the information about the shapefile
-        print("-----------------------")
-        print("Icemask Shapefile information:")
-        print("Number of features (polygons):", len(gdf))
-        print("EPSG code: ", gdf.crs.to_epsg())
-        print("Geometry type:", gdf.geometry.type.unique()[0])
-        print("-----------------------")
-
-        # Return the GeoDataFrame
-        return gdf
     except Exception as e:
-        print("Error reading shapefile:", e)
+        raise RuntimeError(f"Cannot read icemask shapefile {filepath}: {e}") from e
+
+    print("-----------------------")
+    print("Icemask Shapefile information:")
+    print("EPSG code: ", gdf.crs.to_epsg() if gdf.crs is not None else "undefined")
+    print("Geometry type:", gdf.geometry.type.unique()[0])
+    print("Number of features (polygons):", len(gdf))
+    print("-----------------------")
+
+    return gdf

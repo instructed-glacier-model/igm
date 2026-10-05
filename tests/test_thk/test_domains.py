@@ -26,7 +26,6 @@ def _cfg(constraints, scheme="explicit"):
                     "divflux_smooth_sigma": 0.0,
                     "ratio_density": 0.9,
                     "domain": {"constraints": constraints},
-                    "calving_front": False,
                 }
             }
         }

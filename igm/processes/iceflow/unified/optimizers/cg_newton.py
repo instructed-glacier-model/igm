@@ -49,6 +49,7 @@ class OptimizerCGNewton(Optimizer):
         cg_max_iter: int = 100,
         cg_tol: float = 1e-10,
         warm_start: bool = True,
+        cold_restart_interval: float = 0.0,
         operator: Optional[Operator] = None,
         preconditioner: str = "block_jacobi",
         preconditioner_obj: Optional[Preconditioner] = None,
@@ -88,6 +89,10 @@ class OptimizerCGNewton(Optimizer):
         self.cg_max_iter = tf.constant(cg_max_iter, dtype=tf.int32)
         self.cg_tol = tf.constant(cg_tol, dtype=self.precision)
         self.warm_start = bool(warm_start)
+        self.cold_restart_interval = float(cold_restart_interval)
+        if self.cold_restart_interval < 0.0:
+            raise ValueError("cold_restart_interval must be non-negative.")
+        self._last_cold_restart_time: Optional[float] = None
         self._p_prev: Optional[tf.Variable] = None
         self.last_cg_iterations = tf.Variable(0, dtype=tf.int32, trainable=False)
         self.last_cg_relative_residual = tf.Variable(
@@ -126,6 +131,41 @@ class OptimizerCGNewton(Optimizer):
         self.iter_max.assign(iter_max)
         self.damping = tf.cast(damping, self.precision)
 
+    def reset_warm_start(self) -> None:
+        """Clear the CG direction retained between minimizations."""
+        if self._p_prev is not None:
+            self._p_prev.assign(tf.zeros_like(self._p_prev))
+
+    def cold_restart(self, time: Optional[tf.Tensor], init: bool = False) -> None:
+        """Apply a scheduled zero-velocity restart before a transient solve."""
+        if (
+            self.cold_restart_interval == 0.0
+            or getattr(self.map, "name", "") != "identity"
+            or time is None
+        ):
+            return
+
+        time_now = float(time.numpy()) if hasattr(time, "numpy") else float(time)
+        if init or self._last_cold_restart_time is None:
+            self._last_cold_restart_time = time_now
+            return
+
+        time_last = self._last_cold_restart_time
+        interval = self.cold_restart_interval
+        tolerance = 1.0e-6 * max(1.0, abs(time_now), abs(time_last), interval)
+        elapsed = time_now - time_last
+        if elapsed + tolerance < interval:
+            return
+
+        self.map.set_theta(
+            [tf.zeros_like(value) for value in self.map.get_theta()]
+        )
+        self.reset_warm_start()
+        # Keep the schedule anchored when a CFL-dependent timestep overshoots
+        # one or more restart boundaries.
+        periods = max(1, int((elapsed + tolerance) // interval))
+        self._last_cold_restart_time = time_last + periods * interval
+
     def _cost_and_grad(self, inputs: tf.Tensor):
         return self.operator.cost_and_grad(inputs)
 
@@ -160,21 +200,42 @@ class OptimizerCGNewton(Optimizer):
         delta_new = tf.tensordot(r, z, axes=1)
         # Keep the tolerance relative to b even when CG is warm-started.
         delta_0 = tf.tensordot(b, pre(b), axes=1)
+        tiny = tf.cast(1e-30, b.dtype)
 
         def cond(i, x, r, d, z, delta_new):
             del x, r, d, z
-            return tf.logical_and(i < iter_max, delta_new > tol * tol * delta_0)
+            finite = tf.logical_and(
+                tf.math.is_finite(delta_new), tf.math.is_finite(delta_0)
+            )
+            positive = tf.logical_and(delta_new > tiny, delta_0 > tiny)
+            unconverged = delta_new > tol * tol * delta_0
+            return tf.logical_and(
+                i < iter_max,
+                tf.logical_and(finite, tf.logical_and(positive, unconverged)),
+            )
 
         def body(i, x, r, d, z, delta_new):
             q = A(d)
-            alpha = delta_new / tf.tensordot(d, q, axes=1)
-            x = x + alpha * d
-            r = r - alpha * q
-            z = pre(r)
+            curvature = tf.tensordot(d, q, axes=1)
+            valid = tf.logical_and(tf.math.is_finite(curvature), curvature > tiny)
+            alpha = tf.where(valid, delta_new / curvature, tf.zeros_like(delta_new))
+            x_candidate = x + alpha * d
+            r_candidate = r - alpha * q
+            z_candidate = pre(r_candidate)
             delta_old = delta_new
-            delta_new = tf.tensordot(r, z, axes=1)
-            beta = delta_new / delta_old
-            d = z + beta * d
+            delta_candidate = tf.tensordot(r_candidate, z_candidate, axes=1)
+            valid = tf.logical_and(
+                valid,
+                tf.logical_and(
+                    tf.math.is_finite(delta_candidate), delta_candidate >= 0.0
+                ),
+            )
+            delta_new = tf.where(valid, delta_candidate, tf.zeros_like(delta_candidate))
+            beta = tf.where(valid, delta_new / delta_old, tf.zeros_like(delta_new))
+            x = tf.where(valid, x_candidate, x)
+            r = tf.where(valid, r_candidate, r)
+            z = tf.where(valid, z_candidate, z)
+            d = tf.where(valid, z + beta * d, d)
             return i + 1, x, r, d, z, delta_new
 
         i, x, r, _, _, _ = tf.while_loop(
@@ -188,7 +249,6 @@ class OptimizerCGNewton(Optimizer):
         r_true = b - A(x)
         b_sq = tf.tensordot(b, b, axes=1)
         rs = tf.tensordot(r_true, r_true, axes=1)
-        tiny = tf.cast(1e-30, b.dtype)
         relres = tf.sqrt(rs / tf.maximum(b_sq, tiny))
         return x, i, relres
 
@@ -205,7 +265,11 @@ class OptimizerCGNewton(Optimizer):
         self, p_flat: tf.Tensor, grad_theta_flat: tf.Tensor, _: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         dot_gp = self._dot(grad_theta_flat, p_flat)
-        return tf.cond(dot_gp >= 0.0, lambda: -grad_theta_flat, lambda: p_flat), None
+        usable = tf.logical_and(
+            tf.reduce_all(tf.math.is_finite(p_flat)),
+            tf.logical_and(tf.math.is_finite(dot_gp), dot_gp < 0.0),
+        )
+        return tf.cond(usable, lambda: p_flat, lambda: -grad_theta_flat), None
 
     def _apply_step(
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor

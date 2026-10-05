@@ -23,7 +23,7 @@ def run(cfg, state):
                 )
             ds = ds.sel(time=ds.time[ds.time == cfg.processes.time.start])
 
-    elif cfg.inputs.local.type == "tif":
+    elif cfg.inputs.local.type == "tif" or cfg.inputs.local.type == "tiff":
         import rioxarray
         from pathlib import Path
 
@@ -32,6 +32,7 @@ def run(cfg, state):
 
         # Find all .tif files in the folder
         tif_files = list(data_folder.glob("*.tif"))
+        tif_files.extend(data_folder.glob("*.tiff"))
 
         # Create dataset by reading each .tif and naming the variable after the file stem
         ds = xr.Dataset(
@@ -95,7 +96,9 @@ def run(cfg, state):
     if cfg.inputs.local.icemask.include:
         include_icemask(
             state,
-            mask_shapefile=cfg.inputs.local.icemask.shapefile,
+            mask_shapefile=state.original_cwd.joinpath(
+                cfg.core.folder_data, cfg.inputs.local.icemask.shapefile
+            ),
             mask_invert=cfg.inputs.local.icemask.invert,
         )
 

@@ -102,12 +102,17 @@ def compute_rms_std_optimization(state, i):
         velsurfobs_mag = getmag(state.uvelsurfobs, state.vvelsurfobs).numpy()
         ACT = ~np.isnan(velsurfobs_mag)
 
-        state.rmsvel.append(
-            np.mean(velsurf_mag[(I & ACT).numpy()] - velsurfobs_mag[(I & ACT).numpy()])
-        )
-        state.stdvel.append(
-            np.std(velsurf_mag[(I & ACT).numpy()] - velsurfobs_mag[(I & ACT).numpy()])
-        )
+        # velocity misfit is computed on observed-ice cells with a valid observation
+        if np.sum(I & ACT) == 0:
+            state.rmsvel.append(0)
+            state.stdvel.append(0)
+        else:
+            state.rmsvel.append(
+                np.mean(velsurf_mag[(I & ACT).numpy()] - velsurfobs_mag[(I & ACT).numpy()])
+            )
+            state.stdvel.append(
+                np.std(velsurf_mag[(I & ACT).numpy()] - velsurfobs_mag[(I & ACT).numpy()])
+            )
     else:
         state.rmsvel.append(0)
         state.stdvel.append(0)

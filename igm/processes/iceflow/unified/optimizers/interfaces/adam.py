@@ -5,10 +5,10 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping, MappingDataAssimilation
 from ...halt import Halt, InterfaceHalt
 
@@ -38,7 +38,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "map": map,
             "halt": halt,
             "lr": lr,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -55,6 +55,7 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -74,7 +75,7 @@ class InterfaceAdam(InterfaceOptimizer):
             iter_max = cfg_unified.nbit_init
             lr = cfg_unified.adam.lr_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
             lr = cfg_unified.adam.lr
         elif status == Status.IDLE:
             return False

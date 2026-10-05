@@ -16,7 +16,6 @@ from omegaconf import OmegaConf
 
 from igm.inputs.complete_data import complete_data
 from igm.inputs.local import complete_data as complete_local_data
-from igm.processes.thk.fronts.sub_grid import _ocean
 from igm.processes.thk.rigid_body import remove_rigid_body_modes
 from igm.processes.thk.surfaces import update_surfaces
 from igm.processes.thk.masks import (
@@ -130,16 +129,37 @@ def test_mountain_geometry_is_unchanged_by_the_water_level():
 
 
 def test_sub_grid_front_needs_an_ocean():
-    topg = tf.constant([[-50.0, 100.0, -50.0]])
-    thk = tf.constant([[0.0, 100.0, 0.0]])
+    """Without an ocean no cell is marine, so ice spreads as on land."""
+    from igm.processes.thk import thk as thk_module
 
-    state = SimpleNamespace(topg=topg, thk=thk)
+    thk = np.zeros((3, 6), np.float32)
+    thk[:, :3] = 100.0
+    cfg = OmegaConf.create(
+        {
+            "processes": {
+                "thk": {
+                    "scheme": "explicit",
+                    "ratio_density": 0.91,
+                    "front": {"method": "sub_grid"},
+                }
+            }
+        }
+    )
+    state = SimpleNamespace(
+        topg=tf.fill((3, 6), -50.0),
+        thk=tf.constant(thk),
+        dx=tf.constant(100.0),
+        dt=tf.constant(1.0),
+        it=0,
+        smb=tf.zeros((3, 6)),
+        ubar=tf.fill((3, 6), 10.0),
+        vbar=tf.zeros((3, 6)),
+    )
     ensure_water_level(state)
-    np.testing.assert_array_equal(_ocean(state), [[False, False, False]])
-
-    state = SimpleNamespace(topg=tf.constant([[-50.0, 100.0, 50.0]]), thk=thk)
-    ensure_water_level(state, value=0.0)
-    np.testing.assert_array_equal(_ocean(state), [[True, False, False]])
+    thk_module.initialize(cfg, state)
+    thk_module.update(cfg, state)
+    assert float(tf.reduce_max(state.Href)) == 0.0
+    assert float(state.thk[1, 3]) > 0.0
 
 
 def test_iceflow_warns_about_an_ocean_missing_from_its_inputs():

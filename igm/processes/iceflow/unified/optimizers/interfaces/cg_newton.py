@@ -2,13 +2,13 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import tensorflow as tf
 from omegaconf import DictConfig
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 from ...operators import Operator, build_energy_operator
@@ -35,6 +35,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             mapping=map,
             verify_stencil=bool(getattr(cfg_unified.cg_newton, "hvp_verify", False)),
             owner="cg_newton",
+            probe_batch=cfg_unified.cg_newton.probe_batch,
         )
 
     @staticmethod
@@ -54,7 +55,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -68,6 +69,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "cg_max_iter": cg.cg_max_iter,
             "cg_tol": cg.cg_tol,
             "warm_start": cg.warm_start,
+            "cold_restart_interval": cg.cold_restart_interval,
             "damping": cg.damping,
             "damping_adaptive": cg.get("damping_adaptive", False),
             "damping_min": cg.get("damping_min", 1e-12),
@@ -86,6 +88,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
         cfg: DictConfig,
         status: Status,
         optimizer: Optimizer,
+        t: Optional[float] = None,
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
 
@@ -94,7 +97,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = cfg_unified.nbit
+            iter_max = nbit_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

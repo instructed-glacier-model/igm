@@ -23,6 +23,8 @@ def update_vertical(
     friction_heat: tf.Tensor,
     E_pmp: tf.Tensor,
     E_s: tf.Tensor,
+    ocean: tf.Tensor,
+    E_shelf: tf.Tensor,
 ) -> None:
     """
     Update enthalpy field for vertical advection-diffusion over a time step.
@@ -36,6 +38,8 @@ def update_vertical(
         friction_heat: Areal frictional heating rate at the bed (W m^-2).
         E_pmp: Pressure melting point enthalpy (J kg^-1).
         E_s: Surface enthalpy boundary condition (J kg^-1).
+        ocean: Columns in contact with the ocean (floating ice, ice-free ocean).
+        E_shelf: Dirichlet value of their basal enthalpy (J kg^-1).
 
     Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
     """
@@ -59,10 +63,15 @@ def update_vertical(
     V_U_to_E = state.iceflow.discr_v.enthalpy.V_U_to_E
     dz = dzeta * state.thk[None, ...]
 
-    # Correct vertical velocity
+    # Correct vertical velocity for the basal melt, with the ocean-induced
+    # melt of floating ice when the bmb process provides it (previous step)
     W = state.W if hasattr(state, "W") else tf.zeros_like(state.U)
     Wc = tf.einsum("ij,jkl->ikl", V_U_to_E, W)
-    Wc = correct_vertical_velocity(Wc, state.basal_melt_rate, correct_w_for_melt)
+    if "bmb" in cfg.processes and hasattr(state, "bmb"):
+        basal_melt = -state.bmb
+    else:
+        basal_melt = state.basal_melt_rate
+    Wc = correct_vertical_velocity(Wc, basal_melt, correct_w_for_melt)
 
     # Thermal diffusivity
     K = compute_diffusivity(state.E, E_pmp, k_ice, rho_ice, c_ice, K_ratio)
@@ -70,8 +79,8 @@ def update_vertical(
     # Source term
     f = strain_heat / rho_ice
 
-    # Boundary conditions
-    q_basal = state.basal_heat_flux + friction_heat
+    # Boundary conditions: no geothermal or frictional heat under floating ice
+    q_basal = tf.where(ocean, 0.0, state.basal_heat_flux + friction_heat)
     dEdz_dry = -(c_ice / k_ice) * q_basal
     BCB, VB, VS = compute_bc(state.E, E_pmp, E_s, state.h_water_till, dEdz_dry)
 
@@ -79,6 +88,10 @@ def update_vertical(
         BCB = tf.zeros_like(E_s)
         VB = E_pmp[0]
         VS = E_s
+
+    # Dirichlet at the base of the ice in contact with the ocean
+    BCB = tf.where(ocean, 0.0, BCB)
+    VB = tf.where(ocean, E_shelf, VB)
 
     # Assemble system
     spy = 31556926.0

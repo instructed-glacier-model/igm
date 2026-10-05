@@ -1,30 +1,32 @@
 # interface_cg.py
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 from ...mappings import Mapping, MappingDataAssimilation
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status
+from .interface import InterfaceOptimizer, Status, nbit_at
 from ..cg import OptimizerCG
 
 
 class InterfaceCG(InterfaceOptimizer):
     @staticmethod
-    def get_optimizer_args(cfg: DictConfig,
-                           cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
-                           map: Mapping) -> Dict[str, Any]:
+    def get_optimizer_args(
+        cfg: DictConfig,
+        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
+        map: Mapping,
+    ) -> Dict[str, Any]:
         u = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
 
         if isinstance(map, MappingDataAssimilation):
             nbit = cfg.assimilations.field_inversion.optimization.nbitmax
         else:
-            nbit = u.nbit
+            nbit = nbit_at(u.nbit)
         return {
             "cost_fn": cost_fn,
             "map": map,
             "iter_max": nbit,
-            "alpha_min": u.lbfgs.alpha_min,   # reuse same key for simplicity
+            "alpha_min": u.lbfgs.alpha_min,  # reuse same key for simplicity
             "line_search_method": u.line_search,
             "print_cost": u.print_cost,
             "print_cost_freq": u.print_cost_freq,
@@ -34,13 +36,15 @@ class InterfaceCG(InterfaceOptimizer):
         }
 
     @staticmethod
-    def set_optimizer_params(cfg: DictConfig, status: Status, optimizer: Optimizer) -> bool:
+    def set_optimizer_params(
+        cfg: DictConfig, status: Status, optimizer: Optimizer, t: Optional[float] = None
+    ) -> bool:
         u = cfg.processes.iceflow.unified
         if status in (Status.INIT, Status.WARM_UP):
             iter_max = u.nbit_init
             alpha_min = u.lbfgs.alpha_min
         elif status == Status.DEFAULT:
-            iter_max = u.nbit
+            iter_max = nbit_at(u.nbit, t)
             alpha_min = u.lbfgs.alpha_min
         else:
             return False

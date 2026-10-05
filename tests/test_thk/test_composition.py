@@ -30,8 +30,7 @@ def _cfg(scheme, method="test_front"):
             "processes": {
                 "thk": {
                     "scheme": scheme,
-                    "calving_front": True,
-                    "method": method,
+                    "front": {"method": method},
                     "ratio_density": 0.91,
                     "boundary": {
                         "left": "zero",
@@ -190,19 +189,39 @@ def test_transport_owning_subgrid_front_rejects_ignored_scheme(monkeypatch):
         thk_module.initialize(_cfg("other", method="sub_grid"), _state())
 
 
-def test_unavailable_front_is_reported_by_the_dictionary():
-    assert fronts.available_front_methods() == ("sub_grid",)
-    with pytest.raises(ValueError, match="level_set.*unavailable"):
-        thk_module.initialize(_cfg("explicit", method="level_set"), _state())
+def test_front_methods_are_reported_by_the_dictionary(monkeypatch):
+    assert fronts.available_front_methods() == ("level_set", "sub_grid")
+    with pytest.raises(ValueError, match="none, level_set, sub_grid"):
+        thk_module.initialize(_cfg("explicit", method="unknown"), _state())
+    unavailable = _module(
+        "draft",
+        UPDATE_MODE="replace_transport",
+        COMPATIBLE_TRANSPORTS=("explicit",),
+        AVAILABLE=False,
+        UNAVAILABLE_REASON="not finished",
+        initialize=lambda cfg, state: None,
+        update=lambda cfg, state: None,
+    )
+    monkeypatch.setitem(fronts.FrontMethods, "draft", unavailable)
+    with pytest.raises(ValueError, match="draft.*unavailable: not finished"):
+        thk_module.initialize(_cfg("explicit", method="draft"), _state())
+
+
+def test_no_front_merges_a_restart_reservoir_and_drops_front_fields():
+    state = _state()
+    state.Href = tf.fill((3, 4), 2.0)
+    state.psi = tf.zeros((3, 4))
+    thk_module.initialize(_cfg("explicit", method="none"), state)
+    assert state.thk_components.front is None
+    assert not hasattr(state, "Href") and not hasattr(state, "psi")
+    tf.debugging.assert_near(state.thk, tf.fill((3, 4), 3.0))
 
 
 def test_level_set_bookkeeping_is_namespaced():
     state = _state()
-    state.thk_components = SimpleNamespace(component_state={})
-
-    fronts.level_set.initialize(_cfg("explicit", method="level_set"), state)
-
-    assert state.thk_components.component_state["level_set"] == {
-        "steps_since_reinit": 0,
-        "psi_built": False,
-    }
+    state.dx = tf.constant(100.0)
+    thk_module.initialize(_cfg("explicit", method="level_set"), state)
+    options = state.thk_components.component_state["front"]
+    assert options["steps_since_reinit"] == 0
+    assert options["reinit_freq"] == 1 and options["band"] == 3
+    assert hasattr(state, "psi") and hasattr(state, "Href")

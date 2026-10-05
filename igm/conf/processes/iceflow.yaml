@@ -103,6 +103,22 @@ iceflow:
     optimizer: adam
     nbit: 5
     nbit_init: 300
+    init_stop:
+      enabled: false
+      target_grounded: 1.0
+      target_floating: 2.5
+      consecutive: 1
+      speed_floor: 10.0
+      freq: 50
+      patience: 500
+      min_gain: 0.05
+      reference:
+        nbit: 200
+        tol: 1.0
+        cg_tol: 1.0e-2
+        line_search: armijo
+      log: init_stop.csv
+      display: true
     nbit_warmup: -1
     retrain_freq: 5
     retrain_threshold: 1.0e+10 # for now it corresponds to a z-score (1.0e+10 is default as its quite high and will default to the retrain_freq most likely)
@@ -120,6 +136,7 @@ iceflow:
     cg_newton:
       cg_tol: 1e-20
       warm_start: true
+      cold_restart_interval: 0.0
       cg_max_iter: 100
       line_search_compile: false
       print_timing: false
@@ -132,6 +149,7 @@ iceflow:
       hvp_mode: autodiff
       hvp_verify: false
       probe_mode: autodiff
+      probe_batch: 0
       preconditioner: block_jacobi
       operator_update_freq: 1
       precond_update_freq: 1
@@ -236,6 +254,7 @@ iceflow:
       tau_min: 0.1
       self_scaling: true
       damping: 1.0e-08
+      relative_damping: 1.0e-06
       weight_decay: 0.0
       lr_drop_iter: -1
       lr_drop_factor: 1.0
@@ -257,6 +276,7 @@ iceflow:
           slidingco: 0.05
           dX: 100.0
           water_level: 0.0
+          effective_pressure: 0.0
           X: 0.0
           Y: 0.0
         inputs_variances:        # (std)^2
@@ -267,6 +287,7 @@ iceflow:
           slidingco: 1.0e-3      # 0.03
           dX: 1.0e4              # 100 m
           water_level: 2.5e5     # 500 m
+          effective_pressure: 4.0  # 2 MPa
           X: 2.5e9               # 50 km
           Y: 2.5e9
     network:
@@ -327,6 +348,7 @@ iceflow:
       patches_per_batch: 1
     halt:
       freq: 1
+      raise_on_failure: false
       success: []
       failure: []
       criteria: 

@@ -51,6 +51,7 @@ class Halt:
         freq: int = 1,
         dtype: str = "float32",
         success_mode: str = "any",
+        raise_on_failure: bool = False,
     ):
         """Initialize halting manager."""
         self.crit_success = crit_success or []
@@ -58,6 +59,13 @@ class Halt:
         self.freq = freq
         self.dtype = normalize_precision(dtype)
         self.success_mode = success_mode
+        self.raise_on_failure = bool(raise_on_failure)
+        self.failure_detected = tf.Variable(False, trainable=False)
+        self.criterion_names = self._build_criterion_names()
+
+    def add_success(self, criterion: Criterion) -> None:
+        """Add a success criterion; call it before the first solve traces the optimizer."""
+        self.crit_success.append(criterion)
         self.criterion_names = self._build_criterion_names()
 
     def _build_criterion_names(self) -> List[str]:
@@ -69,10 +77,19 @@ class Halt:
 
     def reset_all(self) -> None:
         """Reset all success and failure criteria."""
+        self.failure_detected.assign(False)
         for crit in self.crit_success:
             crit.reset()
         for crit in self.crit_failure:
             crit.reset()
+
+    def raise_if_failed(self, optimizer_name: str) -> None:
+        """Raise after minimization when a failure criterion stopped the solve."""
+        if self.raise_on_failure and bool(self.failure_detected.numpy()):
+            raise RuntimeError(
+                f"{optimizer_name} stopped because a failure halt criterion "
+                "was satisfied."
+            )
 
     def check(
         self, iter: tf.Tensor, step_state: StepState
@@ -92,7 +109,9 @@ class Halt:
                 failure = tf.logical_or(failure, is_sat)
 
             # Success criteria (checked and returned for display)
-            success = tf.constant(self.success_mode == "all" and len(self.crit_success) > 0)
+            success = tf.constant(
+                self.success_mode == "all" and len(self.crit_success) > 0
+            )
             for crit in self.crit_success:
                 is_sat, val = crit.check(step_state)
                 success_values.append(val)
@@ -105,6 +124,7 @@ class Halt:
             # Determine status
             if failure:
                 self.reset_all()
+                self.failure_detected.assign(True)
                 return (
                     tf.constant(HaltStatus.FAILURE.value),
                     success_values,

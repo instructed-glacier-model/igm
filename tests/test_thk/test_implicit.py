@@ -39,8 +39,6 @@ def _solver_cfg(theta=1.0, tol=1.0e-7, max_iter=500, max_restarts=4):
                             "max_restarts": max_restarts,
                         },
                     },
-                    "calving_front": False,
-                    "method": "sub_grid",
                 }
             }
         }

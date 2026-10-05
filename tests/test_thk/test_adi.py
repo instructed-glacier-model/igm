@@ -27,8 +27,6 @@ def _cfg():
                     "slope_type": "superbee",
                     "divflux_smooth_sigma": 0.0,
                     "ratio_density": 0.91,
-                    "calving_front": False,
-                    "method": "sub_grid",
                 }
             }
         }

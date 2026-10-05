@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors
+# Copyright (C) 2021-2026 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 """Calve off mechanically unanchored ice (rigid-body modes).
@@ -13,42 +13,20 @@ determined and a Newton-CG solve returns arbitrary speeds on it, which
 throttle the CFL step. Such ice is removed once at initialization and, with
 an evolving calving front, after every thickness update. Grounded ice is
 never touched: however isolated, it keeps its basal drag.
+
+With a calving front, a node that has just filled can sit next to the
+anchored ice before its neighbours fill and form full Q1 cells with it; such
+edge-adjacent nodes are kept, and the reservoir ``Href`` of the partial cells
+is kept only next to the remaining ice.
 """
 
 import tensorflow as tf
 
-from .fronts.utils import neighbour_bool_any
+from igm.common import State
+from igm.utils.math.connectivity import reach
+from igm.utils.math.neighbours import any_neighbour
+
 from .masks import compute_grounded_mask
-
-
-def _reach(seed: tf.Tensor, domain: tf.Tensor) -> tf.Tensor:
-    """Cells of the bool ``domain`` reachable from ``seed`` (flood fill).
-
-    Connectivity is through edge neighbours because a node-only diagonal
-    contact carries no membrane stress. In a winding component the graph
-    distance can approach the number of cells, which bounds the loop.
-    """
-    domain = tf.cast(domain, tf.bool)
-
-    def dilate(region):
-        x = tf.cast(region, tf.float32)[tf.newaxis, :, :, tf.newaxis]
-        grown = tf.maximum(
-            tf.nn.max_pool2d(x, ksize=(3, 1), strides=1, padding="SAME"),
-            tf.nn.max_pool2d(x, ksize=(1, 3), strides=1, padding="SAME"),
-        )
-        return tf.logical_and(grown[0, :, :, 0] > 0.5, domain)
-
-    def step(region, grew):
-        larger = dilate(region)
-        return larger, tf.reduce_any(tf.logical_and(larger, tf.logical_not(region)))
-
-    region, _ = tf.while_loop(
-        lambda region, grew: grew,
-        step,
-        (tf.logical_and(tf.cast(seed, tf.bool), domain), tf.constant(True)),
-        maximum_iterations=tf.size(domain),
-    )
-    return region
 
 
 def _cells(nodes: tf.Tensor) -> tf.Tensor:
@@ -86,32 +64,33 @@ def anchored_ice_mask(ice: tf.Tensor, grounded: tf.Tensor) -> tf.Tensor:
 
     cells = _cells(ice)
     grounded_cells = tf.logical_and(cells, _cells_with_grounded_corner(grounded))
-    anchored_cells = _reach(grounded_cells, cells)
+    # Edge connectivity: a node-only diagonal contact carries no membrane stress.
+    anchored_cells = reach(grounded_cells, cells)
     supported = _corners_any(anchored_cells)
     return tf.logical_and(ice, tf.logical_or(grounded, supported))
 
 
-def remove_rigid_body_modes(state, rho_ratio: float) -> None:
-    """Zero the unanchored ice of ``state`` (``thk``, and ``thk_true``/``Href`` if present).
+def remove_rigid_body_modes(
+    state: State, rho_ratio: float, front: bool = False
+) -> tf.Tensor:
+    """Zero the unanchored ice of ``state``; return the removed thickness (m).
 
-    Only the dropped ice columns are touched, so the padding a sub-grid front
-    adds around the remaining ice is left to the front scheme.
+    ``front`` marks a run with a calving front: nodes edge-adjacent to the
+    anchored ice are then kept, and ``state.Href`` survives only next to the
+    remaining ice. The returned field includes the removed ``Href``.
     """
-    columns = state.thk_true if hasattr(state, "thk_true") else state.thk
-    thk = tf.convert_to_tensor(columns)
+    thk = tf.convert_to_tensor(state.thk)
     ice = thk > 0.0
     grounded = compute_grounded_mask(thk, state.topg, state.water_level, rho_ratio)
-    keep_nodes = anchored_ice_mask(ice, grounded)
-    dropped = tf.logical_and(ice, tf.logical_not(keep_nodes))
-    keep = 1.0 - tf.cast(dropped, state.thk.dtype)
-
-    if hasattr(state, "thk_true"):
-        state.thk_true.assign(state.thk_true * keep)
-        # The front schemes expose one layer of iceflow-only padding around
-        # true columns. Keep padding and Href only beside retained ice.
-        keep_extended = tf.logical_or(keep_nodes, neighbour_bool_any(keep_nodes))
-        state.thk = state.thk * tf.cast(keep_extended, state.thk.dtype)
-        if hasattr(state, "Href"):
-            state.Href.assign(state.Href * tf.cast(keep_extended, state.Href.dtype))
-    else:
-        state.thk = state.thk * keep
+    keep = anchored_ice_mask(ice, grounded)
+    if front:
+        keep = keep | (ice & any_neighbour(keep))
+    dropped = ice & ~keep
+    removed = tf.where(dropped, thk, tf.zeros_like(thk))
+    state.thk = tf.where(dropped, tf.zeros_like(thk), thk)
+    if front:
+        href = tf.convert_to_tensor(state.Href)
+        orphan = ~any_neighbour(keep)
+        removed += tf.where(orphan, href, tf.zeros_like(href))
+        state.Href = tf.where(orphan, tf.zeros_like(href), href)
+    return removed

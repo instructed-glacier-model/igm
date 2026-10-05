@@ -1,20 +1,62 @@
 law:
   Type: string
   Units: dimless
-  Description: "Calving law: `zero` (no calving), `water_depth` (c = k * D_w, Brown/Meier/Post 1982), `eigen` (c = K2 * max(e1,0) * max(e2,0), Levermann 2012), or `thickness_threshold` (c = c_max where thk < Hcr)."
-k:
-  Type: float
-  Units: yr^{-1}
-  Description: "Proportionality constant for the water-depth calving law."
-K2:
-  Type: float
-  Units: m yr
-  Description: "Proportionality constant for the eigen calving law (Levermann 2012)."
-Hcr:
-  Type: float
-  Units: m
-  Description: "Critical ice thickness below which calving rate is set to c_max (thickness-threshold law)."
-c_max:
+  Description: "Calving law giving the calving rate c (m/yr) at the ice front, consumed by the front of the `thk` process (`thk.front.method`): `zero`; `constant` (c = value); `water_depth` (c = k max(z_wl - z_b, 0), Brown et al., 1982); `eigen` (c = K max(e1,0) max(e2,0) on floating ice, Levermann et al., 2012); `von_mises` (c = |u| sigma / sigma_max, sigma = sqrt(3) B e^(1/n) with e the tensile strain rate, Morlighem et al., 2016); `ice_speed` (c = max(factor |u| - front_velocity, 0), CalvingMIP-style, with |u| the ice speed at the front, extrapolated linearly from the last ice nodes). A law is evaluated on the ice nodes carrying velocity and carried to the other cells of the front band (`ice_speed`: evaluated on the band). Rules that prescribe the front position (a minimum front thickness, a fixed front) are `thk.front` options."
+ocean_connected_only:
+  Type: boolean
+  Units: dimless
+  Description: "Calve only ice fronts facing the open ocean: ice-free water connected through cell edges to a domain side with a zero thickness boundary, or else the largest body of ice-free water. Holes and rifts enclosed in an ice shelf do not calve."
+band:
+  Type: integer
+  Units: cells
+  Description: "Rings of cells beyond the front cells, on each side of the ice front, where the calving and frontal-melt rates are defined (zero elsewhere); the band is band + 1 cells each side, the front cells included. Must be at least `thk.front.level_set.band` for the level-set front (checked at initialization)."
+max_rate:
   Type: float
   Units: m yr^{-1}
-  Description: "Safety cap applied to the calving rate output field."
+  Description: "Safety cap on the calving rate."
+constant:
+  value:
+    Type: float
+    Units: m yr^{-1}
+    Description: "Uniform calving rate of the `constant` law."
+water_depth:
+  k:
+    Type: float
+    Units: yr^{-1}
+    Description: "Proportionality constant of the water-depth law (calving rate per metre of water depth). A tidewater-glacier law (Brown et al., 1982); it is applied wherever the front stands, floating ice included (on a uniform bed it is then the constant law)."
+eigen:
+  K:
+    Type: float
+    Units: m yr
+    Description: "Proportionality constant of eigencalving (Levermann et al., 2012, report about 3e1 to 1e4 m yr, i.e. 1e9 to 3e11 m s). The rate is zero on grounded ice, so carrying it to the band dilutes it near the grounding line."
+von_mises:
+  sigma_max_floating:
+    Type: float
+    Units: MPa
+    Description: "Tensile strength of floating ice for von Mises calving (ISSM default 0.15 MPa)."
+  sigma_max_grounded:
+    Type: float
+    Units: MPa
+    Description: "Tensile strength of grounded ice for von Mises calving (ISSM default 1 MPa). The hardness B = A^(-1/n) uses the ice-flow rate factor `arrhenius` (which already includes the enhancement factor; column-averaged as B if 3-D) and exponent. |u| is the ice speed at the last ice node, as in PISM and ISSM: at sigma = sigma_max the front creeps forward by the small speed-up over the partial cell (a few percent, vanishing with the grid spacing)."
+ice_speed:
+  factor:
+    Type: float
+    Units: dimless
+    Description: "Factor f of the `ice_speed` law, c = max(f |u| - W, 0)."
+  front_velocity:
+    Type: float
+    Units: m yr^{-1}
+    Description: "Prescribed front velocity W of the `ice_speed` law, relative to the grid (0: a stationary front where the ice flows normal to it; > 0 an advance, < 0 a retreat). Consistent with `thk.front.threshold: flux`; with `mean` the front advances at the last-node speed instead and the law over-calves slightly."
+frontal_melt:
+  method:
+    Type: string
+    Units: dimless
+    Description: "Frontal (submarine) melt rate m_cf added to the calving rate: `none`, `constant` (value) or `field` (a state variable). Published as `frontal_melt_rate`."
+  value:
+    Type: float
+    Units: m yr^{-1}
+    Description: "Uniform frontal melt rate of the `constant` method."
+  field:
+    Type: string
+    Units: dimless
+    Description: "State variable holding the frontal melt rate (m/yr) for the `field` method."
