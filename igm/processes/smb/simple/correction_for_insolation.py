@@ -10,6 +10,16 @@
 
 # Details to this correction can be found in Henz et al. 2025, TC, https://doi.org/10.5194/tc-19-5913-2025
 
+# Note on the formulation: the ELA shift is linear in the incidence angle
+# ("incidence-angle formulation"). Physically, the direct solar energy received
+# per m2 of surface follows a cosine law, E = S * cos(incidence angle)
+# ("cosine formulation"); a beam of 1 m2 cross-section spreads over 1/cos(angle) m2.
+# A standard hillshade (e.g. matplotlib's LightSource.hillshade) is exactly this
+# cosine of the incidence angle, i.e. the normalised dot product of the surface
+# normal and the sun vector. We still use the incidence-angle formulation here as the ELA
+# is anyways not a physical process in general, but a parameterisation and we found that the
+# ELA correlation is even slightly (non-significantly) better than with the cosine formulation.
+
 import os
 import tensorflow as tf
 from igm.utils.grad.grad import grad_xy
