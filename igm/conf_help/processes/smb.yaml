@@ -19,6 +19,27 @@ simple:
     Type: list
     Units: dimless
     Description: "Inline time-dependent SMB parameters (time, gradabl, gradacc, ela, accmax); overrides file if non-empty."
+  correction_for_insolation:
+    enabled:
+      Type: bool
+      Units: dimless
+      Description: "Enable the correction of the ELA for insolation (aspect and slope of the surface)."
+    solar_elevation:
+      Type: float
+      Units: ° (degree)
+      Description: "Solar elevation angle above the horizon (one single value as a midsummer midday value, depending on latitude, see Henz et al. 2025) [degrees]."
+    solar_azimuth:
+      Type: float
+      Units: ° (degree)
+      Description: "Solar azimuth angle [degrees]. Clockwise from north (180 = sun from the south, e.g. for the Northern hemisphere)."
+    ela_per_degree_incidence:
+      Type: float
+      Units: m °^{-1}
+      Description: "Change in ELA per degree of incidence angle [m/°]."
+    plot_insolation_check:
+      Type: bool
+      Units: dimless
+      Description: "Plot a diagnostic figure to check the insolation correction.
 oggm:
   update_freq:
     Type: float
