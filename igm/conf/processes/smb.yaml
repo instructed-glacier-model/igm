@@ -16,8 +16,8 @@ smb:
 
     # Block from Insolation correction (Henz et al. 2025, TC, https://doi.org/10.5194/tc-19-5913-2025)
     # switch the ELA correction for insolation on/off
-    correction_for_insolation_enabled: false
-    correction_for_insolation:
+    correction_for_insolation: 
+      enabled: false # default is off, here you switch it on
       # solar elevation angle above the horizon [degrees], 
       # --> this is depending on the average latitude of the study region
       solar_elevation: 60.0 # for Alps latitude, midsummer midday value (see Henz et al. 2025)

@@ -19,11 +19,11 @@ simple:
     Type: list
     Units: dimless
     Description: "Inline time-dependent SMB parameters (time, gradabl, gradacc, ela, accmax); overrides file if non-empty."
-  correction_for_insolation_enabled:
-    Type: bool
-    Units: dimless
-    Description: "Enable the correction of the ELA for insolation (aspect and slope of the surface)."
   correction_for_insolation:
+    enabled:
+      Type: bool
+      Units: dimless
+      Description: "Enable the correction of the ELA for insolation (aspect and slope of the surface)."
     solar_elevation:
       Type: float
       Units: ° (degree)
