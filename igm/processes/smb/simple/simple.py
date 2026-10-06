@@ -42,7 +42,7 @@ def update(cfg, state):
         gradacc = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 2], state.t)
         ela = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 3], state.t)
         maxacc = interp1d_tf(state.smbpar[:, 0], state.smbpar[:, 4], state.t)
-        if cfg.processes.smb.simple.correction_for_insolation_enabled:
+        if cfg.processes.smb.simple.correction_for_insolation.enabled:
             ela = correct_ela_for_insolation(cfg, state, ela)
 
         # compute smb from glacier surface elevation and parameters
