@@ -39,7 +39,7 @@ simple:
     plot_insolation_check:
       Type: bool
       Units: dimless
-      Description: "Plot a diagnostic figure to check the insolation correction.
+      Description: "Plot a diagnostic figure to check the insolation correction."
 oggm:
   update_freq:
     Type: float
