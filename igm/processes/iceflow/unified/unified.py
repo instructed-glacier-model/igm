@@ -107,6 +107,35 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     if cfg_unified.init_stop.enabled:
         init_stop.finish()
 
+    # Constrained retraining (see iceflow.yaml `network.retrain_trainable_layers`):
+    # after the full initial training, rebuild the mapping with a trainable tail -
+    # only the LAST n variables of the network (construction order) stay trainable,
+    # so later retrains can only move the head of the network. The optimizer is
+    # rebuilt so its slot states cover exactly that subset. A hard bound on how
+    # far one retraining step can drift the function.
+    n_trainable = int(getattr(cfg_unified.network, "retrain_trainable_layers", 0))
+    if mapping_name == "network" and n_trainable > 0:
+        from .mappings.interfaces.network import mapping_args_for_model
+
+        model = state.iceflow_model
+        n_total = len(model.trainable_variables)
+        mapping = Mappings["network"](**mapping_args_for_model(cfg, state, model))
+        state.iceflow.mapping = mapping
+        print(
+            f"iceflow retrain-freeze: retraining restricted to the last "
+            f"{min(n_trainable, n_total)} of {n_total} network variables"
+        )
+        optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
+            cfg=cfg, cost_fn=cost_fn, map=mapping
+        )
+        if "batch_size" in optimizer_args and hasattr(optimizer, "batch_size"):
+            optimizer_args["batch_size"] = optimizer.batch_size
+        optimizer = Optimizers[optimizer_name](**optimizer_args)
+        state.iceflow.optimizer = optimizer
+        if InterfaceErrorEstimator.enabled(cfg):
+            for stage in getattr(optimizer, "optimizers", None) or [optimizer]:
+                stage.attach_error_estimator(state.iceflow.error_estimator)
+
     # Evaluate once
     evaluate_iceflow(cfg, state)
 

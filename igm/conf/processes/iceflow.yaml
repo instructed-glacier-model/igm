@@ -318,6 +318,27 @@ iceflow:
         nb_layers: 6
         conv_ker_size: 3
         residual: true
+      # Constrained retraining: after the initial training, only the last N
+      # trainable VARIABLES of the network (construction order; a conv layer is
+      # kernel + bias = 2) stay trainable for later retrains (0 = all). Bounds
+      # how far one retrain can move the function - the LoRA-style option of
+      # the retrain-stability feature.
+      retrain_trainable_layers: 0
+    # Retrain trust region: evaluate the physics cost on the SAME inputs before
+    # and after every regular retrain; if the retrain made it worse by more than
+    # `slack` (relative) or non-finite, restore the pre-retrain weights. One
+    # faulty retraining step can then never destroy the network.
+    retrain_guard:
+      enabled: false
+      slack: 0.01               # accepted relative worsening
+      verbose: false            # true: log every retrain's before/after cost
+    # Rolling weight checkpoints: every `freq` accepted retrains, save the
+    # network weights (<dir>/iceflow_t<...>.weights.h5), keeping the last `keep`.
+    checkpoint:
+      enabled: false
+      freq: 100
+      keep: 5
+      dir: weight_checkpoints
     adaptive_time:
       # Temporal lever (B) — decides WHEN to retrain. Mirror of adaptive_patching (C).
       # Additive: never moves top-level retrain_freq / retrain_threshold, only dispatches.

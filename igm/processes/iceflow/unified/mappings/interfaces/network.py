@@ -40,6 +40,9 @@ def mapping_args_for_model(
         "Nz": cfg_numerics.Nz,
         "output_scale": float(cfg_unified.network.output_scale),
         "precision": cfg_numerics.precision,
+        "trainable_tail": int(
+            getattr(cfg_unified.network, "retrain_trainable_layers", 0)
+        ),
     }
 
 
