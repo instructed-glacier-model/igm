@@ -332,6 +332,18 @@ iceflow:
       enabled: false
       slack: 0.01               # accepted relative worsening
       verbose: false            # true: log every retrain's before/after cost
+    # Pixel-robust training loss: cap each cell's energy contribution at
+    # factor x the domain-mean |energy| so a single extreme cell cannot steer
+    # the whole network (the global-collapse mechanism).
+    loss_clip:
+      enabled: false
+      factor: 100.0
+    # Weight EMA: inference uses an exponential moving average of the trained
+    # weights (training itself continues from the raw trajectory), so one
+    # harmful retrain is diluted ~1/(1-decay)-fold before reaching the ice.
+    ema:
+      enabled: false
+      decay: 0.7
     # Rolling weight checkpoints: every `freq` accepted retrains, save the
     # network weights (<dir>/iceflow_t<...>.weights.h5), keeping the last `keep`.
     checkpoint:

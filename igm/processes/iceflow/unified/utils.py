@@ -60,6 +60,13 @@ def get_cost_fn(
         cfg.processes.iceflow.physics.water_density
         / cfg.processes.iceflow.physics.ice_density
     )
+    # Pixel-robust training loss (see iceflow.yaml `loss_clip`): cap each cell's
+    # energy contribution at factor x the domain-mean |energy|, so one
+    # pathological cell (a velocity burst on extreme geometry) cannot dominate
+    # the gradient and corrupt the global weights. 0 disables.
+    loss_clip_factor = float(
+        getattr(getattr(cfg_unified, "loss_clip", None), "factor", 0.0) or 0.0
+    ) if bool(getattr(getattr(cfg_unified, "loss_clip", None), "enabled", False)) else 0.0
 
     def _cost_fn_impl(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         """Cost function from velocity fields and inputs."""
@@ -79,6 +86,12 @@ def get_cost_fn(
         grounded = compute_grounded_mask(thk, topg, water_level, rho_ratio)
         cell_mask = compute_cell_ice_mask(thk, grounded)
         energy = energy * tf.cast(cell_mask[tf.newaxis, :, :, :], energy.dtype)
+
+        if loss_clip_factor > 0.0:
+            abs_mean = tf.reduce_mean(
+                tf.abs(energy), axis=[1, 2, 3], keepdims=True
+            )
+            energy = tf.minimum(energy, loss_clip_factor * abs_mean + 1e-30)
 
         energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
         total_energy = tf.reduce_sum(energy_mean, axis=0)

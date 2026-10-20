@@ -132,6 +132,26 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     # graph is XLA-compiled once on a fixed (bs, ly, lx, C) shape.
     use_adaptive = bool(getattr(cfg_unified.adaptive_patching, "enabled", False))
 
+    # Weight EMA (see iceflow.yaml `ema`): the model used for INFERENCE holds an
+    # exponential moving average of the trained weights, while training continues
+    # from the raw trajectory. A single harmful retrain is diluted by ~1/(1-decay)
+    # before it can reach the ice dynamics. Composes with the retrain guard
+    # (guard sees and restores the raw weights).
+    ema_cfg = getattr(cfg_unified, "ema", None)
+    use_ema = (
+        do_solve
+        and status == Status.DEFAULT
+        and ema_cfg is not None
+        and bool(ema_cfg.enabled)
+        and cfg_unified.mapping == "network"
+    )
+    if use_ema:
+        raw = getattr(state.iceflow, "ema_raw_weights", None)
+        if raw is not None:
+            # the model currently holds EMA weights; restore the raw training
+            # trajectory before this retrain continues it
+            state.iceflow_model.set_weights(raw)
+
     # Retrain trust region (see iceflow.yaml `retrain_guard`): snapshot the
     # weights and the physics cost on the CURRENT inputs before a regular
     # retrain, so a step that worsens the cost can be rejected outright.
@@ -165,6 +185,10 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
         )
         if rejected:
             guard_model.set_weights(weights_before)
+            if use_ema and getattr(state.iceflow, "ema_weights", None) is not None:
+                # keep serving the EMA weights after a rejected retrain
+                state.iceflow.ema_raw_weights = weights_before
+                guard_model.set_weights(state.iceflow.ema_weights)
             state.iceflow.retrains_rejected = (
                 getattr(state.iceflow, "retrains_rejected", 0) + 1
             )
@@ -178,6 +202,18 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
                 f"retrain guard t={float(getattr(state, 't', 0.0)):.1f}: "
                 f"cost {cost_before:.6e} -> {cost_after:.6e} ok"
             )
+
+    if use_ema and not rejected:
+        decay = float(ema_cfg.decay)
+        raw = state.iceflow_model.get_weights()
+        ema = getattr(state.iceflow, "ema_weights", None)
+        if ema is None:
+            ema = [w.copy() for w in raw]
+        else:
+            ema = [decay * e + (1.0 - decay) * w for e, w in zip(ema, raw)]
+        state.iceflow.ema_raw_weights = raw
+        state.iceflow.ema_weights = ema
+        state.iceflow_model.set_weights(ema)
 
     # Rolling weight checkpoints (see iceflow.yaml `checkpoint`): every `freq`
     # accepted retrains, save the weights and prune to the `keep` most recent.
