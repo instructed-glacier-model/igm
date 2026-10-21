@@ -207,8 +207,26 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
 
     if use_ema and not rejected:
         raw = state.iceflow_model.get_weights()
+        kernel = list(getattr(ema_cfg, "weights", []) or [])
         window = int(getattr(ema_cfg, "window", 0) or 0)
-        if window > 0:
+        if kernel:
+            # weighted trailing kernel (config lists weights NEWEST-first,
+            # e.g. RK4-style [1/6, 2/6, 2/6, 1/6]); until the history fills,
+            # the newest weights are renormalized over what exists
+            n = len(kernel)
+            hist = getattr(state.iceflow, "ema_hist", [])
+            hist.append([w.copy() for w in raw])
+            hist = hist[-n:]
+            state.iceflow.ema_hist = hist
+            wts = np.array(kernel[: len(hist)], dtype=float)
+            wts = wts / wts.sum()
+            # hist is oldest->newest; kernel is newest-first
+            wts = wts[::-1]
+            ema = [
+                sum(w * h[i] for w, h in zip(wts, hist))
+                for i in range(len(raw))
+            ]
+        elif window > 0:
             # trailing mean: serve the uniform average of the last `window`
             # accepted raw weight sets (window=3: current + two previous)
             hist = getattr(state.iceflow, "ema_hist", [])

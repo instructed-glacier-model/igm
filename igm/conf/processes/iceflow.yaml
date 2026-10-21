@@ -346,6 +346,9 @@ iceflow:
       decay: 0.7
       window: 0      # >0: serve the uniform mean of the last N accepted weight
                      # sets (trailing average) instead of the exponential MA
+      weights: []    # non-empty: weighted trailing kernel, NEWEST first
+                     # (e.g. RK4-style [0.1667, 0.3333, 0.3333, 0.1667]);
+                     # overrides window and decay
     # Rolling weight checkpoints: every `freq` accepted retrains, save the
     # network weights (<dir>/iceflow_t<...>.weights.h5), keeping the last `keep`.
     checkpoint:

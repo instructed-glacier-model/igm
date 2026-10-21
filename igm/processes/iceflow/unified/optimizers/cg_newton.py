@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import os
 import time
 from typing import Callable, List, Optional, Tuple
 
@@ -122,10 +123,11 @@ class OptimizerCGNewton(Optimizer):
         if getattr(self.preconditioner, "needs_operator", False):
             self.preconditioner.set_operator(self.operator)
 
-        self._cg_A: Optional[Callable] = None
+        self._damping_var: Optional[tf.Variable] = None
         self._line_search_eval_fn: Optional[Callable] = None
         self._line_search_theta: Optional[tf.Variable] = None
         self._line_search_p: Optional[tf.Variable] = None
+        self._line_search_input: Optional[tf.Variable] = None
 
     def update_parameters(self, iter_max: int, damping: float) -> None:
         self.iter_max.assign(iter_max)
@@ -181,16 +183,25 @@ class OptimizerCGNewton(Optimizer):
             if token is not None:
                 tf.reshape(token, [-1])[0].numpy()
 
-    @tf.function(autograph=False, reduce_retracing=True, jit_compile=True)
+    # jit_compile only helps the banded operator (a tight band kernel). For the autodiff HVP,
+    # XLA folds the input fields and the velocity variables into the executable as constants
+    # and recompiles (~28 s) every Newton iteration; a plain graph has no such folding.
+    @tf.function(autograph=False, reduce_retracing=True, jit_compile=bool(int(os.environ.get('IGM_CG_JIT', '1'))))
     def _cg_solve(
         self,
         b: tf.Tensor,
         x0: tf.Tensor,
         iter_max: tf.Tensor,
         tol: tf.Tensor,
+        input: tf.Tensor,
+        damping: tf.Variable,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-        """Solve ``(H + damping I) x = b`` with compiled PCG."""
-        A = self._cg_A
+        """Solve ``(H + damping I) x = b`` with compiled PCG.
+
+        The input fields and the damping are arguments: a closure would be frozen at the first trace,
+        and every later solve would use the first call's Hessian.
+        """
+        A = lambda v_flat: self.operator.hvp(input, v_flat, damping)
         pre = self.preconditioner.apply
 
         x = x0
@@ -355,32 +366,45 @@ class OptimizerCGNewton(Optimizer):
             with tf.device(theta_flat.device):
                 self._p_prev = tf.Variable(tf.zeros_like(theta_flat), trainable=False)
 
-        # Keep the HVP callable stable; damping changes through its variable.
-        _damping_var = tf.Variable(self.damping, dtype=self.precision, trainable=False)
-
-        def _cg_A(v_flat: tf.Tensor) -> tf.Tensor:
-            return self.operator.hvp(input, v_flat, _damping_var)
-
-        self._cg_A = _cg_A
+        # One damping variable across calls, reset here: a new variable each call would be a new
+        # capture for every compiled function that reads it.
+        if self._damping_var is None:
+            with tf.device(theta_flat.device):
+                self._damping_var = tf.Variable(self.damping, dtype=self.precision, trainable=False)
+        else:
+            self._damping_var.assign(self.damping)
+        _damping_var = self._damping_var
 
         if self.line_search_compile:
-            # Variables carry trial state without retracing compiled searches.
-            with tf.device(theta_flat.device):
-                self._line_search_theta = tf.Variable(theta_flat, trainable=False)
-                self._line_search_p = tf.Variable(
-                    tf.zeros_like(theta_flat), trainable=False
-                )
+            # Variables carry the trial state AND the input, and the closure is built once:
+            # a new closure or variable per call would retrace the compiled search - and with
+            # it the whole cost graph (~20 s on 200 x 400) - at every solve, and a closure
+            # over `input` would freeze the first call's geometry into the single trace.
+            if (
+                self._line_search_theta is None
+                or self._line_search_theta.shape != theta_flat.shape
+            ):
+                with tf.device(theta_flat.device):
+                    self._line_search_theta = tf.Variable(theta_flat, trainable=False)
+                    self._line_search_p = tf.Variable(
+                        tf.zeros_like(theta_flat), trainable=False
+                    )
+                    self._line_search_input = tf.Variable(input, trainable=False)
 
-            def _line_search_eval(alpha: tf.Tensor) -> ValueAndGradient:
-                trial = self._line_search_theta + alpha * self._line_search_p
-                f, grad = self.operator.cost_grad_at(input, trial)
-                return ValueAndGradient(
-                    x=alpha,
-                    f=f,
-                    df=self._dot(grad, self._line_search_p),
-                )
+                def _line_search_eval(alpha: tf.Tensor) -> ValueAndGradient:
+                    trial = self._line_search_theta + alpha * self._line_search_p
+                    f, grad = self.operator.cost_grad_at(
+                        self._line_search_input, trial
+                    )
+                    return ValueAndGradient(
+                        x=alpha,
+                        f=f,
+                        df=self._dot(grad, self._line_search_p),
+                    )
 
-            self._line_search_eval_fn = _line_search_eval
+                self._line_search_eval_fn = _line_search_eval
+            else:
+                self._line_search_input.assign(input)
 
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
@@ -410,6 +434,8 @@ class OptimizerCGNewton(Optimizer):
                 x0=x0,
                 iter_max=self.cg_max_iter,
                 tol=self.cg_tol,
+                input=input,
+                damping=_damping_var,
             )
             if self.print_timing:
                 tf.reshape(p_flat, [-1])[0].numpy()
