@@ -7,6 +7,8 @@ import glob
 import math
 import os
 
+import numpy as np
+
 from omegaconf import DictConfig
 import tensorflow as tf
 
@@ -204,13 +206,24 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
             )
 
     if use_ema and not rejected:
-        decay = float(ema_cfg.decay)
         raw = state.iceflow_model.get_weights()
-        ema = getattr(state.iceflow, "ema_weights", None)
-        if ema is None:
-            ema = [w.copy() for w in raw]
+        window = int(getattr(ema_cfg, "window", 0) or 0)
+        if window > 0:
+            # trailing mean: serve the uniform average of the last `window`
+            # accepted raw weight sets (window=3: current + two previous)
+            hist = getattr(state.iceflow, "ema_hist", [])
+            hist.append([w.copy() for w in raw])
+            hist = hist[-window:]
+            state.iceflow.ema_hist = hist
+            ema = [np.mean([h[i] for h in hist], axis=0)
+                   for i in range(len(raw))]
         else:
-            ema = [decay * e + (1.0 - decay) * w for e, w in zip(ema, raw)]
+            decay = float(ema_cfg.decay)
+            ema = getattr(state.iceflow, "ema_weights", None)
+            if ema is None:
+                ema = [w.copy() for w in raw]
+            else:
+                ema = [decay * e + (1.0 - decay) * w for e, w in zip(ema, raw)]
         state.iceflow.ema_raw_weights = raw
         state.iceflow.ema_weights = ema
         state.iceflow_model.set_weights(ema)

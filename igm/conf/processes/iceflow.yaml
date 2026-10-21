@@ -344,6 +344,8 @@ iceflow:
     ema:
       enabled: false
       decay: 0.7
+      window: 0      # >0: serve the uniform mean of the last N accepted weight
+                     # sets (trailing average) instead of the exponential MA
     # Rolling weight checkpoints: every `freq` accepted retrains, save the
     # network weights (<dir>/iceflow_t<...>.weights.h5), keeping the last `keep`.
     checkpoint:
