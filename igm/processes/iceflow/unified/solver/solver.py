@@ -148,11 +148,18 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
         and cfg_unified.mapping == "network"
     )
     if use_ema:
-        raw = getattr(state.iceflow, "ema_raw_weights", None)
-        if raw is not None:
-            # the model currently holds EMA weights; restore the raw training
-            # trajectory before this retrain continues it
-            state.iceflow_model.set_weights(raw)
+        if str(getattr(ema_cfg, "train_from", "raw")) == "served":
+            # train from the SERVED (EMA) weights: the training trajectory is
+            # re-anchored to physics-validated weights every retrain, so a
+            # wandering raw trajectory can never lock the guard into a
+            # permanent rejection storm
+            pass
+        else:
+            raw = getattr(state.iceflow, "ema_raw_weights", None)
+            if raw is not None:
+                # the model currently holds EMA weights; restore the raw
+                # training trajectory before this retrain continues it
+                state.iceflow_model.set_weights(raw)
 
     # Retrain trust region (see iceflow.yaml `retrain_guard`): snapshot the
     # weights and the physics cost on the CURRENT inputs before a regular
