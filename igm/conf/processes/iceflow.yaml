@@ -346,6 +346,9 @@ iceflow:
       decay: 0.7
       window: 0      # >0: serve the uniform mean of the last N accepted weight
                      # sets (trailing average) instead of the exponential MA
+      reanchor_after: 0  # >0: after K consecutive guard rejections, snap the raw
+                         # training trajectory to the served weights (rescue mode
+                         # against guard-lock; keeps raw accuracy otherwise)
       train_from: raw  # raw: training continues its own trajectory (classic EMA);
                        # served: each retrain starts from the EMA weights, which
                        # prevents guard-lock (permanent rejection storms)

@@ -194,9 +194,29 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
         )
         if rejected:
             guard_model.set_weights(weights_before)
+            state.iceflow.guard_consecutive_rejects = (
+                getattr(state.iceflow, "guard_consecutive_rejects", 0) + 1
+            )
             if use_ema and getattr(state.iceflow, "ema_weights", None) is not None:
                 # keep serving the EMA weights after a rejected retrain
                 state.iceflow.ema_raw_weights = weights_before
+                # rescue re-anchor (ema.reanchor_after): after K consecutive
+                # rejections the raw trajectory is provably stuck - snap it to
+                # the served (EMA) weights so the next retrain starts from a
+                # physics-vetted state instead of the stuck one. Breaks
+                # guard-lock without the accuracy cost of always training
+                # from the served weights.
+                k = int(getattr(ema_cfg, "reanchor_after", 0) or 0)
+                if k > 0 and state.iceflow.guard_consecutive_rejects >= k:
+                    state.iceflow.ema_raw_weights = [
+                        w.copy() for w in state.iceflow.ema_weights
+                    ]
+                    state.iceflow.guard_consecutive_rejects = 0
+                    print(
+                        f"retrain guard t={float(getattr(state, 't', 0.0)):.1f}: "
+                        f"{k} consecutive rejections - raw trajectory re-anchored "
+                        "to the served weights"
+                    )
                 guard_model.set_weights(state.iceflow.ema_weights)
             state.iceflow.retrains_rejected = (
                 getattr(state.iceflow, "retrains_rejected", 0) + 1
@@ -206,11 +226,13 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
                 f"cost {cost_before:.6e} -> {cost_after:.6e} REJECTED, weights "
                 f"rolled back (total rejected {state.iceflow.retrains_rejected})"
             )
-        elif bool(getattr(guard_cfg, "verbose", False)):
-            print(
-                f"retrain guard t={float(getattr(state, 't', 0.0)):.1f}: "
-                f"cost {cost_before:.6e} -> {cost_after:.6e} ok"
-            )
+        else:
+            state.iceflow.guard_consecutive_rejects = 0
+            if bool(getattr(guard_cfg, "verbose", False)):
+                print(
+                    f"retrain guard t={float(getattr(state, 't', 0.0)):.1f}: "
+                    f"cost {cost_before:.6e} -> {cost_after:.6e} ok"
+                )
 
     if use_ema and not rejected:
         raw = state.iceflow_model.get_weights()
