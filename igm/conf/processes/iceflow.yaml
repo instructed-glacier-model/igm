@@ -359,6 +359,8 @@ iceflow:
       freq: 100
       keep: 5
       dir: weight_checkpoints
+      restore_path: ""   # load these saved weights into the fresh network at
+                         # startup (combine with nbit_init=0 to skip init training)
     adaptive_time:
       # Temporal lever (B) — decides WHEN to retrain. Mirror of adaptive_patching (C).
       # Additive: never moves top-level retrain_freq / retrain_threshold, only dispatches.

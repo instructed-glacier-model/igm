@@ -71,6 +71,17 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.iceflow.optimizer = optimizer
 
+    # Restore saved weights (see iceflow.yaml `checkpoint.restore_path`): load a
+    # rolling-checkpoint .weights.h5 into the freshly built network, e.g. to
+    # reproduce a failure from just before it happened. Combine with
+    # nbit_init=0 to skip the from-scratch initial training.
+    restore_path = str(
+        getattr(getattr(cfg_unified, "checkpoint", None), "restore_path", "") or ""
+    )
+    if restore_path and mapping_name == "network":
+        state.iceflow_model.load_weights(restore_path)
+        print(f"iceflow: restored network weights from {restore_path}")
+
     # Error estimator (optional)
     if InterfaceErrorEstimator.enabled(cfg):
         error_estimator_args = InterfaceErrorEstimator.get_error_estimator_args(
