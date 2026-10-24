@@ -176,7 +176,11 @@ def _collect(path: str, obj: Any, arrays: dict, entries: list, skipped: list,
             key = f"{len(arrays):05d}"
             arrays[key] = v.numpy()
             keys.append(key)
-        entries.append({"path": path, "kind": "keras_optimizer", "keys": keys})
+        # shapes of the variables the optimizer was built on (Keras 3): lets the
+        # restore rebuild the slot variables of a not-yet-built fresh optimizer
+        built_on = getattr(obj, "_trainable_variables", None) or []
+        entries.append({"path": path, "kind": "keras_optimizer", "keys": keys,
+                        "var_shapes": [list(v.shape) for v in built_on]})
     elif isinstance(obj, dict):
         if id(obj) in seen:
             return
@@ -255,10 +259,29 @@ def _resolve(root, path: str):
             if not hasattr(obj, p):
                 return None, parts[-1], False
             obj = getattr(obj, p)
+        if obj is None:
+            # container not created yet on the fresh state (e.g. set by the first
+            # update): exists=None tells the caller to skip silently
+            return None, parts[-1], None
     last = parts[-1]
     if isinstance(obj, dict):
         return obj, last, last in obj
     return obj, last, hasattr(obj, last)
+
+
+def _find_trainable_variables(state, manifest, shapes):
+    """Trainable variables of the checkpointed Keras model whose shapes match."""
+    for e in manifest["entries"]:
+        if e["kind"] != "keras_model":
+            continue
+        parent, key, exists = _resolve(state, e["path"])
+        if parent is None or not exists:
+            continue
+        model = _get(parent, key)
+        tv = list(getattr(model, "trainable_variables", []))
+        if [list(v.shape) for v in tv] == [list(x) for x in shapes]:
+            return tv
+    return None
 
 
 def _get(parent, key):
@@ -382,7 +405,8 @@ def restore_checkpoint(cfg, state) -> dict:
         path, kind = e["path"], e["kind"]
         parent, key, exists = _resolve(state, path)
         if parent is None:
-            problems.append(f"{path}: container missing on the fresh state")
+            if exists is not None:
+                problems.append(f"{path}: container missing on the fresh state")
             continue
 
         if kind == "variable":
@@ -439,6 +463,19 @@ def restore_checkpoint(cfg, state) -> dict:
                 continue
             opt = _get(parent, key)
             values = [data[k] for k in e["keys"]]
+            if (
+                not getattr(opt, "built", True)
+                and len(opt.variables) < len(values)
+                and e.get("var_shapes")
+            ):
+                # fresh optimizer not built yet (Keras builds the slot variables at
+                # the first apply_gradients): build it on the model it was trained on
+                target = _find_trainable_variables(state, manifest, e["var_shapes"])
+                if target is not None:
+                    try:
+                        opt.build(target)
+                    except Exception as err:  # pragma: no cover
+                        problems.append(f"{path}: cannot build optimizer ({err})")
             if len(opt.variables) != len(values):
                 if len(values) == 0:
                     continue  # was not built when saved either
