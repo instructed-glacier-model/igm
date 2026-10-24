@@ -101,3 +101,48 @@ structure:
     Type: string
     Description: "Sub-folder name for custom output modules."
     Units: dimless
+checkpoint:
+  enabled:
+    Type: boolean
+    Description: "Write checkpoints of the whole model state in the run directory and honour graceful stop requests (signals, stop file). Off by default."
+    Units: dimless
+  restart:
+    Type: string
+    Description: "`auto` resumes from a checkpoint if one is found in the run directory (pass the same `hydra.run.dir=`); `True` requires one; `False` always starts afresh."
+    Units: dimless
+  folder:
+    Type: string
+    Description: "Folder holding the checkpoint (`state.npz` + `manifest.json`), relative to the run directory."
+    Units: dimless
+  every_save:
+    Type: integer
+    Description: "Write a checkpoint every N output-saving times (`processes.time.save`). 0 disables this trigger."
+    Units: dimless
+  every_iter:
+    Type: integer
+    Description: "Write a checkpoint every N time iterations. 0 disables this trigger."
+    Units: dimless
+  every_seconds:
+    Type: float
+    Description: "Write a checkpoint every N seconds of wall-clock time. 0 disables this trigger."
+    Units: s
+  signals:
+    Type: list
+    Description: "Signals that request a graceful stop (e.g. `SIGUSR1` sent by SLURM `--signal=B:USR1@300`): the current iteration finishes, a checkpoint is written, the process exits."
+    Units: dimless
+  stop_file:
+    Type: string
+    Description: "Name of a file whose presence in the run directory requests a graceful stop (`touch STOP`). Empty disables it."
+    Units: dimless
+  exit_code:
+    Type: integer
+    Description: "Process exit code after a graceful stop; some schedulers requeue on a specific code."
+    Units: dimless
+  keep_on_finish:
+    Type: boolean
+    Description: "Keep the last checkpoint once the run has completed (by default it is removed so a re-run starts afresh)."
+    Units: dimless
+  check_config:
+    Type: boolean
+    Description: "Warn when the current configuration differs from the one stored in the checkpoint being resumed."
+    Units: dimless

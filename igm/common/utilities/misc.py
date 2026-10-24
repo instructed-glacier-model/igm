@@ -68,6 +68,10 @@ class TeeStream:
 
 def add_logger(cfg, state) -> None:
 
+    # On a restart the run directory already holds the logs of the previous
+    # attempt(s): append to them instead of overwriting.
+    mode = "a" if getattr(state, "ckpt_restarting", False) else "w"
+
     logger = logging.getLogger("igm")
     logger.setLevel(cfg.core.igm_logging_level)
 
@@ -83,7 +87,7 @@ def add_logger(cfg, state) -> None:
     logger.addHandler(console_handler)
 
     # File handler — Hydra already set cwd to the output dir, so this lands there
-    file_handler = logging.FileHandler("igm.log", mode="w", encoding="utf-8")
+    file_handler = logging.FileHandler("igm.log", mode=mode, encoding="utf-8")
     file_handler.setLevel(cfg.core.igm_logging_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
@@ -91,7 +95,7 @@ def add_logger(cfg, state) -> None:
     state.logger = logger
 
     # Tee stdout/stderr directly to file - no logger overhead
-    sys.stdout = TeeStream(sys.__stdout__, "terminal.log")
+    sys.stdout = TeeStream(sys.__stdout__, "terminal.log", mode=mode)
     sys.stderr = TeeStream(
         sys.__stderr__, "terminal.log", mode="a"
     )  # append so both go to same file

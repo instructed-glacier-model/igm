@@ -11,6 +11,10 @@ import tensorflow as tf
 def initialize_write_particle_numpy(cfg, state):
 
     directory = "trajectories"
+    if getattr(state, "ckpt_restarting", False):
+        # restart from a checkpoint: keep the trajectories written so far
+        os.makedirs(directory, exist_ok=True)
+        return
     if os.path.exists(directory):
         shutil.rmtree(directory)
     os.mkdir(directory)

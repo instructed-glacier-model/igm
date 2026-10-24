@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 import os
+import sys
 
 import tensorflow as tf
 
@@ -21,6 +22,7 @@ from igm.common import (
     check_incompatilities_in_parameters_file,
 )
 from igm.common.aliases import load_aliases_from_core_cfg
+from igm.common import checkpoint
 
 from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
@@ -79,6 +81,17 @@ def main(cfg: DictConfig) -> None:
     state.saveresult = True
     state.start_time = datetime.now()
 
+    # Checkpoint / restart: resume if the run directory holds a checkpoint.
+    ckpt = cfg.core.checkpoint
+    restart = str(ckpt.restart).lower()
+    state.ckpt_restarting = restart in ("auto", "true") and checkpoint.checkpoint_exists(cfg)
+    if restart == "true" and not state.ckpt_restarting:
+        raise FileNotFoundError(
+            f"core.checkpoint.restart=True but no checkpoint found in {checkpoint.checkpoint_dir(cfg)}"
+        )
+    if ckpt.enabled:
+        checkpoint.install_signal_handlers(cfg, state)
+
     write_igm_version(Path(os.getcwd()))
 
     if cfg.core.check_compat_params:
@@ -135,8 +148,20 @@ def main(cfg: DictConfig) -> None:
         initialize_modules(combined_modules, cfg, state)
         if cfg.core.check_module_needs:
             check_module_needs(combined_modules, state, cfg)
+        if state.ckpt_restarting:
+            checkpoint.restore_checkpoint(cfg, state)
         update_modules(combined_modules, imported_outputs_modules, cfg, state)
+        if getattr(state, "ckpt_stopped", False):
+            # Graceful stop: the checkpoint is written, the run is not finished,
+            # so the modules are not finalized. Exit for the scheduler to requeue.
+            print(
+                f"[checkpoint] run stopped at it={state.it} t={float(state.t.numpy())}; "
+                f"re-run the same command in {os.getcwd()} to resume."
+            )
+            sys.exit(int(ckpt.exit_code))
         finalize_modules(combined_modules, cfg, state)
+        if ckpt.enabled and not ckpt.keep_on_finish:
+            checkpoint.remove_checkpoint(cfg, state)
 
     if cfg.core.print_comp:
         print_comp(state)

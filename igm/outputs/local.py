@@ -177,10 +177,14 @@ def update_netcdf_ex(cfg, state):
         if hasattr(state, "logger"):
             state.logger.info(f"Appending to NetCDF file at iteration {state.it}")
 
+        t_now = getattr(state, "t", tf.constant(0)).numpy()
         ds_existing = xr.open_dataset(file_path)
+        # After a restart from a checkpoint the file may already hold this
+        # time (written just before the stop): drop it so the write is idempotent.
+        ds_existing = ds_existing.isel(time=ds_existing["time"].values < t_now)
         new_data = xr.Dataset(
             data_vars=create_data_vars(),
-            coords={"time": [getattr(state, "t", tf.constant(0)).numpy()]},
+            coords={"time": [t_now]},
         )
 
         # concat and write again
@@ -230,10 +234,13 @@ def update_netcdf_ts(cfg, state):
             state.logger.info("Write NCDF ts file at itaration : " + str(state.it))
 
         # Append new data to existing NetCDF file
+        t_now = getattr(state, "t", tf.constant(0)).numpy()
         with xr.open_dataset(file_path) as ds:
+            # idempotent after a restart from a checkpoint (see update_netcdf_ex)
+            ds = ds.isel(time=ds["time"].values < t_now)
             ds_new = xr.Dataset(
                 {
-                    "time": ("time", [getattr(state, "t", tf.constant(0)).numpy()]),
+                    "time": ("time", [t_now]),
                     "vol": ("time", [vol]),
                     "area": ("time", [area]),
                 }

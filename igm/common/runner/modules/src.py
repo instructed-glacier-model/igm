@@ -16,6 +16,7 @@ from ...utilities import print_info
 from ..modules.loader import load_modules
 
 from ....utils.profiling import profile_range
+from ... import checkpoint
 
 _console = Console(stderr=True)
 
@@ -73,8 +74,10 @@ def _collect_output_vars(outputs: List, cfg: Any) -> set:
 
 def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> None:
 
-    state.it = 0
-    state.continue_run = True
+    if not getattr(state, "ckpt_restarted", False):
+        # On a restart `it`, `continue_run`, `saveresult`, ... come from the checkpoint.
+        state.it = 0
+        state.continue_run = True
     if cfg.core.print_comp:
         state.tcomp = {
             module.__name__.split(".")[-1]: [] for module in processes + outputs
@@ -111,6 +114,8 @@ def update_modules(processes: List, outputs: List, cfg: Any, state: State) -> No
 
         if not hasattr(state, "t"):
             state.continue_run = False
+
+        checkpoint.end_of_iteration(cfg, state)
 
 
 def finalize_modules(processes: List, cfg: Any, state: State) -> None:

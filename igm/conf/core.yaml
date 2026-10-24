@@ -24,6 +24,20 @@ core:
   check_compat_params: True
   check_module_needs: False
 
+  # Checkpoint / restart (see docs: "Checkpoint and restart")
+  checkpoint:
+    enabled: False          # write checkpoints and honour stop requests
+    restart: auto           # auto | True | False: resume from a checkpoint found in the run dir
+    folder: checkpoint      # checkpoint folder, relative to the run (Hydra) directory
+    every_save: 1           # checkpoint every N output-saving times (0 = off)
+    every_iter: 0           # checkpoint every N iterations (0 = off)
+    every_seconds: 0        # checkpoint every N seconds of wall-clock time (0 = off)
+    signals: [SIGUSR1, SIGTERM]  # stop gracefully on these signals: finish the iteration, checkpoint, exit
+    stop_file: STOP         # stop gracefully if this file appears in the run directory
+    exit_code: 0            # process exit code after a graceful stop
+    keep_on_finish: False   # keep the last checkpoint once the run has completed
+    check_config: True      # warn when the configuration differs from the checkpointed one
+
   # State variable aliases
   aliases:
     builtin: []
