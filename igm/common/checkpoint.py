@@ -20,6 +20,7 @@ provided it is one of
 * ``tf.Variable`` / eager ``tf.Tensor``        (fields, scalars, counters)
 * ``numpy.ndarray`` / numpy scalar
 * Python ``int``/``float``/``bool``/``str``/``None`` and lists/tuples of them
+  (lists of NumPy scalars keep their dtype)
 * ``dict`` of the above (e.g. ``state.particle``)
 * ``tf.keras.Model``                             (weights)
 * ``tf.keras.optimizers.Optimizer``              (slots, iteration counter)
@@ -142,9 +143,18 @@ def _collect(path: str, obj: Any, arrays: dict, entries: list, skipped: list,
     elif isinstance(obj, _PY_SCALARS):
         entries.append({"path": path, "kind": "py", "value": obj})
     elif _is_py_scalar_list(obj):
-        entries.append({"path": path, "kind": "py",
-                        "value": [_to_py(v) for v in obj],
-                        "tuple": isinstance(obj, tuple)})
+        np_dtypes = {v.dtype for v in obj if isinstance(v, np.generic)}
+        if obj and len(np_dtypes) == 1 and all(isinstance(v, np.generic) for v in obj):
+            # list of NumPy scalars (e.g. np.float32 statistics): keep the dtype,
+            # a float64 round trip would change later reductions in the last bits
+            key = f"{len(arrays):05d}"
+            arrays[key] = np.array(obj)
+            entries.append({"path": path, "kind": "nplist", "key": key,
+                            "tuple": isinstance(obj, tuple)})
+        else:
+            entries.append({"path": path, "kind": "py",
+                            "value": [_to_py(v) for v in obj],
+                            "tuple": isinstance(obj, tuple)})
     elif _is_keras_model(obj):
         if id(obj) in seen:
             entries.append({"path": path, "kind": "alias"})
@@ -393,6 +403,10 @@ def restore_checkpoint(cfg, state) -> dict:
             n_applied += 1
         elif kind == "ndarray":
             _set(parent, key, np.array(data[e["key"]]))
+            n_applied += 1
+        elif kind == "nplist":
+            seq = list(data[e["key"]])  # NumPy scalars of the saved dtype
+            _set(parent, key, tuple(seq) if e.get("tuple") else seq)
             n_applied += 1
         elif kind == "py":
             v = e["value"]

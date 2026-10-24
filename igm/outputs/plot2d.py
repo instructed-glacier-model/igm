@@ -27,6 +27,11 @@ def run(cfg, state):
         if cfg.outputs.plot2d.var == "velbar_mag":
             state.velbar_mag = getmag(state.ubar, state.vbar)
 
+        # Remove the images of the previous frame: imshow would otherwise stack
+        # them, with the transparent (NaN) cells showing the older frames through.
+        for im_old in state.ax.images[:]:
+            im_old.remove()
+
         im0 = state.ax.imshow(
             state.topg,
             origin="lower",
@@ -68,9 +73,10 @@ def run(cfg, state):
                 )
         state.ax.set_title("YEAR : " + str(getattr(state, 't', tf.constant(0)).numpy()), size=15)
 
-        if not hasattr(state, "already_set_cbar"):
+        # `state.cbar` is a matplotlib object: it is absent on a fresh figure
+        # (first call, or restart from a checkpoint), present otherwise.
+        if not hasattr(state, "cbar"):
             state.cbar = plt.colorbar(im, label=cfg.outputs.plot2d.var)
-            state.already_set_cbar = True
 
         if cfg.outputs.plot2d.live:
             if cfg.outputs.plot2d.editor == "vs":
