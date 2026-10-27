@@ -376,6 +376,54 @@ class DahuNet(tf.keras.Model):
         _ = self.call(dummy, training=False)
         super().build(input_shape)
 
+    # Inference precision of the conv stack, set at run time (never serialised, so
+    # .keras artifacts are unaffected). None = the model's own dtype.
+    _inference_dtype = None
+
+    def set_inference_precision(self, precision: str) -> None:
+        """Run the CNN backend's conv stack in float16 for inference-only runs.
+
+        Inputs, normaliser, physics features and the 1×1 output conv stay in
+        the model's dtype, and the weights are untouched. If a float16 pass gives
+        a non-finite output (overflow), that call is recomputed in the model's dtype.
+        Set it once after building / loading, before the first call is traced.
+        """
+        if precision == "float16":
+            if self.backend_name != "cnn":
+                raise ValueError(
+                    f"float16 inference needs the cnn backend, not {self.backend_name!r}"
+                )
+            if not self.built:
+                raise ValueError(
+                    "Build or load the model before setting float16 inference"
+                )
+        self._inference_dtype = tf.float16 if precision == "float16" else None
+
+    def _backend_fp16(self, h: tf.Tensor) -> tf.Tensor:
+        """_CNNBackend.call in float16 on the backend's own weights."""
+        b = self._backend
+        c = lambda v: tf.cast(v, tf.float16)
+
+        def conv(layer, x):
+            y = tf.nn.conv2d(x, c(layer.kernel), strides=1, padding="SAME")
+            return y if layer.bias is None else y + c(layer.bias)
+
+        x = tf.einsum("...i,ij->...j", c(h), c(b.combine.kernel))
+        x = tf.nn.gelu(x if b.combine.bias is None else x + c(b.combine.bias))
+        skip = conv(b.skip_proj, x)
+        for i, layer in enumerate(b.backbone):
+            res = x
+            x = tf.nn.gelu(conv(layer, x))
+            if b.use_residual and i % 2 == 1:
+                x = x + res
+        return b.out(tf.cast(x + skip, self.compute_dtype))
+
+    def _fp32_fallback(self, h: tf.Tensor) -> tf.Tensor:
+        tf.print(
+            "DahuNet: float16 inference gave non-finite output; this call recomputed at full precision"
+        )
+        return self._backend(h)
+
     def call(
         self, inputs: tf.Tensor, training: bool = False
     ) -> tf.Tensor:  # [B,H,W,C_in] → [B,H,W,C_out]
@@ -387,5 +435,13 @@ class DahuNet(tf.keras.Model):
 
         proxies = _dict_proxies(raw, self.idx_thk, self.idx_usurf, self.idx_dX)
         features = tf.concat([fn(proxies) for fn in self.feature_fns], axis=-1)
+        h = tf.concat([features, x], axis=-1)
 
-        return self._backend(tf.concat([features, x], axis=-1), training=training)
+        if self._inference_dtype is None or training:
+            return self._backend(h, training=training)
+        y = self._backend_fp16(h)
+        return tf.cond(
+            tf.reduce_all(tf.math.is_finite(y)),
+            lambda: y,
+            lambda: self._fp32_fallback(h),
+        )

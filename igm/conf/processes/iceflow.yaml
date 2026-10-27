@@ -302,6 +302,10 @@ iceflow:
       seed: null                # int => deterministic weight init (set_random_seed
                                 # before the from-scratch net is built); null => fresh
                                 # randomness each run. Makes DA results reproducible.
+      # Switching to float16 precision when using the pretrained network can greatly
+      # improve performance with almost no change in accuracy.. but never use this 
+      # in conjunction with retraining.
+      fp16_inference: false
       architecture: dahunet
       # Architecture hyperparameters for the from-scratch path (pretrained: false).
       # Owned by the unified mode (no longer read from emulator.network).
