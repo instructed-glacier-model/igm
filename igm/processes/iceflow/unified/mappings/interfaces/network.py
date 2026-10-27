@@ -116,6 +116,27 @@ class InterfaceNetwork(InterfaceMapping):
 
         state.iceflow_model = iceflow_model
 
+        if cfg_unified.network.fp16_inference:
+            # fp16 gradients underflow: forward runs only, nothing that trains or
+            # differentiates through the network (retraining, assimilations)
+            nbits = [cfg_unified[k] for k in ("nbit", "nbit_init", "nbit_warmup")]
+            if (
+                not cfg_unified.network.pretrained
+                or cfg.get("assimilations")
+                or max(nbits) > 0
+            ):
+                raise ValueError(
+                    "fp16_inference is for forward runs of a pretrained network that is "
+                    "not retrained: needs network.pretrained true, no assimilations, and "
+                    f"nbit, nbit_init, nbit_warmup <= 0 (got {nbits})"
+                )
+            core = getattr(iceflow_model, "core", iceflow_model)
+            if not hasattr(core, "set_inference_precision"):
+                raise ValueError(
+                    f"fp16_inference is not supported by {type(core).__name__}"
+                )
+            core.set_inference_precision("float16")
+
         bcs = init_bcs(cfg, state, cfg_unified.bcs)
 
         return {
