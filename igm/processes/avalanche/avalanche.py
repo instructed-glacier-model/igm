@@ -119,6 +119,31 @@ def update(cfg, state):
 
         state.usurf = state.topg + state.thk
 
+        # Residual above the repose criterion on the final geometry (0 = fully relaxed): did the
+        # relaxation converge within its sweeps, or exit at the 300-sweep cap? Printed at save
+        # times, and always when it exits capped.
+        converged = count >= 2000
+        if (not converged) or getattr(state, "saveresult", False):
+            dZx = tf.maximum(
+                tf.pad(tf.maximum(Zi[:, 1:] - Zi[:, :-1], 0), [[0, 0], [1, 0]], "CONSTANT"),
+                tf.pad(tf.maximum(Zi[:, :-1] - Zi[:, 1:], 0), [[0, 0], [0, 1]], "CONSTANT"),
+            )
+            dZy = tf.maximum(
+                tf.pad(tf.maximum(Zi[1:, :] - Zi[:-1, :], 0), [[1, 0], [0, 0]], "CONSTANT"),
+                tf.pad(tf.maximum(Zi[:-1, :] - Zi[1:, :], 0), [[0, 1], [0, 0]], "CONSTANT"),
+            )
+            grad_end = tf.where(Ho < 0.1, 0.0, tf.math.sqrt(dZx**2 + dZy**2))
+            surplus = tf.maximum(0.0, grad_end - dHRepose)
+            on_ice = tf.boolean_mask(surplus, Ho >= 0.1)
+            mean_res = float(tf.reduce_mean(on_ice)) if int(tf.size(on_ice)) > 0 else 0.0
+            sweeps = "converged" if converged else f"CAPPED at {count - 1} sweeps"
+            print(
+                f"avalanche t={float(state.t):.1f}: {sweeps}; residual over repose "
+                f"mean {mean_res:.3f} m, max {float(tf.reduce_max(surplus)):.2f} m "
+                f"(repose drop {float(dHRepose):.0f} m/cell)",
+                flush=True,
+            )
+
         state.tlast_avalanche.assign(state.t)
 
 
