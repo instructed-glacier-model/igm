@@ -31,9 +31,7 @@ from igm.processes.iceflow.unified.optimizers.interfaces.cg_newton import (
 
 def test_cg_newton_replaces_nonfinite_or_non_descent_direction():
     shape = (1, 1, 1, 1)
-    mapping = MappingIdentity(
-        [], tf.zeros(shape), tf.zeros(shape), precision="single"
-    )
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
     optimizer = OptimizerCGNewton(
         cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
         map=mapping,
@@ -48,9 +46,7 @@ def test_cg_newton_replaces_nonfinite_or_non_descent_direction():
     )
     np.testing.assert_allclose(direction, -gradient)
 
-    direction, _ = optimizer._force_descent(
-        gradient, gradient, tf.zeros_like(gradient)
-    )
+    direction, _ = optimizer._force_descent(gradient, gradient, tf.zeros_like(gradient))
     np.testing.assert_allclose(direction, -gradient)
 
 
@@ -62,9 +58,7 @@ def test_cg_newton_rejects_invalid_cg_curvature(
     invalid_product, expected_iterations, finite_residual
 ):
     shape = (1, 1, 1, 1)
-    mapping = MappingIdentity(
-        [], tf.zeros(shape), tf.zeros(shape), precision="single"
-    )
+    mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
     optimizer = OptimizerCGNewton(
         cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
         map=mapping,
@@ -91,9 +85,7 @@ def test_cg_newton_rejects_invalid_cg_curvature(
 
 def _cold_restart_optimizer(interval):
     shape = (1, 1, 1, 1)
-    mapping = MappingIdentity(
-        [], tf.ones(shape), -tf.ones(shape), precision="single"
-    )
+    mapping = MappingIdentity([], tf.ones(shape), -tf.ones(shape), precision="single")
     optimizer = OptimizerCGNewton(
         cost_fn=lambda U, V, inputs: tf.reduce_sum(U * U + V * V),
         map=mapping,
@@ -235,16 +227,12 @@ def test_banded_hvp_and_block_jacobi_match_quadratic(nz, periodic):
         )
         dx = components[:, :, :, 1:] - components[:, :, :, :-1]
         dy = components[:, :, 1:, :] - components[:, :, :-1, :]
-        return point_energy + 0.25 * (
-            tf.reduce_sum(dx * dx) + tf.reduce_sum(dy * dy)
-        )
+        return point_energy + 0.25 * (tf.reduce_sum(dx * dx) + tf.reduce_sum(dy * dy))
 
     inputs = tf.zeros([1, 1, 1, 1, 1], dtype=dtype)
     damping = tf.constant(1.0e-15, dtype=dtype)
     exact = ADOperator(local_quadratic, mapping, precision="double")
-    operator_cls = (
-        SSABandedADOperator if nz == 1 and not periodic else BandedADOperator
-    )
+    operator_cls = SSABandedADOperator if nz == 1 and not periodic else BandedADOperator
     banded = operator_cls(
         local_quadratic,
         mapping,
@@ -446,9 +434,7 @@ def test_two_component_block_jacobi_uses_elementwise_inverse(monkeypatch):
         del args, kwargs
         raise AssertionError("SSA block inversion must not call tf.linalg.eigh")
 
-    preconditioner = build_preconditioner(
-        "block_jacobi", mapping, precision="double"
-    )
+    preconditioner = build_preconditioner("block_jacobi", mapping, precision="double")
     preconditioner.set_operator(CenterOperator())
     monkeypatch.setattr(tf.linalg, "eigh", fail_eigh)
     preconditioner.update(

@@ -99,9 +99,7 @@ class OptimizerCGNewton(Optimizer):
             tf.cast(float("nan"), self.precision), trainable=False
         )
 
-        self.operator: Operator = operator or ADOperator(
-            cost_fn, self.map, precision
-        )
+        self.operator: Operator = operator or ADOperator(cost_fn, self.map, precision)
 
         self.operator_update_freq = int(operator_update_freq)
         self.precond_update_freq = int(precond_update_freq)
@@ -157,9 +155,7 @@ class OptimizerCGNewton(Optimizer):
         if elapsed + tolerance < interval:
             return
 
-        self.map.set_theta(
-            [tf.zeros_like(value) for value in self.map.get_theta()]
-        )
+        self.map.set_theta([tf.zeros_like(value) for value in self.map.get_theta()])
         self.reset_warm_start()
         # Keep the schedule anchored when a CFL-dependent timestep overshoots
         # one or more restart boundaries.
@@ -335,9 +331,7 @@ class OptimizerCGNewton(Optimizer):
         alpha = float(self.line_search.step_size_initial)
         for _ in range(self.line_search.max_iter):
             alpha_tensor = tf.constant(alpha, dtype=theta_flat.dtype)
-            f_alpha = float(
-                self._cost_at(input, theta_flat + alpha_tensor * p_flat)
-            )
+            f_alpha = float(self._cost_at(input, theta_flat + alpha_tensor * p_flat))
             if f_alpha <= f0 + self.line_search.c1 * alpha * df0:
                 break
             alpha *= self.line_search.rho
@@ -445,9 +439,7 @@ class OptimizerCGNewton(Optimizer):
             costs.append(cost)
 
             U, V = self.map.get_UV(input)
-            grad_u_norm, grad_theta_norm = self._get_grad_norm(
-                grad_u, grad_theta
-            )
+            grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
             self._update_step_state(
                 iteration,
                 U,

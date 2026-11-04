@@ -89,10 +89,9 @@ class AxisTransfer:
         shape[axis] = self.fine_size
         left_weight = tf.reshape(tf.cast(self.left_weight, dtype), shape)
         right_weight = tf.reshape(tf.cast(self.right_weight, dtype), shape)
-        return (
-            left_weight * tf.gather(value, self.left, axis=axis)
-            + right_weight * tf.gather(value, self.right, axis=axis)
-        )
+        return left_weight * tf.gather(
+            value, self.left, axis=axis
+        ) + right_weight * tf.gather(value, self.right, axis=axis)
 
     def restrict(self, value: tf.Tensor, axis: int) -> tf.Tensor:
         rank = value.shape.rank
@@ -102,12 +101,8 @@ class AxisTransfer:
         value = tf.transpose(value, permutation)
         rank = value.shape.rank
         weight_shape = [self.fine_size] + [1] * (rank - 1)
-        left_weight = tf.reshape(
-            tf.cast(self.left_weight, value.dtype), weight_shape
-        )
-        right_weight = tf.reshape(
-            tf.cast(self.right_weight, value.dtype), weight_shape
-        )
+        left_weight = tf.reshape(tf.cast(self.left_weight, value.dtype), weight_shape)
+        right_weight = tf.reshape(tf.cast(self.right_weight, value.dtype), weight_shape)
         restricted = tf.math.unsorted_segment_sum(
             left_weight * value,
             self.left,
@@ -205,9 +200,7 @@ class BarotropicMultigrid:
                 reduce_retracing=True,
             )
             inverse_center = tf.Variable(
-                tf.zeros(
-                    (self.batch_size, 2, 2, level_ny, level_nx), dtype
-                ),
+                tf.zeros((self.batch_size, 2, 2, level_ny, level_nx), dtype),
                 trainable=False,
                 name=f"barotropic_inverse_{level_index}",
             )
@@ -241,9 +234,7 @@ class BarotropicMultigrid:
             name="barotropic_bottom_inverse",
         )
 
-    def _build_dense_map(
-        self, ny: int, nx: int
-    ) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _build_dense_map(self, ny: int, nx: int) -> Tuple[tf.Tensor, tf.Tensor]:
         """Map bottom-level stencil entries into a dense matrix."""
         offset_index = {offset: index for index, offset in enumerate(OFFSETS)}
         gather = []
