@@ -384,8 +384,7 @@ class DahuNet(tf.keras.Model):
         """Run the CNN backend's conv stack in float16 for inference-only runs.
 
         Inputs, normaliser, physics features and the 1×1 output conv stay in
-        the model's dtype, and the weights are untouched. If a float16 pass gives
-        a non-finite output (overflow), that call is recomputed in the model's dtype.
+        the model's dtype. IGM's evaluator stops the run if the velocities are NaN.
         Set it once after building / loading, before the first call is traced.
         """
         if precision == "float16":
@@ -418,12 +417,6 @@ class DahuNet(tf.keras.Model):
                 x = x + res
         return b.out(tf.cast(x + skip, self.compute_dtype))
 
-    def _fp32_fallback(self, h: tf.Tensor) -> tf.Tensor:
-        tf.print(
-            "DahuNet: float16 inference gave non-finite output; this call recomputed at full precision"
-        )
-        return self._backend(h)
-
     def call(
         self, inputs: tf.Tensor, training: bool = False
     ) -> tf.Tensor:  # [B,H,W,C_in] → [B,H,W,C_out]
@@ -439,9 +432,4 @@ class DahuNet(tf.keras.Model):
 
         if self._inference_dtype is None or training:
             return self._backend(h, training=training)
-        y = self._backend_fp16(h)
-        return tf.cond(
-            tf.reduce_all(tf.math.is_finite(y)),
-            lambda: y,
-            lambda: self._fp32_fallback(h),
-        )
+        return self._backend_fp16(h)

@@ -114,6 +114,16 @@ def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
     evaluator_params = state.iceflow.evaluator_params
     update = evaluator_iceflow(inputs, evaluator_params, **kwargs)
 
+    # float16 overflow shows up as non-finite velocities, just throw error for now...
+    if cfg.processes.iceflow.unified.network.fp16_inference and not bool(
+        tf.reduce_all(tf.math.is_finite(update["U"]))
+        & tf.reduce_all(tf.math.is_finite(update["V"]))
+    ):
+        raise RuntimeError(
+            "fp16_inference: the float16 network gave non-finite velocities (overflow). "
+            "Rerun with processes.iceflow.unified.network.fp16_inference: false."
+        )
+
     # Update velocity state
     for key, value in update.items():
         setattr(state, key, value)

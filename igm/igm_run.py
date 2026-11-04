@@ -72,6 +72,12 @@ def main(cfg: DictConfig) -> None:
 
     check_legacy_keys(cfg)
 
+    # fp16_inference: let XLA fall back to a default conv algorithm when autotuning
+    # runs out of memory, instead of failing (must be set before XLA compiles).
+    if cfg.processes.iceflow.unified.network.fp16_inference:
+        flag = "--xla_gpu_strict_conv_algorithm_picker=false"
+        os.environ["XLA_FLAGS"] = f"{os.environ.get('XLA_FLAGS', '')} {flag}".strip()
+
     state = State()  # class acting as a dictionary
     State.register_aliases(load_aliases_from_core_cfg(cfg.core.aliases))
 
