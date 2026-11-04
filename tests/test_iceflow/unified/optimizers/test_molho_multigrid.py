@@ -392,3 +392,96 @@ def test_alias_multipliers_are_identity_for_three_active_cells():
             args = {**case, "ny": ny, "duplicated_endpoints": duplicated}
             assert set(component_band_multipliers(**args)) == {1.0}, args
             assert set(symmetric_edge_multipliers(**args)) == {1.0}, args
+
+
+@pytest.mark.parametrize("periodic", [False, True])
+def test_cauchy_schwarz_bound_matches_dense_operator(periodic):
+    """The neighbour couplings give max_q A_iq^2 / A_qq over trusted q (A_qq >= A_ii)."""
+    from igm.processes.iceflow.unified.preconditioners.barotropic_multigrid import (
+        _cauchy_schwarz_bound,
+        neighbour_couplings,
+    )
+
+    ny, nx, n = 4, 5, 2
+    rng = np.random.default_rng(11)
+    center = rng.normal(size=(3, 1, ny, nx))
+    center[0] = np.exp(center[0])
+    center[2] = np.exp(center[2])
+    stencil = SymmetricBandedStencil(
+        tf.constant(center, tf.float64),
+        tf.constant(rng.normal(size=(4, 1, n, n, ny, nx)), tf.float64),
+        periodic_y=periodic,
+        periodic_x=periodic,
+        duplicated_endpoints=False,
+    )
+    size = n * ny * nx
+    unit = tf.reshape(tf.eye(size, dtype=tf.float64), (size, 1, n, ny, nx))
+    dense = np.stack([stencil.apply(unit[k]).numpy().ravel() for k in range(size)], 1)
+    node = np.tile(np.arange(ny * nx), n)
+    diagonal = np.diag(dense)
+    trusted = (node[:, None] != node[None, :]) & (
+        diagonal[None, :] >= diagonal[:, None]
+    )
+    expected = np.where(trusted, dense**2 / diagonal[None, :], 0.0).max(axis=1)
+
+    neighbours = neighbour_couplings(stencil)
+    tiny = tf.constant(1e-300, tf.float64)
+    for row in range(n):
+        actual = _cauchy_schwarz_bound(
+            [coupling[:, row] for coupling, _ in neighbours],
+            neighbours,
+            tf.constant(diagonal.reshape(1, n, ny, nx)[:, row]),
+            tf.fill((1, 1, 1), tiny),
+        ).numpy()
+        np.testing.assert_allclose(
+            actual.ravel(), expected.reshape(n, -1)[row], rtol=1e-12
+        )
+
+
+def test_cauchy_schwarz_floor_repairs_only_roundoff_pivot():
+    """A float32 Laplace level whose node (4, 5) lost its u diagonal to round-off (a = 0, b != 0)
+    while it stays coupled to its neighbours, as a thin-ice MOLHO node does once the vertical
+    shear stiffness has cancelled in the barotropic projection (solver_scaling study, PIG 4 km).
+    """
+    from igm.processes.iceflow.unified.preconditioners.barotropic_multigrid import (
+        invert_spd_2x2,
+    )
+
+    ny, nx, scale = 9, 11, 1e-8
+    clean_center, clean_edges = _laplace_stencil(ny, nx, tf.float32)
+    center = scale * clean_center.numpy()
+    center[0, 0, 4, 5] = 0.0
+    center[1, 0, 4, 5] = -0.1 * scale
+    rhs = scale * tf.random.stateless_normal((1, 2, ny, nx), (6, 7), dtype=tf.float32)
+
+    def vcycle(center):
+        multigrid = BarotropicMultigrid(
+            1,
+            ny,
+            nx,
+            tf.float32,
+            periodic_y=False,
+            periodic_x=False,
+            smoother_weight=2.0 / 3.0,
+            smoother_steps=1,
+            coarse_size=4,
+        )
+        multigrid.update(tf.constant(center, tf.float32), scale * clean_edges)
+        return multigrid, multigrid.apply(rhs).numpy()
+
+    _, clean = vcycle(scale * clean_center.numpy())
+    multigrid, repaired = vcycle(center)
+    assert np.isfinite(repaired).all()
+    assert np.abs(repaired).max() < 1e2 * np.abs(clean).max()
+
+    level = multigrid.levels[0]
+    plain = invert_spd_2x2(
+        level.stencil.center_matrix(damping=None), multigrid.diagonal_floor
+    ).numpy()
+    inverse = level.inverse_center.numpy()
+    # without the floor, the round-off pivot overflows (inf in float32)
+    assert np.abs(plain[0, :, :, 4, 5]).max() > 1e20
+    # Cauchy-Schwarz: a >= s^2 / (5 s) from the neighbours, so |inverse| <~ 5 / s
+    assert np.abs(inverse[0, :, :, 4, 5]).max() <= 1.1 * 5.0 / scale
+    changed = (inverse != plain).any(axis=(0, 1, 2))
+    assert changed.sum() == 1 and changed[4, 5]

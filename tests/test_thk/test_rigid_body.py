@@ -139,3 +139,56 @@ def test_thickness_update_runs_rigid_body_cleanup_only_when_enabled(monkeypatch)
         thk_module.update(cfg, state)
 
     assert calls == [RHO_RATIO]
+
+
+def test_front_allowance_removes_a_full_cell_attached_only_at_one_corner():
+    import tensorflow as tf
+    from igm.processes.thk.rigid_body import remove_rigid_body_modes
+
+    h = np.zeros((7, 7), np.float64)
+    bed = np.full_like(h, -300.0)
+    h[1:4, 1:4] = 100.0
+    bed[1:4, 1] = 0.0
+    h[3:5, 3:5] = 100.0  # shares only the floating anchor node (3,3)
+    h[6, 6], bed[6, 6] = 10.0, 0.0  # isolated grounded ice stays
+    state = SimpleNamespace(
+        thk=tf.constant(h),
+        topg=tf.constant(bed),
+        water_level=tf.zeros_like(tf.constant(h)),
+        Href=tf.zeros_like(tf.constant(h)),
+    )
+    removed = remove_rigid_body_modes(state, 918 / 1028, front=True).numpy()
+    assert state.thk.numpy()[3, 3] == 100.0
+    assert (
+        state.thk.numpy()[3, 4]
+        == state.thk.numpy()[4, 3]
+        == state.thk.numpy()[4, 4]
+        == 0.0
+    )
+    np.testing.assert_array_equal(state.thk.numpy()[1:4, 1:4], h[1:4, 1:4])
+    assert state.thk.numpy()[6, 6] == 10.0
+    assert removed.sum() == 300.0
+
+
+def test_front_allowance_keeps_a_new_filling_node_and_adjacent_reservoir():
+    import tensorflow as tf
+    from igm.processes.thk.rigid_body import remove_rigid_body_modes
+
+    h = np.zeros((7, 7), np.float64)
+    bed = np.full_like(h, -300.0)
+    h[1:4, 1:4] = 100.0
+    bed[1:4, 1] = 0.0
+    h[2, 4] = 50.0  # no full cell yet, attached along the front
+    href = np.zeros_like(h)
+    href[1, 4], href[6, 0] = 20.0, 30.0
+    state = SimpleNamespace(
+        thk=tf.constant(h),
+        topg=tf.constant(bed),
+        water_level=tf.zeros_like(tf.constant(h)),
+        Href=tf.constant(href),
+    )
+    removed = remove_rigid_body_modes(state, 918 / 1028, front=True).numpy()
+    assert state.thk.numpy()[2, 4] == 50.0
+    assert state.Href.numpy()[1, 4] == 20.0
+    assert state.Href.numpy()[6, 0] == 0.0
+    assert removed.sum() == 30.0

@@ -16,7 +16,9 @@ never touched: however isolated, it keeps its basal drag.
 
 With a calving front, a node that has just filled can sit next to the
 anchored ice before its neighbours fill and form full Q1 cells with it; such
-edge-adjacent nodes are kept, and the reservoir ``Href`` of the partial cells
+edge-adjacent nodes are kept, unless they are corners of a full Q1 cell that
+is not anchored (a cell hinged on a single anchored node, whose rotation the
+ice-flow energy does not resist). The reservoir ``Href`` of the partial cells
 is kept only next to the remaining ice.
 """
 
@@ -76,15 +78,21 @@ def remove_rigid_body_modes(
     """Zero the unanchored ice of ``state``; return the removed thickness (m).
 
     ``front`` marks a run with a calving front: nodes edge-adjacent to the
-    anchored ice are then kept, and ``state.Href`` survives only next to the
-    remaining ice. The returned field includes the removed ``Href``.
+    anchored ice are then kept, except the corners of unanchored full Q1 cells,
+    and ``state.Href`` survives only next to the remaining ice. The returned
+    field includes the removed ``Href``.
     """
     thk = tf.convert_to_tensor(state.thk)
     ice = thk > 0.0
     grounded = compute_grounded_mask(thk, state.topg, state.water_level, rho_ratio)
     keep = anchored_ice_mask(ice, grounded)
     if front:
-        keep = keep | (ice & any_neighbour(keep))
+        # The front allowance is for newly filling nodes, not for an
+        # unsupported full cell attached only through a hinge node.
+        unsupported_cells = _cells(ice) & ~_cells(keep)
+        unsupported_nodes = _corners_any(unsupported_cells)
+        filling = ice & any_neighbour(keep) & ~unsupported_nodes
+        keep = keep | filling
     dropped = ice & ~keep
     removed = tf.where(dropped, thk, tf.zeros_like(thk))
     state.thk = tf.where(dropped, tf.zeros_like(thk), thk)
