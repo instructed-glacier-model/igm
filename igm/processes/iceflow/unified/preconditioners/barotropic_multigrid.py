@@ -1,22 +1,77 @@
 """Barotropic multigrid correction for compact MOLHO Hessians."""
 
 from dataclasses import dataclass
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
 
 from ..operators.banded import OFFSETS
 from ..operators.molho_banded import (
+    EDGE_OFFSETS,
     SymmetricBandedStencil,
+    _shift,
     allocate_symmetric_bands,
     center_pairs,
     extract_symmetric_bands_batched,
 )
 
 
-def invert_spd_2x2(center: tf.Tensor, relative_floor: tf.Tensor) -> tf.Tensor:
-    """Invert pointwise SPD blocks with a pivot-floored LDL factorization."""
+def neighbour_couplings(
+    stencil: SymmetricBandedStencil,
+) -> List[Tuple[tf.Tensor, tf.Tensor]]:
+    """Return, for each of the 8 neighbours, (coupling, neighbour diagonal) in the node's frame.
+
+    ``coupling[b, o, i, y, x]`` couples row component o of node (y, x) to component i of the
+    neighbour, whose diagonal is ``[b, i, y, x]``. Couplings across a nonperiodic edge are zero.
+    """
+    flags = dict(
+        periodic_y=stencil.periodic_y,
+        periodic_x=stencil.periodic_x,
+        duplicated_endpoints=stencil.duplicated_endpoints,
+    )
+    diagonal = tf.stack(
+        [stencil.center[k] for k, (row, col) in enumerate(stencil.pairs) if row == col],
+        axis=1,
+    )
+    ones = tf.ones_like(diagonal)
+    neighbours = []
+    for index, (dy, dx) in enumerate(EDGE_OFFSETS):
+        edge = stencil.edges[index]
+        reciprocal = _shift(tf.transpose(edge, [0, 2, 1, 3, 4]), -dy, -dx, **flags)
+        for coupling, sy, sx in ((edge, dy, dx), (reciprocal, -dy, -dx)):
+            present = _shift(ones, sy, sx, **flags)[:, tf.newaxis]
+            neighbours.append((coupling * present, _shift(diagonal, sy, sx, **flags)))
+    return neighbours
+
+
+def _cauchy_schwarz_bound(row_couplings, neighbours, row_diagonal, denominator_floor):
+    """max of A_iq^2 / A_qq over the neighbour components q with A_qq >= A_ii."""
+    bound = tf.zeros_like(row_diagonal)
+    for coupling, (_, diagonal) in zip(row_couplings, neighbours):
+        denominator = tf.maximum(diagonal, denominator_floor[:, tf.newaxis])
+        ratio = coupling * (coupling / denominator)
+        trusted = diagonal >= row_diagonal[:, tf.newaxis]
+        ratio = tf.where(trusted, ratio, tf.zeros_like(ratio))
+        bound = tf.maximum(bound, tf.reduce_max(ratio, axis=1))
+    return bound
+
+
+def invert_spd_2x2(
+    center: tf.Tensor,
+    relative_floor: tf.Tensor,
+    neighbours: Optional[List[Tuple[tf.Tensor, tf.Tensor]]] = None,
+) -> tf.Tensor:
+    """Invert pointwise SPD blocks with a pivot-floored LDL factorization.
+
+    With ``neighbours`` (see ``neighbour_couplings``), each pivot is also floored at the
+    Cauchy-Schwarz bound of a positive definite operator, A_iq^2 / A_qq, over the neighbours q
+    whose diagonal is at least the row's own (the second pivot uses the couplings left after
+    eliminating the first component). The bound never binds on a positive definite operator.
+    It repairs rows whose diagonal is float32 round-off while their couplings are not: in the
+    barotropic projection of a thin-ice MOLHO node the vertical-shear stiffness cancels, and
+    the unrepaired inverse overflows.
+    """
     a = center[:, 0, 0]
     b = 0.5 * (center[:, 0, 1] + center[:, 1, 0])
     d = center[:, 1, 1]
@@ -26,9 +81,27 @@ def invert_spd_2x2(center: tf.Tensor, relative_floor: tf.Tensor) -> tf.Tensor:
         tf.cast(relative_floor, center.dtype) * scale,
         tf.cast(tiny, center.dtype),
     )
-    d0 = tf.maximum(a, floor)
+    floor0, floor1 = floor, floor
+    if neighbours is not None:
+        level_scale = tf.reduce_max(scale, axis=[-2, -1], keepdims=True)
+        denominator_floor = tf.maximum(
+            tf.cast(relative_floor, center.dtype) * level_scale,
+            tf.cast(tiny, center.dtype),
+        )
+        in_block = tf.where(d >= a, b * (b / tf.maximum(d, floor)), tf.zeros_like(b))
+        row_couplings = [coupling[:, 0] for coupling, _ in neighbours]
+        bound = _cauchy_schwarz_bound(row_couplings, neighbours, a, denominator_floor)
+        floor0 = tf.maximum(floor, tf.maximum(in_block, bound))
+    d0 = tf.maximum(a, floor0)
     l10 = b / d0
-    d1 = tf.maximum(d - l10 * l10 * d0, floor)
+    if neighbours is not None:
+        row_couplings = [
+            coupling[:, 1] - l10[:, tf.newaxis] * coupling[:, 0]
+            for coupling, _ in neighbours
+        ]
+        bound = _cauchy_schwarz_bound(row_couplings, neighbours, d, denominator_floor)
+        floor1 = tf.maximum(floor, bound)
+    d1 = tf.maximum(d - l10 * l10 * d0, floor1)
     inverse_11 = 1.0 / d1
     inverse_01 = -l10 * inverse_11
     inverse_00 = 1.0 / d0 + l10 * l10 * inverse_11
@@ -334,6 +407,7 @@ class BarotropicMultigrid:
                 invert_spd_2x2(
                     level.stencil.center_matrix(damping=None),
                     self.diagonal_floor,
+                    neighbour_couplings(level.stencil),
                 )
             )
         self._update_bottom_solver()
