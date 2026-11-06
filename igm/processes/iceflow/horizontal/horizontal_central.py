@@ -45,8 +45,11 @@ class CentralDiscr(HorizontalDiscr):
 
         dUdx, dUdy = grad_xy(X, dX, dX, staggered_grid=True)
 
-        return dUdx[..., tf.newaxis, :, :, :], dUdy[..., tf.newaxis, :, :, :]
+        # quadrature axis right after the batch: [B, ...] -> [B, 1, ...] for 2D ([B, Ny, Nx])
+        # and 3D ([B, Nz, Ny, Nx]) fields alike; X[..., newaxis, :, :, :] put it before the
+        # batch of a 2D field, and the energies then summed over the tiles of a batch
+        return tf.expand_dims(dUdx, 1), tf.expand_dims(dUdy, 1)
 
     @tf.function
     def interp_h(self, X: tf.Tensor) -> tf.Tensor:
-        return stag4h(X)[..., tf.newaxis, :, :, :]
+        return tf.expand_dims(stag4h(X), 1)
