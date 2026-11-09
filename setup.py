@@ -31,6 +31,7 @@ setup(
         "console_scripts": [
             "igm_run = igm.igm_run:main",
             "igm_viz = igm.viz.anim_plotly:main",
+            "igm_export_for_viewer = igm.viz.export_for_viewer:main",
         ]
     },
     description="IGM - a glacier evolution model",
