@@ -1,6 +1,6 @@
 description: Redistribute snow from steep slopes to prevent unrealistic high-elevation accumulation
 category: cryosphere
 type: community #  `core`, `community`, `experimental`, or `deprecated`
-authors: [Jürgen Mey, Guillaume Jouvet]
-needs: [thk, topg]
+authors: [Jürgen Mey, Guillaume Jouvet, Andreas Henz]
+needs: [thk, topg, t]
 updates: [thk, usurf]
