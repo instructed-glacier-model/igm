@@ -22,7 +22,7 @@ def assemble_system(
     """
     TensorFlow function to assemble finite difference system for enthalpy equation.
 
-    Discretizes the 1D vertical enthalpy equation: dE/dt + w·dE/dz = K·d²E/dz² + f
+    Discretizes the 1D vertical enthalpy equation: dE/dt + w·dE/dz = d/dz(K·dE/dz) + f
     using implicit time stepping and upwind advection.
 
     Args:
@@ -39,20 +39,18 @@ def assemble_system(
     Returns:
         Tuple of tridiagonal system components (L, M, U, R).
     """
-    nz, ny, nx = E.shape
-    s = dt * K / (dz * dz)  # Diffusion coefficient
+    # K is defined at interfaces; each interior node owns half of
+    # the neighboring intervals. Form fluxes first, then their divergence.
+    cell_width = 0.5 * (dz[:-1] + dz[1:])
+    lower = dt * K[:-1] / (cell_width * dz[:-1])
+    upper = dt * K[1:] / (cell_width * dz[1:])
+    zero = tf.zeros_like(E[:1])
+    one = tf.ones_like(E[:1])
 
-    # Initialize system
-    L = tf.zeros((nz - 1, ny, nx))
-    M = tf.ones((nz, ny, nx))
-    U = tf.zeros((nz - 1, ny, nx))
+    L = tf.concat([-lower, zero], axis=0)
+    M = tf.concat([one, 1.0 + lower + upper, one], axis=0)
+    U = tf.concat([zero, -upper], axis=0)
     R = E + dt * f
-
-    # Assembly: diffusion terms
-    M = M + tf.concat([s, tf.zeros((1, ny, nx))], axis=0)
-    M = M + tf.concat([tf.zeros((1, ny, nx)), s], axis=0)
-    L = L - s
-    U = U - s
 
     # Bottom boundary condition
     M = tf.concat(
