@@ -74,7 +74,11 @@ def main(cfg: DictConfig) -> None:
 
     # fp16_inference: let XLA fall back to a default conv algorithm when autotuning
     # runs out of memory, instead of failing (must be set before XLA compiles).
-    if cfg.processes.iceflow.unified.network.fp16_inference:
+    # select() returns the default when processes or iceflow is not loaded.
+    fp16_inference = OmegaConf.select(
+        cfg, "processes.iceflow.unified.network.fp16_inference", default=False
+    )
+    if fp16_inference:
         flag = "--xla_gpu_strict_conv_algorithm_picker=false"
         os.environ["XLA_FLAGS"] = f"{os.environ.get('XLA_FLAGS', '')} {flag}".strip()
 
