@@ -8,7 +8,8 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 from ...operators import (
@@ -86,7 +87,7 @@ class InterfaceTridiagNewton(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
-            "iter_max": nbit_at(cfg_unified.nbit),
+            "iter_max": value_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -118,7 +119,7 @@ class InterfaceTridiagNewton(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(cfg_unified.nbit, t)
+            iter_max = value_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

@@ -3,13 +3,11 @@ from types import SimpleNamespace
 import tensorflow as tf
 from omegaconf import OmegaConf
 
+from igm.utils.schedule import value_at
 from igm.processes.iceflow.unified.optimizers.interfaces import (
     InterfaceOptimizers,
 )
-from igm.processes.iceflow.unified.optimizers.interfaces.interface import (
-    Status,
-    nbit_at,
-)
+from igm.processes.iceflow.unified.optimizers.interfaces.interface import Status
 from igm.processes.iceflow.unified.optimizers.interfaces.sequential import (
     InterfaceSequential,
 )
@@ -22,7 +20,7 @@ class _StageInterface:
         if status == Status.INIT:
             iterations = unified.nbit_init
         else:
-            iterations = nbit_at(unified.nbit, t)
+            iterations = value_at(unified.nbit, t)
         optimizer.iter_max.assign(iterations)
         return iterations > 0
 

@@ -8,7 +8,8 @@ from omegaconf import DictConfig
 from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping, MappingDataAssimilation
 from ...halt import Halt, InterfaceHalt
 
@@ -82,7 +83,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
             "lr_auto_drop_patience": cfg_opt.lr_auto_drop_patience,
             "lr_auto_drop_warmup": cfg_opt.lr_auto_drop_warmup,
             "lr_auto_drop_rel_improvement": cfg_opt.lr_auto_drop_rel_improvement,
-            "iter_max": nbit_at(cfg_unified.nbit),
+            "iter_max": value_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -111,7 +112,7 @@ class InterfaceSSESOAP(InterfaceOptimizer):
             iter_max = cfg_unified.nbit_init
             lr = cfg_opt.lr_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(cfg_unified.nbit, t)
+            iter_max = value_at(cfg_unified.nbit, t)
             lr = cfg_opt.lr
         elif status == Status.IDLE:
             return False

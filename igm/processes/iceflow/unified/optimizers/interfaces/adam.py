@@ -8,7 +8,8 @@ from omegaconf import DictConfig
 from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping, MappingDataAssimilation
 from ...halt import Halt, InterfaceHalt
 
@@ -28,7 +29,7 @@ class InterfaceAdam(InterfaceOptimizer):
         if isinstance(map, MappingDataAssimilation):
             lr = cfg.assimilations.field_inversion.optimization.learning_rate
         else:
-            lr = cfg_unified.adam.lr
+            lr = value_at(cfg_unified.adam.lr)
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -38,7 +39,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "map": map,
             "halt": halt,
             "lr": lr,
-            "iter_max": nbit_at(cfg_unified.nbit),
+            "iter_max": value_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -75,8 +76,8 @@ class InterfaceAdam(InterfaceOptimizer):
             iter_max = cfg_unified.nbit_init
             lr = cfg_unified.adam.lr_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(cfg_unified.nbit, t)
-            lr = cfg_unified.adam.lr
+            iter_max = value_at(cfg_unified.nbit, t)
+            lr = value_at(cfg_unified.adam.lr, t)
         elif status == Status.IDLE:
             return False
         else:

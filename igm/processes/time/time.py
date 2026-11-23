@@ -10,6 +10,13 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+from igm.utils.schedule import (
+    check_schedule,
+    is_positive,
+    is_schedule,
+    parse_schedule,
+    value_at,
+)
 
 
 def _reduce_for_cfl(
@@ -62,8 +69,14 @@ def compute_dt_from_cfl(
     percentile: float = 100.0,
     active_mask: Optional[tf.Tensor] = None,
     ablation_speed: Optional[tf.Tensor] = None,
+    t: Optional[tf.Tensor] = None,
 ) -> tf.Tensor:
     """Compute adaptive time step based on CFL condition.
+
+    `cfl` and `step_max` are numbers or schedules over model time, best parsed
+    once (``igm.utils.schedule.parse_schedule``), and are read at the model time
+    `t` inside the graph: a change of value neither retraces nor synchronises
+    with the host.
 
     `percentile` < 100 uses the percentile of |velocity| in place of the
     exact max, so isolated outlier cells (a handful of unconverged cells
@@ -77,6 +90,8 @@ def compute_dt_from_cfl(
     over the whole front band is used: conservative when the largest rate
     sits on band cells no front scheme reads.
     """
+    cfl = value_at(cfl, t)
+    step_max = value_at(step_max, t)
     velomax = tf.maximum(
         _reduce_for_cfl(ubar, percentile, active_mask),
         _reduce_for_cfl(vbar, percentile, active_mask),
@@ -104,20 +119,30 @@ def _ablation_speed(cfg: DictConfig, state: State) -> Optional[tf.Tensor]:
 
 def initialize(cfg: DictConfig, state: State) -> None:
 
+    cfg_time = cfg.processes.time
+    check_schedule(cfg_time.step_max, "time.step_max", is_positive, "positive numbers")
+    check_schedule(cfg_time.cfl, "time.cfl", is_positive, "positive numbers")
+
     # Initialize the time with starting time
-    state.t = tf.Variable(float(cfg.processes.time.start))
+    state.t = tf.Variable(float(cfg_time.start))
 
     state.itsave = -1
 
-    state.dt = tf.Variable(float(cfg.processes.time.step_max))
+    # Parsed once, as they are read at every time step
+    state.time_cfl = parse_schedule(cfg_time.cfl)
+    state.time_step_max = parse_schedule(cfg_time.step_max)
 
-    state.dt_target = tf.Variable(float(cfg.processes.time.step_max))
+    step_max = float(value_at(state.time_step_max, cfg_time.start))
+
+    state.dt = tf.Variable(step_max)
+
+    state.dt_target = tf.Variable(step_max)
 
     time_save_values = np.arange(
-        cfg.processes.time.start,
-        cfg.processes.time.end,
-        cfg.processes.time.save,
-    ).tolist() + [cfg.processes.time.end]
+        cfg_time.start,
+        cfg_time.end,
+        cfg_time.save,
+    ).tolist() + [cfg_time.end]
     state.time_save = tf.constant(time_save_values, dtype="float32")
 
 
@@ -126,19 +151,22 @@ def update(cfg: DictConfig, state: State) -> None:
         # Avoid a device-to-host synchronization solely for log formatting.
         state.logger.info("Update time step")
 
-    if cfg.processes.time.cfl > 0:
+    # A scheduled cfl has positive values only: the CFL condition is then always on.
+    cfg_time = cfg.processes.time
+    if is_schedule(state.time_cfl) or state.time_cfl > 0:
         state.dt_target = compute_dt_from_cfl(
             state.ubar,
             state.vbar,
-            cfg.processes.time.cfl,
+            state.time_cfl,
             state.dx,
-            cfg.processes.time.step_max,
-            percentile=float(getattr(cfg.processes.time, "cfl_percentile", 100.0)),
+            state.time_step_max,
+            percentile=float(getattr(cfg_time, "cfl_percentile", 100.0)),
             active_mask=getattr(state, "thk_active_mask", None),
             ablation_speed=_ablation_speed(cfg, state),
+            t=state.t,
         )
     else:
-        state.dt_target = cfg.processes.time.step_max
+        state.dt_target = value_at(state.time_step_max, state.t)
 
     state.dt = state.dt_target
 
@@ -154,7 +182,7 @@ def update(cfg: DictConfig, state: State) -> None:
     if state.it >= 0:
         state.t.assign(state.t + state.dt)
 
-    state.continue_run = state.t < cfg.processes.time.end
+    state.continue_run = state.t < cfg_time.end
 
 
 def finalize(cfg: DictConfig, state: State) -> None:

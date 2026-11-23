@@ -4,7 +4,8 @@ from omegaconf import DictConfig
 from typing import Any, Callable, Dict, Optional
 from ...mappings import Mapping, MappingDataAssimilation
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ..cg import OptimizerCG
 
 
@@ -21,7 +22,7 @@ class InterfaceCG(InterfaceOptimizer):
         if isinstance(map, MappingDataAssimilation):
             nbit = cfg.assimilations.field_inversion.optimization.nbitmax
         else:
-            nbit = nbit_at(u.nbit)
+            nbit = value_at(u.nbit)
         return {
             "cost_fn": cost_fn,
             "map": map,
@@ -44,7 +45,7 @@ class InterfaceCG(InterfaceOptimizer):
             iter_max = u.nbit_init
             alpha_min = u.lbfgs.alpha_min
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(u.nbit, t)
+            iter_max = value_at(u.nbit, t)
             alpha_min = u.lbfgs.alpha_min
         else:
             return False

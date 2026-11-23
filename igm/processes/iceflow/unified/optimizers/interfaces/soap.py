@@ -8,7 +8,8 @@ from omegaconf import DictConfig
 from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
@@ -36,7 +37,7 @@ class InterfaceSOAP(InterfaceOptimizer):
             "eps": cfg_unified.soap.eps,
             "precond_freq": cfg_unified.soap.precond_freq,
             "damping": cfg_unified.soap.damping,
-            "iter_max": nbit_at(cfg_unified.nbit),
+            "iter_max": value_at(cfg_unified.nbit),
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -55,11 +56,11 @@ class InterfaceSOAP(InterfaceOptimizer):
         if status == Status.INIT or status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(cfg_unified.nbit, t)
+            iter_max = value_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:
-            iter_max = nbit_at(cfg_unified.nbit, t)
+            iter_max = value_at(cfg_unified.nbit, t)
 
         optimizer.update_parameters(iter_max=iter_max, lr=lr)
 

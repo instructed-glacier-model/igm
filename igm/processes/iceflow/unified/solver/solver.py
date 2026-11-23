@@ -7,6 +7,7 @@ from omegaconf import DictConfig
 import tensorflow as tf
 
 from igm.common import State
+from igm.utils.schedule import value_at
 from ..optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import split_field_into_patches
 from igm.utils.math.precision import normalize_precision
@@ -28,7 +29,7 @@ def get_status(
 ) -> Status:
     cfg_unified = cfg.processes.iceflow.unified
     nbit_warmup = cfg_unified.nbit_warmup
-    retrain_freq = cfg_unified.retrain_freq
+    retrain_freq = value_at(state.iceflow.retrain_freq, getattr(state, "t", None))
 
     # adaptive_time decides WHEN to retrain: "none" = retrain_freq only,
     # "shift_distribution" = retrain_freq + distribution-shift early trigger,

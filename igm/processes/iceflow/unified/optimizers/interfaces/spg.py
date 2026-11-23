@@ -10,7 +10,8 @@ import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
@@ -68,11 +69,11 @@ class InterfaceSPG(InterfaceOptimizer):
                 _select(
                     cfg,
                     "assimilations.field_inversion.optimization.nbitmax",
-                    nbit_at(cfg_unified.nbit),
+                    value_at(cfg_unified.nbit),
                 )
             )
         else:
-            iter_max = int(nbit_at(cfg_unified.nbit))
+            iter_max = int(value_at(cfg_unified.nbit))
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -134,7 +135,7 @@ class InterfaceSPG(InterfaceOptimizer):
                 )
             )
         elif status == Status.DEFAULT:
-            iter_max = int(nbit_at(cfg_unified.nbit, t))
+            iter_max = int(value_at(cfg_unified.nbit, t))
             alpha0 = float(_select(cfg, f"{spg_path}.alpha0", 1.0))
         elif status == Status.IDLE:
             return False

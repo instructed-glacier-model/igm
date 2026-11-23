@@ -11,13 +11,13 @@ save:
   Units: y
   Description: "Frequency of saving the simulation results."
 cfl:
-  Type: float
+  Type: float or [[t, cfl], ...]
   Units: dimless
-  Description: "CFL condition for time stepping."
+  Description: "CFL condition for time stepping (0 or less: no CFL condition). Either a number, or a piecewise-constant schedule over model time [[t_0, cfl_0], [t_1, cfl_1], ...] with strictly increasing t_k (years, as start) and positive cfl_k: cfl_k applies from t_k on, and cfl_0 also before t_0."
 step_max:
-  Type: float
+  Type: float or [[t, step], ...]
   Units: y
-  Description: "Maximum time step allowed."
+  Description: "Maximum time step allowed. Either a number, or a piecewise-constant schedule over model time [[t_0, s_0], [t_1, s_1], ...] with strictly increasing t_k (years, as start) and positive s_k: s_k applies from t_k on, and s_0 also before t_0. For example [[0.0, 0.01], [50.0, 0.1]] limits the time step to 0.01 y during the first 50 years, then to 0.1 y."
 cfl_percentile:
   Type: float
   Units: "%"

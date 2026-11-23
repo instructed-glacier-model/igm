@@ -1,10 +1,4 @@
-from .interface import (
-    InterfaceOptimizer,
-    Status,
-    check_nbit,
-    is_schedule,
-    nbit_at,
-)
+from .interface import InterfaceOptimizer, Status
 from .adam import InterfaceAdam
 from .cg import InterfaceCG
 from .cg_newton import InterfaceCGNewton

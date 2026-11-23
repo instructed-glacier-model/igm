@@ -35,12 +35,5 @@ Optimizers = {
     "tridiag_newton": OptimizerTridiagNewton,
 }
 
-from .interfaces import (
-    InterfaceOptimizer,
-    InterfaceOptimizers,
-    Status,
-    check_nbit,
-    is_schedule,
-    nbit_at,
-)
+from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status
 from .utils import SyntheticCosts

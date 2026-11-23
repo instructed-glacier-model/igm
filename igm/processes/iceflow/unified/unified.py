@@ -6,8 +6,9 @@
 from omegaconf import DictConfig
 
 from igm.common import State, print_model_with_inputs_detailed
+from igm.utils.schedule import check_schedule, is_count, is_positive, parse_schedule
 from .mappings import Mappings, InterfaceMappings
-from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts, check_nbit
+from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .error_estimator import ErrorEstimator, InterfaceErrorEstimator
 from .init_stop import InitStop
@@ -22,12 +23,21 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
 
     cfg_unified = cfg.processes.iceflow.unified
 
-    # Iterations per retrain: an integer, or a schedule over model time
-    check_nbit(cfg_unified.nbit)
+    # Parameters that may be schedules over model time
+    check_schedule(cfg_unified.nbit, "nbit", is_count, "non-negative integers")
     if cfg_unified.optimizer == "sequential":
         for cfg_stage in cfg_unified.sequential.stages:
             if "nbit" in cfg_stage:
-                check_nbit(cfg_stage.nbit)
+                check_schedule(
+                    cfg_stage.nbit, "sequential nbit", is_count, "non-negative integers"
+                )
+    check_schedule(
+        cfg_unified.retrain_freq, "retrain_freq", is_count, "non-negative integers"
+    )
+    check_schedule(cfg_unified.adam.lr, "adam.lr", is_positive, "positive numbers")
+
+    # Parsed once, as it is read at every time step
+    state.iceflow.retrain_freq = parse_schedule(cfg_unified.retrain_freq)
 
     # Drift detection needs running input statistics; otherwise it is never computed.
     cfg_at = getattr(cfg_unified, "adaptive_time", None)

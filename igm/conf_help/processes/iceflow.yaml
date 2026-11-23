@@ -448,8 +448,8 @@ unified:
     Description: "Number of iterations done for a warm-up period to solve the ice flow, allowing intense initial training."
     Units: dimless
   retrain_freq:
-    Type: integer
-    Description: "Frequency at which the ice flow is solved."
+    Type: integer or [[t, n], ...]
+    Description: "Frequency at which the ice flow is solved: every retrain_freq time steps (0 or less: never after the initial training). Either an integer, or a piecewise-constant schedule over model time [[t_0, n_0], [t_1, n_1], ...] as for nbit. For example [[0.0, 1], [50.0, 5]] retrains at every time step during the first 50 years, then every 5 time steps."
     Units: dimless
   retrain_threshold:
     Type: float
@@ -457,8 +457,8 @@ unified:
     Units: dimless
   adam:
     lr:
-      Type: float
-      Description: "Learning rate for the Adam optimizer."
+      Type: float or [[t, lr], ...]
+      Description: "Learning rate for the Adam optimizer at each retrain. Either a number, or a piecewise-constant schedule over model time [[t_0, lr_0], [t_1, lr_1], ...] as for nbit."
       Units: dimless
     lr_init:
       Type: float

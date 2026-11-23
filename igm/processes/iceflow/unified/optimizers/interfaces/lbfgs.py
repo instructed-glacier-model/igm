@@ -8,7 +8,8 @@ from omegaconf import DictConfig
 from typing import Any, Callable, Dict, Optional
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 from ...mappings.data_assimilation import MappingDataAssimilation
@@ -29,7 +30,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         if isinstance(map, MappingDataAssimilation):
             nbit = cfg.assimilations.field_inversion.optimization.nbitmax
         else:
-            nbit = nbit_at(cfg_unified.nbit)
+            nbit = value_at(cfg_unified.nbit)
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -66,7 +67,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(cfg_unified.nbit, t)
+            iter_max = value_at(cfg_unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:

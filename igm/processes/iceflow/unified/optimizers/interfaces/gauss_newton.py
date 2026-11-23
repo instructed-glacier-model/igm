@@ -11,7 +11,8 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from ..optimizer import Optimizer
-from .interface import InterfaceOptimizer, Status, nbit_at
+from igm.utils.schedule import value_at
+from .interface import InterfaceOptimizer, Status
 from ...halt import Halt, InterfaceHalt
 from ...mappings import Mapping
 from ...operators import GaussNewtonOperator
@@ -108,7 +109,7 @@ class InterfaceGaussNewton(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": Halt(**InterfaceHalt.get_halt_args(cfg)),
-            "iter_max": nbit_at(unified.nbit),
+            "iter_max": value_at(unified.nbit),
             "print_cost": unified.display.print_cost,
             "print_cost_freq": unified.display.print_cost_freq,
             "precision": numerics.precision,
@@ -151,7 +152,7 @@ class InterfaceGaussNewton(InterfaceOptimizer):
         if status in (Status.INIT, Status.WARM_UP):
             iter_max = unified.nbit_init
         elif status == Status.DEFAULT:
-            iter_max = nbit_at(unified.nbit, t)
+            iter_max = value_at(unified.nbit, t)
         elif status == Status.IDLE:
             return False
         else:
