@@ -165,7 +165,7 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
 
     Dispatches on `cfg.processes.iceflow.physics.sliding.law`:
 
-      * weertman    : heat ∝ slidingco · |u_b|^(1+1/m)   (legacy)
+      * weertman    : heat ∝ (tau_ref·u_ref^(-1/m)) · |u_b|^(1+1/m)
       * mohr_coulomb: heat ∝ (N·tan(phi)·u_ref^(-1/m)) · |u_b|^(1+1/m)
                       i.e. the effective Weertman-style C is built from
                       state.effective_pressure and the law's friction angle.
@@ -180,7 +180,8 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     if law == "weertman":
         m = cfg_sl.exponent
         u_regu = cfg_sl.regularization
-        C = get_tau_ref(state)
+        tau_ref = get_tau_ref(state)
+        C = tau_ref * tf.pow(tf.cast(cfg_sl.u_ref, tau_ref.dtype), -1.0 / m)
     elif law == "mohr_coulomb":
         m = cfg_sl.exponent
         u_regu = cfg_sl.regularization
