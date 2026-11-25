@@ -45,8 +45,8 @@ class CentralDiscr(HorizontalDiscr):
 
         dUdx, dUdy = grad_xy(X, dX, dX, staggered_grid=True)
 
-        return dUdx[..., tf.newaxis, :, :, :], dUdy[..., tf.newaxis, :, :, :]
+        return dUdx[:, tf.newaxis, ...], dUdy[:, tf.newaxis, ...]
 
     @tf.function
     def interp_h(self, X: tf.Tensor) -> tf.Tensor:
-        return stag4h(X)[..., tf.newaxis, :, :, :]
+        return stag4h(X)[:, tf.newaxis, ...]
