@@ -7,11 +7,10 @@ iceflow:
       law: weertman
       use_mask_gr: false
       use_subgrid_gl: false
-      slidingco: 0.0464      # legacy stack (was init_slidingco; MPa)
-      tau_ref: 0.2153697218796329  # new (unified) stack; = slidingco * u_ref^(1/m) so physics matches u_ref=100
+      tau_ref: 0.2153697218796329
       regularization: 1.0e-10  # was sliding.<law>.regu
       exponent: 3.0            # was sliding.<law>.exponent
-      u_ref: 100.0             # m/yr — active in 'unified' only; emulated/solved/diagnostic require u_ref=1.0
+      u_ref: 100.0             # m/yr
       N_ref: 1.0               # budd only
       mu: 0.4                  # regu_coulomb only
       q_exponent: 1.0          # budd only (1.0=linear, 0.5=Tsai sublinear)
@@ -44,54 +43,6 @@ iceflow:
     vert_spacing: 4.0
     basis_horizontal: central
     basis_vertical: Lagrange
-  solver:
-    step_size: 1.0
-    nbitmax: 100
-    optimizer: adam
-    print_cost: false
-    fieldin: [thk, usurf, arrhenius, slidingco, dX]
-  emulator:
-    fieldin: [thk, usurf, arrhenius, slidingco, dX]
-    retrain_freq: 10
-    print_cost: false
-    lr: 2.0e-05
-    lr_init: 0.0001
-    lr_decay: 0.95
-    warm_up_it: -10000000000.0
-    nbit_init: 1
-    nbit: 1
-    framesizemax: 1000
-    split_patch_method: sequential
-    pretrained: true
-    name: ''
-    save_model: false
-    exclude_borders: 0
-    optimizer: Adam
-    optimizer_clipnorm: 1.0
-    optimizer_epsilon: 1.0e-07
-    save_cost: ''
-    output_directory: ''
-    plot_sol: False
-    pertubate: false
-    network:
-      architecture: cnn
-      params: {}    # emulated-mode (cnn) hyperparameters; cnn reads the flat fields below
-      multiple_window_size: 0
-      activation: LeakyReLU
-      nb_layers: 16
-      nb_blocks: 4
-      nb_out_filter: 32
-      conv_ker_size: 3
-      dropout_rate: 0.0
-      weight_initialization: glorot_uniform
-      cnn3d_for_vertical: false
-      batch_norm: false
-      l2_reg: 0.0
-      separable: false
-      residual: true
-  diagnostic:
-    save_freq: 1
-    filename_metrics: diagnostic_metrics.txt
   unified:
     mapping: network
     bcs: []
@@ -308,7 +259,6 @@ iceflow:
       fp16_inference: false
       architecture: dahunet
       # Architecture hyperparameters for the from-scratch path (pretrained: false).
-      # Owned by the unified mode (no longer read from emulator.network).
       # Keys depend on `architecture`; an empty dict uses the architecture's
       # built-in defaults. These are the Optuna-tuned dahunet defaults.
       params:

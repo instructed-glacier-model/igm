@@ -30,10 +30,9 @@ def get_water_level(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
 def get_friction_field(fieldin: Dict[str, tf.Tensor]) -> tf.Tensor:
     """Return the reference basal shear stress field from a fieldin dict.
 
-    Accepts either the canonical name `tau_ref` (used by the new
-    `unified` stack) or the legacy `slidingco` (kept by the
-    emulated/solved/diagnostic stack because the pretrained CNN
-    emulators' channel order metadata is frozen on that name).
+    Accepts either the canonical name `tau_ref` or `slidingco`, the name
+    of the friction input before tau_ref (still accepted when a user lists
+    it in processes.iceflow.unified.inputs).
 
     Dual-name handling lives ONLY here. Callers (the four sliding-law
     kernels) read this helper without caring about which channel name

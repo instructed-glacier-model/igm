@@ -26,7 +26,7 @@ setup(
     license="gpl-3.0",
     packages=find_packages(include=["igm", "igm.*"]),
     include_package_data=True,
-    package_data={"igm": package_files("igm/processes/iceflow/emulate/emulators")},
+    package_data={"igm": package_files("igm/processes/iceflow/networks/pretrained")},
     entry_points={
         "console_scripts": [
             "igm_run = igm.igm_run:main",

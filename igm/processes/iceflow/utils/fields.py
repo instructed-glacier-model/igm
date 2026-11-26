@@ -13,14 +13,11 @@ from igm.processes.thk.masks import WATER_LEVEL_NO_OCEAN
 
 
 def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
-    """Initialize iceflow fields: arrhenius, slidingco/tau_ref, U, V, water_level.
+    """Initialize iceflow fields: arrhenius, tau_ref, U, V, water_level.
 
-    Basal-friction field: the legacy stack (emulated/solved/diagnostic
-    + data_assimilation) uses `state.slidingco` initialised from
-    `cfg.processes.iceflow.physics.sliding.slidingco`; the new stack
-    (unified + field_inversion + pretraining) uses `state.tau_ref`
-    initialised from `cfg.processes.iceflow.physics.sliding.tau_ref`.
-    Cross-stack readers use `igm.common.fields.get_tau_ref(state)`.
+    Fields already present in the state (e.g. loaded from the inputs) are
+    kept. The basal-friction field `state.tau_ref` defaults to
+    `cfg.processes.iceflow.physics.sliding.tau_ref`.
     """
 
     cfg_physics = cfg.processes.iceflow.physics
@@ -36,13 +33,8 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
         )
         state.arrhenius = tf.ones(shape_2d) * init_value
 
-    method = cfg.processes.iceflow.method.lower()
-    if method == "unified":
-        if not hasattr(state, "tau_ref"):
-            state.tau_ref = tf.ones(shape_2d) * cfg_physics.sliding.tau_ref
-    else:
-        if not hasattr(state, "slidingco"):
-            state.slidingco = tf.ones(shape_2d) * cfg_physics.sliding.slidingco
+    if not hasattr(state, "tau_ref"):
+        state.tau_ref = tf.ones(shape_2d) * cfg_physics.sliding.tau_ref
 
     if not hasattr(state, "U"):
         state.U = tf.zeros(shape_3d)

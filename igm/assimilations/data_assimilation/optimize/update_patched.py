@@ -58,13 +58,6 @@ def _check_supported(cfg):
             "per-basin volumes and is not supported with "
             "optimization.patch_size > 0."
         )
-    if cfg.processes.iceflow.method.lower() == "emulated" \
-            and cfg.processes.iceflow.emulator.network.multiple_window_size > 0:
-        raise ValueError(
-            "data_assimilation patching: emulator.network.multiple_window_size "
-            "> 0 pads to the full-grid shape (state.PAD) and is incompatible "
-            "with per-window inference. Set it to 0."
-        )
 
 
 def _get_ctx(state, ny, nx, P, H):
@@ -108,9 +101,15 @@ def _evaluate_patched(cfg, state, ctx, ny, nx):
             continue
         iceflow_evaluate(cfg, pstate)
         _stitch_velocities(
-            state, pstate, ctx, ny, nx,
-            slice(cy0, cy1), slice(cx0, cx1),
-            slice(cy0 - wy0, cy1 - wy0), slice(cx0 - wx0, cx1 - wx0),
+            state,
+            pstate,
+            ctx,
+            ny,
+            nx,
+            slice(cy0, cy1),
+            slice(cx0, cx1),
+            slice(cy0 - wy0, cy1 - wy0),
+            slice(cx0 - wx0, cx1 - wx0),
         )
 
 
@@ -118,8 +117,9 @@ def _tile_is_active(pstate):
     """Tiles with no observed ice mask and no ice carry (numerically) no
     gradient information; skipping them saves most of the compute on
     large domains where the ice occupies a fraction of the grid."""
-    return bool(tf.reduce_max(pstate.icemaskobs) > 0.5) \
-        or bool(tf.reduce_max(pstate.thk) > 0.0)
+    return bool(tf.reduce_max(pstate.icemaskobs) > 0.5) or bool(
+        tf.reduce_max(pstate.thk) > 0.0
+    )
 
 
 def optimize_update_patched(cfg, state, cost, i):
@@ -169,24 +169,25 @@ def optimize_update_patched(cfg, state, cost, i):
 
     if not hasattr(state, "areaicemask"):
         # consumed by regu_thk_v1 (convexity term); the patch-local value would be wrong
-        state.areaicemask = tf.reduce_sum(
-            tf.where(state.icemask > 0.5, 1.0, 0.0)
-        ) * state.dx**2
-
-    if da.regularization.thk_version == 2 \
-            and da.regularization.abl_acc_balance != 1:
-        # consumed by regu_thk_v2; percentile of the full-grid surface
-        state.ELA = np.percentile(
-            state.usurf[state.usurf > 0], 66.7, method="linear"
+        state.areaicemask = (
+            tf.reduce_sum(tf.where(state.icemask > 0.5, 1.0, 0.0)) * state.dx**2
         )
+
+    if da.regularization.thk_version == 2 and da.regularization.abl_acc_balance != 1:
+        # consumed by regu_thk_v2; percentile of the full-grid surface
+        state.ELA = np.percentile(state.usurf[state.usurf > 0], 66.7, method="linear")
 
     if "divfluxfcz" in da.cost_list and i % 10 == 0:
         # refresh full-grid velocities and refit the global regression, as
         # the full-grid code does every 10 iterations
         _evaluate_patched(cfg, state, ctx, ny, nx)
         divflux = compute_divflux(
-            state.ubar, state.vbar, state.thk, state.dx, state.dx,
-            method=da.divflux.method
+            state.ubar,
+            state.vbar,
+            state.thk,
+            state.dx,
+            state.dx,
+            method=da.divflux.method,
         )
         ACT = state.icemaskobs > 0.5
         state.res = stats.linregress(state.usurf[ACT], divflux[ACT])
@@ -242,7 +243,8 @@ def optimize_update_patched(cfg, state, cost, i):
             # window) is nan on a patch while it is well-defined globally:
             # drop such terms, they carry no gradient
             finite = {
-                k: v for k, v in tile_cost.items()
+                k: v
+                for k, v in tile_cost.items()
                 if bool(tf.reduce_all(tf.math.is_finite(v)))
             }
             cost_total = tf.add_n(list(finite.values())) if finite else tf.constant(0.0)
@@ -304,7 +306,9 @@ def optimize_update_patched(cfg, state, cost, i):
 
         fric = state.da_friction
         if fric in da.control_list:
-            setattr(state, fric, tf.where(getattr(state, fric) < 0, 0, getattr(state, fric)))
+            setattr(
+                state, fric, tf.where(getattr(state, fric) < 0, 0, getattr(state, fric))
+            )
 
         if "arrhenius" in da.control_list:
             # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)

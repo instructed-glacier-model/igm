@@ -7,7 +7,7 @@ PACKAGE_NAME = "igm"
 
 # List of submodules or subpackages to smoke-test imports
 IMPORTS_TO_TEST = [
-    "processes.iceflow.emulate.emulators",
+    "processes.iceflow.networks.pretrained",
     "inputs",
     "outputs",
     "common",

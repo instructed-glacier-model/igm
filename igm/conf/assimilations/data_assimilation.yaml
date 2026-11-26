@@ -14,6 +14,7 @@ data_assimilation:
   optimization:
     nbitmin: 50
     nbitmax: 500
+    lbfgs_nbitmax: 100
     step_size: 1.0
     step_size_decay: 0.9
     init_zero_thk: false

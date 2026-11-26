@@ -27,6 +27,10 @@ optimization:
     Type: integer
     Description: "Max iterations for the optimization."
     Units: dimless
+  lbfgs_nbitmax:
+    Type: integer
+    Description: "Max L-BFGS iterations within one optimization iteration (method: L-BFGS only)."
+    Units: dimless
   step_size:
     Type: float
     Description: "Step size for the optimization."
@@ -247,7 +251,7 @@ output:
 cook:
   infer_params:
     Type: boolean
-    Description: "Infer slidingco and convexity weight from velocity observations."
+    Description: "Infer slidingco and convexity weight from velocity observations. Currently unavailable: calibrated for the slidingco friction field of the removed emulated method (raises with tau_ref)."
     Units: dimless
   tidewater_glacier:
     Type: boolean

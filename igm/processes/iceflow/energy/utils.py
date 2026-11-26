@@ -38,19 +38,14 @@ def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
 
     # The Budd, regularized Coulomb and Mohr-Coulomb sliding laws read
     # `effective_pressure` from fieldin. Weertman does not.
-    # This check applies to the `unified` / `solved` paths (which build
-    # `fieldin` from `cfg.processes.iceflow.unified.inputs`); the
-    # `emulated` path uses a CNN with checkpoint-fixed inputs and is
-    # exempt from this requirement.
-    method = cfg.processes.iceflow.method
-    if method in ("unified", "solved") and "sliding" in cfg_physics.energy_components:
+    if "sliding" in cfg_physics.energy_components:
         law = cfg_physics.sliding.law
         if (
             law in ("budd", "regu_coulomb", "mohr_coulomb")
             and "effective_pressure" not in unified_inputs
         ):
             raise ValueError(
-                f"❌ The '{law}' sliding law (with iceflow.method={method!r}) "
+                f"❌ The '{law}' sliding law "
                 "requires 'effective_pressure' in "
                 "cfg.processes.iceflow.unified.inputs. "
                 f"Current inputs: {unified_inputs}. "

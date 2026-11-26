@@ -14,9 +14,13 @@ import numpy as np
 import pytest
 from omegaconf import OmegaConf
 
-from igm.processes.iceflow.emulate.utils.artifacts import (
-    validate_emulator_artifact, capture_artifact_compatibility, HARD_CHECKS,
-    WARNING_CHECKS, load_emulator_artifact, save_emulator_artifact,
+from igm.processes.iceflow.networks.artifacts import (
+    validate_emulator_artifact,
+    capture_artifact_compatibility,
+    HARD_CHECKS,
+    WARNING_CHECKS,
+    load_emulator_artifact,
+    save_emulator_artifact,
 )
 
 
@@ -25,14 +29,32 @@ def _artifact(nz: int, input_names: list[str], *, u_ref: float = 1.0, **kwargs):
     return types.SimpleNamespace(compatibility=capture_artifact_compatibility(cfg))
 
 
-def _cfg(nz: int, inputs: list[str], basis_vertical: str = "molho", basis_horizontal: str = "q1",
-         u_ref: float = 1.0):
-    defaults = OmegaConf.load(Path(__file__).parents[2] / "igm/conf/processes/iceflow.yaml")
-    return OmegaConf.merge({"processes": defaults}, {"processes": {"iceflow": {
-        "numerics": {"Nz": nz, "basis_vertical": basis_vertical, "basis_horizontal": basis_horizontal},
-        "physics": {"sliding": {"u_ref": u_ref}},
-        "unified": {"inputs": inputs},
-    }}})
+def _cfg(
+    nz: int,
+    inputs: list[str],
+    basis_vertical: str = "molho",
+    basis_horizontal: str = "q1",
+    u_ref: float = 1.0,
+):
+    defaults = OmegaConf.load(
+        Path(__file__).parents[2] / "igm/conf/processes/iceflow.yaml"
+    )
+    return OmegaConf.merge(
+        {"processes": defaults},
+        {
+            "processes": {
+                "iceflow": {
+                    "numerics": {
+                        "Nz": nz,
+                        "basis_vertical": basis_vertical,
+                        "basis_horizontal": basis_horizontal,
+                    },
+                    "physics": {"sliding": {"u_ref": u_ref}},
+                    "unified": {"inputs": inputs},
+                }
+            }
+        },
+    )
 
 
 _INPUTS = ["thk", "usurf", "arrhenius", "tau_ref", "dX"]
@@ -53,7 +75,9 @@ def test_nz_mismatch_raises():
 def test_channel_order_mismatch_raises():
     wrong_order = ["thk", "usurf", "tau_ref", "arrhenius", "dX"]
     with pytest.raises(ValueError, match=r"unified.inputs"):
-        validate_emulator_artifact(_artifact(2, _INPUTS), _cfg(2, wrong_order), wrong_order)
+        validate_emulator_artifact(
+            _artifact(2, _INPUTS), _cfg(2, wrong_order), wrong_order
+        )
 
 
 @pytest.mark.unit
@@ -67,14 +91,18 @@ def test_channel_set_mismatch_raises():
 def test_basis_vertical_mismatch_raises():
     model = _artifact(2, _INPUTS, basis_vertical="molho", basis_horizontal="q1")
     with pytest.raises(ValueError, match=r"basis_vertical"):
-        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_vertical="uniform"), _INPUTS)
+        validate_emulator_artifact(
+            model, _cfg(2, _INPUTS, basis_vertical="uniform"), _INPUTS
+        )
 
 
 @pytest.mark.unit
 def test_basis_horizontal_mismatch_raises():
     model = _artifact(2, _INPUTS, basis_vertical="molho", basis_horizontal="q1")
     with pytest.raises(ValueError, match=r"basis_horizontal"):
-        validate_emulator_artifact(model, _cfg(2, _INPUTS, basis_horizontal="q2"), _INPUTS)
+        validate_emulator_artifact(
+            model, _cfg(2, _INPUTS, basis_horizontal="q2"), _INPUTS
+        )
 
 
 @pytest.mark.unit
@@ -94,26 +122,39 @@ def test_u_ref_mismatch_raises():
 def test_hard_mismatch_raises(path):
     cfg = _cfg(2, _INPUTS)
     value = OmegaConf.select(cfg.processes.iceflow, path)
-    changed = (["viscosity"] if path.endswith("energy_components") else
-               "budd" if isinstance(value, str) else
-               ["thk"] if OmegaConf.is_list(value) else value * 2)
+    changed = (
+        ["viscosity"]
+        if path.endswith("energy_components")
+        else (
+            "budd"
+            if isinstance(value, str)
+            else ["thk"] if OmegaConf.is_list(value) else value * 2
+        )
+    )
     OmegaConf.update(cfg.processes.iceflow, path, changed)
     with pytest.raises(ValueError, match=path):
-        validate_emulator_artifact(_artifact(2, _INPUTS), cfg, cfg.processes.iceflow.unified.inputs)
+        validate_emulator_artifact(
+            _artifact(2, _INPUTS), cfg, cfg.processes.iceflow.unified.inputs
+        )
 
 
 @pytest.mark.parametrize("path", WARNING_CHECKS)
 def test_numerical_mismatch_warns(path):
     cfg = _cfg(2, _INPUTS)
-    OmegaConf.update(cfg.processes.iceflow, path,
-                     OmegaConf.select(cfg.processes.iceflow, path) * 2)
+    OmegaConf.update(
+        cfg.processes.iceflow, path, OmegaConf.select(cfg.processes.iceflow, path) * 2
+    )
     with pytest.warns(UserWarning, match=path):
         validate_emulator_artifact(_artifact(2, _INPUTS), cfg, _INPUTS)
 
 
 def test_energy_order_is_irrelevant_but_duplicates_are_not():
     cfg = _cfg(2, _INPUTS)
-    cfg.processes.iceflow.physics.energy_components = ["sliding", "gravity", "viscosity"]
+    cfg.processes.iceflow.physics.energy_components = [
+        "sliding",
+        "gravity",
+        "viscosity",
+    ]
     validate_emulator_artifact(_artifact(2, _INPUTS), cfg, _INPUTS)
     cfg.processes.iceflow.physics.energy_components.append("sliding")
     with pytest.raises(ValueError, match="energy_components"):
@@ -130,8 +171,9 @@ def test_every_setting_is_required(path):
 
 def test_missing_metadata_lists_all_missing_keys():
     with pytest.raises(ValueError) as exc:
-        validate_emulator_artifact(types.SimpleNamespace(compatibility={}),
-                                   _cfg(2, _INPUTS), _INPUTS)
+        validate_emulator_artifact(
+            types.SimpleNamespace(compatibility={}), _cfg(2, _INPUTS), _INPUTS
+        )
     assert all(path in str(exc.value) for path in HARD_CHECKS + WARNING_CHECKS)
 
 
@@ -154,13 +196,66 @@ def test_excluded_settings_do_not_change_compatibility():
 @pytest.mark.parametrize("name", ["dahunet", "dahunet_mini", "dahunet_micro"])
 def test_public_artifact_loads_and_roundtrips(name, tmp_path):
     import tensorflow as tf
+
     cfg = _cfg(2, _INPUTS, u_ref=100)
     model = load_emulator_artifact(name + ".keras", cfg, _INPUTS)
     assert dict(model.compatibility) == capture_artifact_compatibility(cfg)
-    assert not {"u_ref", "basis_vertical", "basis_horizontal"} & model.get_config().keys()
+    assert (
+        not {"u_ref", "basis_vertical", "basis_horizontal"} & model.get_config().keys()
+    )
     x = tf.ones((1, 8, 8, 5))
     before = model(x).numpy()
     saved = save_emulator_artifact(tmp_path / name, model)
     restored = load_emulator_artifact(saved, cfg, _INPUTS)
     assert dict(restored.compatibility) == dict(model.compatibility)
     np.testing.assert_array_equal(restored(x).numpy(), before)
+
+
+@pytest.mark.unit
+def test_legacy_emulator_resolves_and_loads_by_name():
+    import tensorflow as tf
+    from igm.processes.iceflow.networks.legacy import (
+        resolve_legacy_emulator,
+        load_legacy_emulator,
+    )
+
+    assert resolve_legacy_emulator("dahunet.keras") is None
+    assert resolve_legacy_emulator("no_such_emulator") is None
+
+    path = resolve_legacy_emulator("pinnbp_10_4_cnn_8_16_2_1_a")
+    assert path is not None and (path / "model.h5").exists()
+
+    cfg = _cfg(10, _INPUTS, basis_vertical="lagrange", u_ref=1.0)
+    model = load_legacy_emulator(path, cfg, _INPUTS)
+    y = model(tf.ones((1, 8, 8, len(_INPUTS))))
+    assert y.shape[-1] == 2 * 10
+
+
+@pytest.mark.unit
+def test_pretrained_without_path_raises():
+    from igm.processes.iceflow.mappings.interfaces.network import InterfaceNetwork
+
+    cfg = _cfg(2, _INPUTS)
+    cfg.processes.iceflow.unified.network.pretrained = True
+    cfg.processes.iceflow.unified.network.pretrained_path = ""
+    with pytest.raises(ValueError, match="pretrained_path is empty"):
+        InterfaceNetwork.get_mapping_args(cfg, state=None)
+
+
+@pytest.mark.unit
+def test_legacy_emulator_relative_path_and_missing_fieldin(tmp_path):
+    import shutil
+    from igm.processes.iceflow.networks.legacy import resolve_legacy_emulator
+
+    bundled = resolve_legacy_emulator("pinnbp_10_4_cnn_8_16_2_1_a")
+    shutil.copytree(bundled, tmp_path / "emus" / "my_emu")
+
+    found = resolve_legacy_emulator("emus/my_emu", base_dir=str(tmp_path))
+    assert found == tmp_path / "emus" / "my_emu"
+    found = resolve_legacy_emulator("my_emu", base_dir=str(tmp_path / "emus"))
+    assert found == tmp_path / "emus" / "my_emu"
+    assert resolve_legacy_emulator("emus/my_emu") is None
+
+    (tmp_path / "emus" / "my_emu" / "fieldin.dat").unlink()
+    with pytest.raises(FileNotFoundError, match="fieldin.dat"):
+        resolve_legacy_emulator("emus/my_emu", base_dir=str(tmp_path))

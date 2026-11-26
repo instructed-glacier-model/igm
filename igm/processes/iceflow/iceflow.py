@@ -6,24 +6,27 @@
 
 from omegaconf import DictConfig
 
-from igm.common import State
-from igm.processes.iceflow.emulate.emulator import (
-    initialize_iceflow_emulator,
-    update_iceflow_emulator,
+from igm.common import State, print_model_with_inputs_detailed
+from igm.utils.schedule import check_schedule, is_count, is_positive, parse_schedule
+from igm.processes.iceflow.mappings import Mappings, InterfaceMappings
+from igm.processes.iceflow.optimizers import Optimizers, InterfaceOptimizers
+from igm.processes.iceflow.evaluator import (
+    EvaluatorParams,
+    get_evaluator_params_args,
+    evaluate_iceflow,
 )
-from igm.processes.iceflow.solve.solve import (
-    initialize_iceflow_solver,
-    update_iceflow_solved,
+from igm.processes.iceflow.error_estimator import (
+    ErrorEstimator,
+    InterfaceErrorEstimator,
 )
-from igm.processes.iceflow.diagnostic.diagnostic import (
-    initialize_iceflow_diagnostic,
-    update_iceflow_diagnostic,
+from igm.processes.iceflow.init_stop import InitStop
+from igm.processes.iceflow.solver import solve_iceflow
+from igm.processes.iceflow.solver.solver import should_normalize
+from igm.processes.iceflow.utils.cost import get_cost_fn
+from igm.processes.iceflow.utils.data_preprocessing import (
+    fieldin_state_to_X,
+    X_to_fieldin,
 )
-from igm.processes.iceflow.unified.unified import (
-    initialize_iceflow_unified,
-    update_iceflow_unified,
-)
-from igm.processes.iceflow.emulate.utils import save_iceflow_model
 from igm.processes.iceflow.vertical_velocity.vertical_velocity import (
     update as update_vertical_velocity,
 )
@@ -39,8 +42,24 @@ class Iceflow:
     pass
 
 
+def check_iceflow_method(cfg: DictConfig) -> None:
+    """Only the unified method remains; refuse the removed ones explicitly."""
+    method = str(cfg.processes.iceflow.method).lower()
+    if method != "unified":
+        raise ValueError(
+            f"❌ processes.iceflow.method='{method}' is no longer available: the "
+            "emulated, solved and diagnostic methods have been removed, and "
+            "'unified' is the only ice-flow method.\n"
+            "Set processes.iceflow.method: unified (or drop the key) and configure "
+            "the solver under processes.iceflow.unified (mapping, optimizer, nbit, "
+            "network, ...)."
+        )
+
+
 def initialize(cfg: DictConfig, state: State) -> None:
     """Initialize the iceflow module."""
+
+    check_iceflow_method(cfg)
 
     # Make sure this function is only called once
     if getattr(state, "iceflow_initialized", False):
@@ -69,49 +88,106 @@ def initialize(cfg: DictConfig, state: State) -> None:
         print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
         return
 
-    # Initialize ice-flow fields: U, V, slidingco, arrhenius
+    # Initialize ice-flow fields: U, V, tau_ref, arrhenius
     initialize_iceflow_fields(cfg, state)
 
-    # Initialize ice-flow method
-    iceflow_method = cfg.processes.iceflow.method.lower()
+    cfg_unified = cfg.processes.iceflow.unified
 
-    if iceflow_method == "emulated":
-        initialize_iceflow = initialize_iceflow_emulator
-    elif iceflow_method == "solved":
-        initialize_iceflow = initialize_iceflow_solver
-    elif iceflow_method == "diagnostic":
-        initialize_iceflow = initialize_iceflow_diagnostic
-    elif iceflow_method == "unified":
-        initialize_iceflow = initialize_iceflow_unified
-    else:
-        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
+    # Parameters that may be schedules over model time
+    check_schedule(cfg_unified.nbit, "nbit", is_count, "non-negative integers")
+    if cfg_unified.optimizer == "sequential":
+        for cfg_stage in cfg_unified.sequential.stages:
+            if "nbit" in cfg_stage:
+                check_schedule(
+                    cfg_stage.nbit, "sequential nbit", is_count, "non-negative integers"
+                )
+    check_schedule(
+        cfg_unified.retrain_freq, "retrain_freq", is_count, "non-negative integers"
+    )
+    check_schedule(cfg_unified.adam.lr, "adam.lr", is_positive, "positive numbers")
 
-    # Legacy stack (emulated/solved/diagnostic) uses `slidingco` directly as the
-    # reference basal shear stress at u_ref = 1; u_ref is only a knob for the
-    # unified method. Refuse to run rather than silently rescale friction by
-    # u_ref^(-1/m). This guard lives with the legacy dispatch (not in the shared
-    # sliding kernel) so it disappears automatically when the legacy stack is
-    # removed.
-    if iceflow_method != "unified":
-        u_ref = float(cfg.processes.iceflow.physics.sliding.u_ref)
-        if u_ref != 1.0:
+    # Parsed once, as it is read at every time step
+    state.iceflow.retrain_freq = parse_schedule(cfg_unified.retrain_freq)
+
+    # Drift detection needs running input statistics; otherwise it is never computed.
+    cfg_at = getattr(cfg_unified, "adaptive_time", None)
+    at_method = (
+        str(getattr(cfg_at, "method", "none")).lower() if cfg_at is not None else "none"
+    )
+    if at_method == "shift_distribution" and not should_normalize(cfg):
+        raise ValueError(
+            "adaptive_time.method=shift_distribution needs running input statistics "
+            "(normalization.method=adaptive with an untrained network mapping); with the "
+            "current settings the distribution shift is never computed."
+        )
+
+    # Initialize mapping
+    mapping_name = cfg_unified.mapping
+    mapping_args = InterfaceMappings[mapping_name].get_mapping_args(cfg, state)
+    mapping = Mappings[mapping_name](**mapping_args)
+    state.iceflow.mapping = mapping
+
+    # Initialize optimizer
+    cost_fn = get_cost_fn(cfg, state)
+    optimizer_name = cfg_unified.optimizer
+    optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
+        cfg=cfg,
+        cost_fn=cost_fn,
+        map=mapping,
+    )
+    if "batch_size" in optimizer_args:
+        framesizemax = cfg_unified.data_preparation.framesizemax
+        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
+        ny, nx = int(X.shape[0]), int(X.shape[1])
+        num_patches = (ny // framesizemax + 1) * (nx // framesizemax + 1)
+        if num_patches > 1 and mapping_name != "network":
             raise ValueError(
-                f"❌ iceflow.method='{iceflow_method}' requires "
-                f"processes.iceflow.physics.sliding.u_ref = 1.0 (got {u_ref}).\n"
-                "u_ref is only active in the 'unified' method; the "
-                "emulated/solved/diagnostic stack uses `slidingco` directly as "
-                "the reference basal shear stress at u_ref = 1.\n\n"
-                "Set u_ref = 1.0 in your experiment yaml:\n"
-                "    processes:\n"
-                "      iceflow:\n"
-                "        physics:\n"
-                "          sliding:\n"
-                "            u_ref: 1.0\n\n"
-                "or as a command-line override:\n"
-                "    igm_run processes.iceflow.physics.sliding.u_ref=1.0"
+                f"❌ Multiple batching requires mapping=network, "
+                f"but mapping={mapping_name!r} was specified "
+                f"(domain produces {num_patches} patches with framesizemax={framesizemax})."
             )
+        optimizer_args["batch_size"] = min(optimizer_args["batch_size"], num_patches)
+    optimizer = Optimizers[optimizer_name](**optimizer_args)
+    state.iceflow.optimizer = optimizer
 
-    initialize_iceflow(cfg, state)
+    # Error estimator (optional)
+    if InterfaceErrorEstimator.enabled(cfg):
+        error_estimator_args = InterfaceErrorEstimator.get_error_estimator_args(
+            cfg, state, cost_fn, mapping
+        )
+        error_estimator = ErrorEstimator(**error_estimator_args)
+        state.iceflow.error_estimator = error_estimator
+        # Sequential schedules: attach to the stages, not to the wrapper.
+        for stage in getattr(optimizer, "optimizers", None) or [optimizer]:
+            stage.attach_error_estimator(error_estimator)
+
+    # Evaluator params
+    evaluator_params_args = get_evaluator_params_args(cfg)
+    evaluator_params = EvaluatorParams(**evaluator_params_args)
+    state.iceflow.evaluator_params = evaluator_params
+
+    if mapping_name == "network" and cfg_unified.network.print_summary:
+        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
+        fieldin_dict = X_to_fieldin(X, fieldin_names=cfg_unified.inputs)
+        print_model_with_inputs_detailed(
+            model=state.iceflow_model,
+            input_data=fieldin_dict,
+            cfg_inputs=cfg_unified.inputs,
+            normalization_method=cfg_unified.normalization.method,
+        )
+
+    # Stop the initial training on its error against a direct solve (optional)
+    if cfg_unified.init_stop.enabled:
+        init_stop = InitStop.from_cfg(cfg, state)
+
+    # Solve once
+    solve_iceflow(cfg, state, init=True)
+
+    if cfg_unified.init_stop.enabled:
+        init_stop.finish()
+
+    # Evaluate once
+    evaluate_iceflow(cfg, state)
 
 
 def update(cfg: DictConfig, state: State) -> None:
@@ -123,21 +199,11 @@ def update(cfg: DictConfig, state: State) -> None:
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
 
-    # Update ice-flow method
-    iceflow_method = cfg.processes.iceflow.method.lower()
+    # Solve ice flow
+    solve_iceflow(cfg, state)
 
-    if iceflow_method == "emulated":
-        update_iceflow = update_iceflow_emulator
-    elif iceflow_method == "solved":
-        update_iceflow = update_iceflow_solved
-    elif iceflow_method == "diagnostic":
-        update_iceflow = update_iceflow_diagnostic
-    elif iceflow_method == "unified":
-        update_iceflow = update_iceflow_unified
-    else:
-        raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
-
-    update_iceflow(cfg, state)
+    # Evaluate ice flow
+    evaluate_iceflow(cfg, state)
 
     if cfg.processes.iceflow.vertical_velocity.enabled:
         update_vertical_velocity(cfg, state)
@@ -145,11 +211,4 @@ def update(cfg: DictConfig, state: State) -> None:
 
 def finalize(cfg: DictConfig, state: State) -> None:
     """Finalize the iceflow module."""
-    if "pretraining" in cfg.processes.keys():
-        return
-
-    # Save emulated model
-    iceflow_method = cfg.processes.iceflow.method.lower()
-    if iceflow_method == "emulated":
-        if cfg.processes.iceflow.emulator.save_model:
-            save_iceflow_model(cfg, state)
+    pass

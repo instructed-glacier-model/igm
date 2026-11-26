@@ -4,74 +4,35 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 """
-Dispatch layer for data_assimilation to work with both the 'emulated' and
-'unified' iceflow methods.  Every call that data_assimilation makes into the
-iceflow module goes through the two helpers below so that the rest of the
-data_assimilation code is iceflow-method-agnostic.
+Entry points of data_assimilation into the iceflow module. Every call that
+data_assimilation makes into iceflow goes through the two helpers below.
 """
 
 import tensorflow as tf
 
-
-def _get_method(cfg):
-    return cfg.processes.iceflow.method.lower()
+from igm.processes.iceflow.evaluator.evaluator import evaluate_iceflow
+from igm.processes.iceflow.solver.solver import solve_iceflow
 
 
 def iceflow_evaluate(cfg, state):
-    """Run iceflow forward model (inference) to compute velocities.
+    """Run the iceflow forward model (inference) to compute velocities."""
 
-    Emulated: calls update_iceflow_emulated
-    Unified:  calls evaluate_iceflow
-    """
-    method = _get_method(cfg)
-
-    if method == "emulated":
-        from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
-
-        update_iceflow_emulated(cfg, state)
-
-    elif method == "unified":
-        from igm.processes.iceflow.unified.evaluator.evaluator import evaluate_iceflow
-
-        evaluate_iceflow(cfg, state)
-
-    else:
-        raise ValueError(
-            f"data_assimilation does not support iceflow method '{method}'. "
-            "Use 'emulated' or 'unified'."
-        )
+    evaluate_iceflow(cfg, state)
 
 
 def iceflow_retrain(cfg, state):
     """Retrain / re-solve the iceflow model to enforce physics.
 
-    Emulated: retrains the emulator CNN then runs inference.
-              Returns state.cost_emulator[-1].
-    Unified:  runs solve_iceflow then evaluate_iceflow.
-              Returns state.cost (scalar).
+    Runs solve_iceflow then evaluate_iceflow, and returns state.cost[-1].
     """
-    method = _get_method(cfg)
 
-    if method == "emulated":
-        from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator
-
-        update_iceflow_emulator(cfg, state)
-        return state.cost_emulator[-1]
-
-    elif method == "unified":
-        from igm.processes.iceflow.unified.solver.solver import solve_iceflow
-        from igm.processes.iceflow.unified.evaluator.evaluator import evaluate_iceflow
-
-        solve_iceflow(cfg, state)
-        evaluate_iceflow(cfg, state)
-        # Return a tensor in all cases (a frozen / offline emulator does no
-        # retraining, so state.cost may be empty): keep cost["glen"] the same
-        # type as the other cost terms so the cost printers (which call
-        # .numpy()) work for both the on-line and off-line iceflow.
-        return state.cost[-1] if hasattr(state, "cost") and len(state.cost) > 0 else tf.constant(0.0)
-
+    solve_iceflow(cfg, state)
+    evaluate_iceflow(cfg, state)
+    # Return a tensor in all cases (a frozen / offline emulator does no
+    # retraining, so state.cost may be empty): keep cost["glen"] the same
+    # type as the other cost terms so the cost printers (which call
+    # .numpy()) work for both the on-line and off-line iceflow.
+    if hasattr(state, "cost") and len(state.cost) > 0:
+        return state.cost[-1]
     else:
-        raise ValueError(
-            f"data_assimilation does not support iceflow method '{method}'. "
-            "Use 'emulated' or 'unified'."
-        )
+        return tf.constant(0.0)

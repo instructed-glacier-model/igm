@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Tuple
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
@@ -69,29 +69,3 @@ def clip_max_velbar(
     V_clipped = boundvel(velbar_mag, V, velbar_mag_max)
 
     return U_clipped, V_clipped
-
-
-@tf.function(jit_compile=True)
-def get_misfit(
-    U1: tf.Tensor,
-    V1: tf.Tensor,
-    U2: tf.Tensor,
-    V2: tf.Tensor,
-    V_bar: tf.Tensor,
-    thk: Optional[tf.Tensor] = None,
-) -> Tuple[tf.Tensor, tf.Tensor]:
-    """Get L1 and L2 misfits between (U1, V1) and (U2, V2)."""
-
-    delta_velbar_x, delta_velbar_y = get_velbar(U1 - U2, V1 - V2, V_bar)
-
-    delta_velbar_mag = getmag(delta_velbar_x, delta_velbar_y)
-
-    mask = tf.ones_like(delta_velbar_mag)
-    if thk is not None:
-        mask = tf.cast(thk > 0.0, delta_velbar_mag.dtype)
-
-    mask_sum = tf.reduce_sum(mask)
-    error_L1 = tf.reduce_sum(mask * delta_velbar_mag) / mask_sum
-    error_L2 = tf.sqrt(tf.reduce_sum(mask * tf.square(delta_velbar_mag)) / mask_sum)
-
-    return error_L1, error_L2

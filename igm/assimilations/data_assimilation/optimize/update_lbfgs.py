@@ -5,7 +5,6 @@
 
 import tensorflow as tf
 
-# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.grad.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
 from ..utils import compute_forward_divflux
@@ -28,12 +27,16 @@ def optimize_update_lbfgs(cfg, state, cost, i):
     sc = {}
     sc["thk"] = cfg.assimilations.data_assimilation.scaling.thk
     sc["usurf"] = cfg.assimilations.data_assimilation.scaling.usurf
-    sc[state.da_friction] = cfg.assimilations.data_assimilation.scaling[state.da_friction]
+    sc[state.da_friction] = cfg.assimilations.data_assimilation.scaling[
+        state.da_friction
+    ]
     sc["arrhenius"] = cfg.assimilations.data_assimilation.scaling.arrhenius
 
     for f in cfg.assimilations.data_assimilation.control_list:
         setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
-        if cfg.assimilations.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
+        if cfg.assimilations.data_assimilation.fitting.log_slidingco & (
+            f == state.da_friction
+        ):
             setattr(state, f + "_sc", tf.Variable(tf.sqrt(getattr(state, f) / sc[f])))
         else:
             setattr(state, f + "_sc", tf.Variable(getattr(state, f) / sc[f]))
@@ -73,14 +76,17 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         return cost, gradients
 
     controls = tf.stack(
-        [getattr(state, f + "_sc") for f in cfg.assimilations.data_assimilation.control_list],
+        [
+            getattr(state, f + "_sc")
+            for f in cfg.assimilations.data_assimilation.control_list
+        ],
         axis=0,
     )
 
     optimizer = tfp.optimizer.lbfgs_minimize(
         value_and_gradients_function=loss_and_gradients_function,
         initial_position=controls,
-        max_iterations=cfg.processes.iceflow.solver.nbitmax,
+        max_iterations=cfg.assimilations.data_assimilation.optimization.lbfgs_nbitmax,
         tolerance=1e-8,
     )
 

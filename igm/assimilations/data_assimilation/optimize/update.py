@@ -5,12 +5,10 @@
 
 import tensorflow as tf
 
-# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.grad.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
-# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model
 # from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
 
 from ..iceflow_dispatch import iceflow_evaluate
@@ -30,16 +28,21 @@ def optimize_update(cfg, state, cost, i):
         ny, nx = state.thk.shape
         if ny > patch_size or nx > patch_size:
             from .update_patched import optimize_update_patched
+
             return optimize_update_patched(cfg, state, cost, i)
 
     sc = {}
     sc["thk"] = cfg.assimilations.data_assimilation.scaling.thk
     sc["usurf"] = cfg.assimilations.data_assimilation.scaling.usurf
-    sc[state.da_friction] = cfg.assimilations.data_assimilation.scaling[state.da_friction]
+    sc[state.da_friction] = cfg.assimilations.data_assimilation.scaling[
+        state.da_friction
+    ]
     sc["arrhenius"] = cfg.assimilations.data_assimilation.scaling.arrhenius
 
     for f in cfg.assimilations.data_assimilation.control_list:
-        if cfg.assimilations.data_assimilation.fitting.log_slidingco & (f == state.da_friction):
+        if cfg.assimilations.data_assimilation.fitting.log_slidingco & (
+            f == state.da_friction
+        ):
             setattr(state, f + "_sc", tf.Variable(tf.sqrt(getattr(state, f) / sc[f])))
         else:
             new_value = getattr(state, f) / sc[f]
@@ -113,13 +116,19 @@ def optimize_update(cfg, state, cost, i):
         # this serve to restict the optimization of controls to the mask
         if cfg.assimilations.data_assimilation.optimization.sole_mask:
             for ii in range(grads.shape[0]):
-                if not state.da_friction == cfg.assimilations.data_assimilation.control_list[ii]:
+                if (
+                    not state.da_friction
+                    == cfg.assimilations.data_assimilation.control_list[ii]
+                ):
                     grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
                 else:
                     grads[ii].assign(tf.where((state.icemaskobs == 1), grads[ii], 0))
         else:
             for ii in range(grads.shape[0]):
-                if not state.da_friction == cfg.assimilations.data_assimilation.control_list[ii]:
+                if (
+                    not state.da_friction
+                    == cfg.assimilations.data_assimilation.control_list[ii]
+                ):
                     grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
 
         # One step of descent -> this will update input variable X
@@ -152,7 +161,11 @@ def optimize_update(cfg, state, cost, i):
 
             fric = state.da_friction
             if fric in cfg.assimilations.data_assimilation.control_list:
-                setattr(state, fric, tf.where(getattr(state, fric) < 0, 0, getattr(state, fric)))
+                setattr(
+                    state,
+                    fric,
+                    tf.where(getattr(state, fric) < 0, 0, getattr(state, fric)),
+                )
 
             if "arrhenius" in cfg.assimilations.data_assimilation.control_list:
                 # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)

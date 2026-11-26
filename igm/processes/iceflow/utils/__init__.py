@@ -1,9 +1,5 @@
 from .data_preprocessing import (
-    compute_PAD,
     fieldin_to_X_2d,
-    pertubate_X,
-    prepare_X,
-    split_into_patches_X,
     split_field_into_patches,
 )
 
@@ -25,10 +21,4 @@ from .vertical_discretization import (
 )
 from .fields import (
     initialize_iceflow_fields,
-)
-
-from ..emulate.utils import (
-    get_effective_pressure_precentage,
-    get_emulator_path,
-    save_iceflow_model,
 )

@@ -53,24 +53,6 @@ def get_test_parameters() -> List[tuple]:
                     if not _should_skip(test_case, config.get("skip", [])):
                         params.append((exp, length, "unified", mapping, optimizer))
 
-            if config["methods"]["emulated"]["enabled"]:
-                test_case = {
-                    "experiment": exp,
-                    "length": length,
-                    "method": "emulated",
-                }
-                if not _should_skip(test_case, config.get("skip", [])):
-                    params.append((exp, length, "emulated", None, None))
-
-            if config["methods"]["solved"]["enabled"]:
-                test_case = {
-                    "experiment": exp,
-                    "length": length,
-                    "method": "solved",
-                }
-                if not _should_skip(test_case, config.get("skip", [])):
-                    params.append((exp, length, "solved", None, None))
-
     return params
 
 

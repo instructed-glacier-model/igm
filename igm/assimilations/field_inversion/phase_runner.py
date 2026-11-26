@@ -10,8 +10,8 @@ from typing import Any, Callable, Optional
 import numpy as np
 import tensorflow as tf
 
-from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
-from igm.processes.iceflow.unified.solver.solver import get_solver_inputs_from_state
+from igm.processes.iceflow.evaluator import evaluate_iceflow
+from igm.processes.iceflow.solver.solver import get_solver_inputs_from_state
 
 from .objective import build_objective_from_cfg
 from .outputs.output_ncdf import update_ncdf_optimize
@@ -28,7 +28,9 @@ class DACostHistory:
 class DataAssimilationRuntime:
     map: Any
     opt: Any
-    cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor, tf.Tensor]]
+    cost_fn: Callable[
+        [tf.Tensor, tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor, tf.Tensor]
+    ]
     objective: Any
     out_freq: int
     retrain_iter: int
@@ -73,7 +75,11 @@ def _empty_cost_history(da: DataAssimilationRuntime) -> DACostHistory:
 
 
 def _get_frozen_cost_history(da: DataAssimilationRuntime) -> DACostHistory:
-    return da.frozen_cost_history if da.frozen_cost_history is not None else _empty_cost_history(da)
+    return (
+        da.frozen_cost_history
+        if da.frozen_cost_history is not None
+        else _empty_cost_history(da)
+    )
 
 
 def _optimizer_cost_history(da: DataAssimilationRuntime) -> DACostHistory:
@@ -271,14 +277,14 @@ def run_da_phase(cfg, state, da: DataAssimilationRuntime) -> tf.Tensor:
         disable_da_step_callback(da)
 
     accepted_history = _optimizer_cost_history(da)
-    da.frozen_cost_history = _merge_cost_histories(frozen_before_phase, accepted_history)
+    da.frozen_cost_history = _merge_cost_histories(
+        frozen_before_phase, accepted_history
+    )
 
     n_steps = _num_accepted_steps(costs)
     final_snapshot_iter = snapshot_offset + max(1, n_steps)
     final_written_by_callback = (
-        da.out_freq > 0
-        and n_steps > 0
-        and (n_steps % int(da.out_freq) == 0)
+        da.out_freq > 0 and n_steps > 0 and (n_steps % int(da.out_freq) == 0)
     )
 
     if n_steps == 0:

@@ -20,7 +20,7 @@ _LEGACY_KEYS: List[Tuple[str, str]] = [
     # init_<x> moved into sliding: / viscosity:
     (
         "processes.iceflow.physics.init_slidingco",
-        "processes.iceflow.physics.sliding.slidingco",
+        "processes.iceflow.physics.sliding.tau_ref (= slidingco * u_ref^(1/m))",
     ),
     (
         "processes.iceflow.physics.init_tau_ref",
@@ -56,6 +56,30 @@ for _law in _SLIDING_LAWS:
         )
     )
 
+# Keys removed together with the emulated/solved/diagnostic ice-flow methods:
+# (dotted path, what to use instead)
+_REMOVED_KEYS: List[Tuple[str, str]] = [
+    (
+        "processes.iceflow.emulator",
+        "processes.iceflow.unified (mapping: network, network.*, nbit, "
+        "retrain_freq, ...)",
+    ),
+    (
+        "processes.iceflow.solver",
+        "processes.iceflow.unified (mapping: identity, optimizer, nbit, ...); "
+        "the L-BFGS cap of data_assimilation (solver.nbitmax) is now "
+        "assimilations.data_assimilation.optimization.lbfgs_nbitmax",
+    ),
+    (
+        "processes.iceflow.diagnostic",
+        "no replacement (the diagnostic method compared emulator and solver)",
+    ),
+    (
+        "processes.iceflow.physics.sliding.slidingco",
+        "processes.iceflow.physics.sliding.tau_ref (= slidingco * u_ref^(1/m))",
+    ),
+]
+
 
 def check_legacy_keys(cfg: DictConfig) -> None:
     """Abort with a clear migration error if any legacy key is present.
@@ -63,6 +87,20 @@ def check_legacy_keys(cfg: DictConfig) -> None:
     Called from `igm_run.py` right after Hydra composes the config so the
     user sees the message before anything else runs.
     """
+    removed = [
+        (old, new)
+        for old, new in _REMOVED_KEYS
+        if OmegaConf.select(cfg, old, default=None) is not None
+    ]
+    if removed:
+        lines = [f"  - '{old}'  →  {new}" for old, new in removed]
+        raise ValueError(
+            "❌ Your config uses parameters that have been removed together with "
+            "the emulated, solved and diagnostic ice-flow methods ('unified' is "
+            "now the only processes.iceflow.method). Please remove them from your "
+            "yaml file(s):\n" + "\n".join(lines)
+        )
+
     found = [
         (old, new)
         for old, new in _LEGACY_KEYS

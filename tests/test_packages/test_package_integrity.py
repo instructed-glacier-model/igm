@@ -61,7 +61,7 @@ def test_subpackages_in_wheel():
 
     missing = []
     for package_name in get_all_package_names(ROOT_PACKAGE_DIR):
-        # Construct expected path, e.g. igm/processes/iceflow/emulate/__init__.py
+        # Construct expected path, e.g. igm/processes/iceflow/networks/__init__.py
         pkg_path = "/".join([*package_name.split("."), "__init__.py"])
         if pkg_path not in whl_files:
             missing.append(package_name)

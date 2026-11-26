@@ -22,11 +22,11 @@ def run_igm(
     optimizer: Optional[str] = None,
 ) -> str:
     """
-    Run IGM simulation for any method.
+    Run IGM simulation.
 
     Args:
         monkeypatch: pytest fixture for modifying sys.argv
-        method: "unified", "emulated", or "solved"
+        method: "unified" (the only ice-flow method)
         length: Length scale in km
         mapping: Mapping type (for unified method)
         optimizer: Optimizer type (for unified method)
@@ -36,10 +36,6 @@ def run_igm(
     """
     if method == "unified":
         return _run_unified(monkeypatch, mapping, optimizer, length)
-    elif method == "emulated":
-        return _run_emulated(monkeypatch, length)
-    elif method == "solved":
-        return _run_solved(monkeypatch, length)
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -100,21 +96,3 @@ def _run_unified(
     main()
 
     return path_run_dir
-
-
-def _run_emulated(
-    monkeypatch: pytest.MonkeyPatch,
-    length: Optional[int] = None,
-) -> str:
-    """Run emulated method simulation."""
-    # TODO: Implement emulated method
-    raise NotImplementedError("Emulated method not yet implemented")
-
-
-def _run_solved(
-    monkeypatch: pytest.MonkeyPatch,
-    length: Optional[int] = None,
-) -> str:
-    """Run solved method simulation."""
-    # TODO: Implement solved method
-    raise NotImplementedError("Solved method not yet implemented")

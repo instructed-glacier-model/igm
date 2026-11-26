@@ -30,7 +30,7 @@ def run_experiment_test(
         monkeypatch: pytest fixture
         experiment: Experiment name (exp_a, exp_b, exp_c, exp_e_1, etc.)
         length: Length scale in km (None for experiments without length parameter like exp_e)
-        method: Method to use (unified, emulated, solved)
+        method: Ice-flow method (unified)
         mapping: Mapping type (for unified method)
         optimizer: Optimizer type (for unified method)
     """

@@ -18,12 +18,6 @@ methods:
     optimizer_mappings:
       cg_newton: [identity]
 
-  emulated:
-    enabled: false
-
-  solved:
-    enabled: false
-
 # Validation settings
 validation:
   mode: compare_reference  # "run_only" | "compare_reference"

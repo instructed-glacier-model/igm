@@ -1,0 +1,183 @@
+import tensorflow as tf
+
+import warnings
+from typing import Any, Dict
+from omegaconf import DictConfig
+
+from .interface import InterfaceMapping
+from igm.common import State
+from igm.processes.iceflow.networks import NormalizationsDict
+from igm.processes.iceflow.networks.artifacts import load_emulator_artifact
+from igm.processes.iceflow.networks.architectures import Architectures
+from igm.processes.iceflow.networks.architectures.utils import (
+    build_network_params,
+)
+from igm.processes.iceflow.bcs.utils import init_bcs
+from igm.utils.math.precision import normalize_precision
+from igm.processes.iceflow.networks.legacy import (
+    resolve_legacy_emulator,
+    load_legacy_emulator,
+)
+
+
+def mapping_args_for_model(
+    cfg: DictConfig, state: State, model: tf.keras.Model
+) -> Dict[str, Any]:
+    """Pack the network-mapping kwargs around an already-constructed model.
+
+    Used by the pretraining-resume path, which loads the model from and
+    just needs the surrounding BCs / Nz / output_scale / precision.
+    """
+    cfg_numerics = cfg.processes.iceflow.numerics
+    cfg_unified = cfg.processes.iceflow.unified
+
+    state.iceflow_model = model
+    bcs = init_bcs(cfg, state, cfg_unified.bcs)
+
+    return {
+        "bcs": bcs,
+        "network": state.iceflow_model,
+        "Nz": cfg_numerics.Nz,
+        "output_scale": float(cfg_unified.network.output_scale),
+        "precision": cfg_numerics.precision,
+    }
+
+
+class InterfaceNetwork(InterfaceMapping):
+    @staticmethod
+    def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
+        cfg_numerics = cfg.processes.iceflow.numerics
+        cfg_unified = cfg.processes.iceflow.unified
+
+        if cfg_unified.network.pretrained:
+            pretrained_path = cfg_unified.network.pretrained_path
+            if not pretrained_path:
+                raise ValueError(
+                    "❌ processes.iceflow.unified.network.pretrained is true but "
+                    "network.pretrained_path is empty. Set it to an emulator shipped "
+                    "with igm (dahunet.keras, dahunet_mini.keras, dahunet_micro.keras, "
+                    "dahunet_edu.keras, or a legacy folder such as "
+                    "pinnbp_10_4_cnn_16_32_2_1_a), or to the path of your own emulator."
+                )
+            legacy_path = resolve_legacy_emulator(
+                pretrained_path, getattr(state, "original_cwd", None)
+            )
+            if legacy_path is not None:
+                iceflow_model = load_legacy_emulator(
+                    legacy_path, cfg, cfg_unified.inputs
+                )
+            else:
+                dtype = normalize_precision(cfg_numerics.precision)
+                # might be worth breaking this out into a util with clear message to indicate a swap in precision
+                tf.keras.mixed_precision.set_global_policy(
+                    "float64" if tf.as_dtype(dtype) == tf.float64 else "float32"
+                )
+                iceflow_model = load_emulator_artifact(
+                    pretrained_path,
+                    cfg=cfg,
+                    expected_inputs=cfg_unified.inputs,
+                )
+        else:
+            # Apply the requested precision before constructing a new model.
+            dtype = normalize_precision(cfg_numerics.precision)
+            tf.keras.mixed_precision.set_global_policy(
+                "float64" if tf.as_dtype(dtype) == tf.float64 else "float32"
+            )
+            # should this still be a warning? Maybe we just need to make the themed
+            # message very clear... it's perfectly valid after all.
+            warnings.warn("No pretrained emulator selected. Starting from scratch.")
+
+            # Deterministic from-scratch runs: seed the RNGs (weight init) AND force
+            # deterministic GPU kernels. Without op-determinism, non-deterministic
+            # conv/reduction atomics make the ill-conditioned inversion diverge run to
+            # run even at a fixed seed. null keeps the previous fresh-randomness path.
+            seed = cfg_unified.network.get("seed", None)
+            if seed is not None:
+                tf.config.experimental.enable_op_determinism()
+                tf.keras.utils.set_random_seed(int(seed))
+
+            nb_inputs = len(cfg_unified.inputs)
+
+            arch_name = str(cfg_unified.network.architecture).lower()
+            if arch_name not in Architectures:
+                raise ValueError(
+                    f"Unknown network architecture: {arch_name}. "
+                    f"Available: {list(Architectures.keys())}"
+                )
+
+            arch_cls = Architectures[arch_name]
+            iceflow_model = arch_cls(
+                input_names=list(cfg_unified.inputs),
+                Nz=int(cfg_numerics.Nz),
+                network_params=build_network_params(
+                    cfg_unified.network, arch_cls, precision=cfg_numerics.precision
+                ),
+            )
+
+            # Attach the input normalizer. During pretraining the trainer
+            # supplies its own; otherwise read the cfg.
+            if cfg.get("assimilations") and "pretraining" in cfg.assimilations:
+                iceflow_model.input_normalizer = None
+            else:
+                method = str(cfg_unified.normalization.method)
+                if method not in NormalizationsDict:
+                    raise ValueError(f"Unknown normalizing method: {method}")
+                normalizing_class = NormalizationsDict[method]
+
+                if method == "adaptive":
+                    normalizing_layer = normalizing_class(nb_inputs)
+                elif method == "fixed":
+                    fixed = cfg_unified.normalization.fixed
+                    missing = [
+                        k
+                        for k in cfg_unified.inputs
+                        if k not in fixed.inputs_offsets
+                        or k not in fixed.inputs_variances
+                    ]
+                    if missing:
+                        raise ValueError(
+                            f"Fixed normalization has no scale for input(s) {missing}; add them "
+                            "to processes.iceflow.unified.normalization.fixed.inputs_offsets "
+                            "and inputs_variances."
+                        )
+                    normalizing_layer = normalizing_class(
+                        {k: fixed.inputs_offsets[k] for k in cfg_unified.inputs},
+                        {k: fixed.inputs_variances[k] for k in cfg_unified.inputs},
+                    )
+                else:
+                    normalizing_layer = normalizing_class()
+
+                iceflow_model.input_normalizer = normalizing_layer
+
+        state.iceflow_model = iceflow_model
+
+        if cfg_unified.network.fp16_inference:
+            # fp16 gradients underflow: forward runs only, nothing that trains or
+            # differentiates through the network (retraining, assimilations)
+            nbits = [cfg_unified[k] for k in ("nbit", "nbit_init", "nbit_warmup")]
+            if (
+                not cfg_unified.network.pretrained
+                or cfg.get("assimilations")
+                or max(nbits) > 0
+            ):
+                raise ValueError(
+                    "fp16_inference is for forward runs of a pretrained network that is "
+                    "not retrained: needs network.pretrained true, no assimilations, and "
+                    f"nbit, nbit_init, nbit_warmup <= 0 (got {nbits})"
+                )
+            core = getattr(iceflow_model, "core", iceflow_model)
+            if not hasattr(core, "set_inference_precision"):
+                raise ValueError(
+                    f"fp16_inference is not supported by {type(core).__name__}"
+                )
+            core.set_inference_precision("float16")
+
+        bcs = init_bcs(cfg, state, cfg_unified.bcs)
+
+        return {
+            "bcs": bcs,
+            "network": state.iceflow_model,
+            "Nz": cfg_numerics.Nz,
+            "output_scale": float(cfg_unified.network.output_scale),
+            "precision": cfg_numerics.precision,
+        }

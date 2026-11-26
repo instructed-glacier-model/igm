@@ -5,15 +5,14 @@ from __future__ import annotations
 import pytest
 import tensorflow as tf
 
-from igm.processes.iceflow.emulate.utils.architectures import (
+from igm.processes.iceflow.networks.architectures import (
     Architectures,
     HybridDahuNetFNO,
 )
-from igm.processes.iceflow.emulate.utils.architectures.nos import (
+from igm.processes.iceflow.networks.architectures.nos import (
     FactorizedSpectralConv2D,
     SpectralConv2D,
 )
-
 
 INPUTS = ["thk", "usurf", "arrhenius", "tau_ref", "dX", "water_level"]
 

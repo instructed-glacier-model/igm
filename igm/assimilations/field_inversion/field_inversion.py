@@ -9,16 +9,18 @@ import importlib
 import keras
 import tensorflow as tf
 
-from igm.processes.iceflow.unified.halt import Halt
-from igm.processes.iceflow.unified.halt.criteria import Criteria
-from igm.processes.iceflow.unified.halt.metrics import Metrics
-from igm.processes.iceflow.unified.mappings.data_assimilation import MappingDataAssimilation
-from igm.processes.iceflow.unified.mappings.interfaces.data_assimilation import InterfaceDataAssimilation
-from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS, InterfaceSPG
-from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoundsDA
+from igm.processes.iceflow.halt import Halt
+from igm.processes.iceflow.halt.criteria import Criteria
+from igm.processes.iceflow.halt.metrics import Metrics
+from igm.processes.iceflow.mappings.data_assimilation import MappingDataAssimilation
+from igm.processes.iceflow.mappings.interfaces.data_assimilation import (
+    InterfaceDataAssimilation,
+)
+from igm.processes.iceflow.optimizers.interfaces import InterfaceLBFGS, InterfaceSPG
+from igm.processes.iceflow.optimizers.lbfgs_DA import OptimizerLBFGSBoundsDA
 from igm.utils.math.precision import normalize_precision
 
-from igm.processes.iceflow.unified.optimizers.spectral_projected_gradient import (
+from igm.processes.iceflow.optimizers.spectral_projected_gradient import (
     OptimizerSpectralProjectedGradient,
 )
 
@@ -35,6 +37,7 @@ from .retraining import (
 )
 from .utils import _initialize_inverted_fields
 
+
 def _require_supported_keras_version() -> None:
     major = int(str(getattr(keras, "__version__", "0")).split(".", 1)[0])
     if major < 3:
@@ -42,6 +45,7 @@ def _require_supported_keras_version() -> None:
             f"field_inversion requires Keras 3 or newer. "
             f"Detected keras == {keras.__version__}."
         )
+
 
 def _build_halt(cfg) -> Halt:
     cfg_da = cfg.assimilations.field_inversion

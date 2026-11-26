@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import tensorflow as tf
 
-from igm.processes.iceflow.emulate.utils.architectures.nos import (
+from igm.processes.iceflow.networks.architectures.nos import (
     FactorizedSpectralConv2D,
 )
 
@@ -24,7 +24,9 @@ def test_factorized_spectral_layer_has_finite_gradients_and_dynamic_shapes() -> 
     assert output.shape == (2, 4, 8, 10)
     assert layer(tf.zeros((1, 3, 10, 12))).shape == (1, 4, 10, 12)
     assert all(gradient is not None for gradient in gradients)
-    assert all(bool(tf.reduce_all(tf.math.is_finite(gradient))) for gradient in gradients)
+    assert all(
+        bool(tf.reduce_all(tf.math.is_finite(gradient))) for gradient in gradients
+    )
 
 
 @pytest.mark.unit

@@ -10,11 +10,11 @@ from typing import Tuple
 
 import tensorflow as tf
 
-from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
-from igm.processes.iceflow.unified.mappings.interfaces.network import (
+from igm.processes.iceflow.mappings import Mappings, InterfaceMappings
+from igm.processes.iceflow.mappings.interfaces.network import (
     mapping_args_for_model,
 )
-from igm.processes.iceflow.emulate.utils.artifacts import (
+from igm.processes.iceflow.networks.artifacts import (
     load_emulator_artifact,
     save_emulator_artifact,
     wrap_emulator_artifact,
@@ -138,7 +138,9 @@ def initialize(cfg, state):
             artifact_dir=out_dir, cfg=cfg, expected_inputs=inputs
         )
         mapping_args = mapping_args_for_model(cfg, state, state.iceflow_model)
-        print("[resume] loaded emulator.keras; checkpoint will restore weights/optimizer state")
+        print(
+            "[resume] loaded emulator.keras; checkpoint will restore weights/optimizer state"
+        )
     else:
         mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
         state.iceflow_model = wrap_emulator_artifact(state.iceflow_model)
@@ -151,7 +153,9 @@ def initialize(cfg, state):
         if save_model:
             # First save: writes architecture + adapted normalizer to disk so
             # that resume runs can reload them before the checkpoint restore.
-            path = save_emulator_artifact(artifact_dir=out_dir, model=state.iceflow_model)
+            path = save_emulator_artifact(
+                artifact_dir=out_dir, model=state.iceflow_model
+            )
             print(f"[artifact] wrote {path}")
 
     mapping = Mappings["network"](**mapping_args)

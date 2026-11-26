@@ -27,3 +27,16 @@ def test_iceflow():
     igm.processes.iceflow.finalize(cfg, state)
 
     assert tf.reduce_mean(state.ubar).numpy() < 10 * 10
+
+
+@pytest.mark.parametrize("method", ["emulated", "solved", "diagnostic"])
+def test_iceflow_removed_methods_raise(method):
+
+    state = igm.common.State()
+    cfg = load_yaml_recursive(
+        os.path.join(igm.__path__[0], "conf"), exclude=["assimilations/pretraining"]
+    )
+    cfg.processes.iceflow.method = method
+
+    with pytest.raises(ValueError, match="only ice-flow method"):
+        igm.processes.iceflow.initialize(cfg, state)

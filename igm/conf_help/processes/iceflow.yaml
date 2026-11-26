@@ -1,6 +1,6 @@
 method:
   Type: string
-  Description: "Type of method to determine the ice flow: emulated, solved, diagnostic, unified."
+  Description: "Ice-flow method. Only unified is available (the emulated, solved and diagnostic methods have been removed; any other value raises an error). The solver is configured under unified."
   Units: dimless
 force_max_velbar:
   Type: float
@@ -22,15 +22,11 @@ physics:
       Units: dimless
     use_subgrid_gl:
       Type: boolean
-      Description: "Sub-grid friction near the grounding line, with use_mask_gr: true. false: the friction is zeroed at floating nodes (nodal mask). true: the nodal mask is replaced by the grounded fraction of the area around each node (the four quarter cells touching it), computed from the bilinear flotation function with state.topg (grounding-line parameterization of CISM, Leguy et al., 2021, The Cryosphere 15, 3229-3253). This weight multiplies the input the mask acts on (tau_ref; effective_pressure for mohr_coulomb, which then needs tauc_min: 0) when the unified inputs are read from the state, and the energy applies no mask; with weights of 0 or 1 it reproduces the nodal mask. The weight varies continuously as the grounding line moves, and the friction is located to within half a cell. The inputs keep their names and number, so topg need not be a network input. Requires iceflow.method: unified; field_inversion controls are not weighted. The frictional heating uses the same weight."
+      Description: "Sub-grid friction near the grounding line, with use_mask_gr: true. false: the friction is zeroed at floating nodes (nodal mask). true: the nodal mask is replaced by the grounded fraction of the area around each node (the four quarter cells touching it), computed from the bilinear flotation function with state.topg (grounding-line parameterization of CISM, Leguy et al., 2021, The Cryosphere 15, 3229-3253). This weight multiplies the input the mask acts on (tau_ref; effective_pressure for mohr_coulomb, which then needs tauc_min: 0) when the unified inputs are read from the state, and the energy applies no mask; with weights of 0 or 1 it reproduces the nodal mask. The weight varies continuously as the grounding line moves, and the friction is located to within half a cell. The inputs keep their names and number, so topg need not be a network input. field_inversion controls are not weighted. The frictional heating uses the same weight."
       Units: dimless
-    slidingco:
-      Type: float
-      Description: "Initial value for the reference basal shear stress (legacy stack: emulated/solved/diagnostic + data_assimilation; the field is named state.slidingco). Numerically equal to sliding.tau_ref."
-      Units: MPa
     tau_ref:
       Type: float
-      Description: "Initial value for the reference basal shear stress (new stack: iceflow.method=unified + field_inversion + pretraining; the field is named state.tau_ref). Numerically equal to sliding.slidingco."
+      Description: "Initial value of the reference basal shear stress state.tau_ref, i.e. the basal shear stress at the sliding speed u_ref (used unless tau_ref is loaded from the inputs). The default 0.2154 MPa equals the former slidingco default 0.0464 times u_ref^(1/m), with u_ref = 100 m/yr and m = 3."
       Units: MPa
     regularization:
       Type: float
@@ -42,7 +38,7 @@ physics:
       Units: dimless
     u_ref:
       Type: float
-      Description: "Reference basal velocity. Active in the 'unified' method only (default 100 m/yr). The emulated/solved/diagnostic stack uses slidingco directly as tau_ref at u_ref=1 and refuses to run unless u_ref=1.0."
+      Description: "Reference basal velocity at which the basal shear stress equals tau_ref. Legacy (.h5) pretrained emulators were trained with u_ref = 1."
       Units: m y^{-1}
     N_ref:
       Type: float
@@ -165,182 +161,6 @@ numerics:
   basis_vertical:
     Type: string
     Description: "Basis for the vertical discretization."
-    Units: dimless
-solver:
-  step_size:
-    Type: float
-    Description: "Step size for the optimizer."
-    Units: dimless
-  nbitmax:
-    Type: integer
-    Description: "Maximum number of iterations for the optimizer."
-    Units: dimless
-  optimizer:
-    Type: string
-    Description: "Type of optimizer."
-    Units: dimless
-  print_cost:
-    Type: boolean
-    Description: "Display the cost during the optimization."
-    Units: dimless
-  fieldin:
-    Type: list
-    Description: "Input fields of the ice-flow solver."
-    Units: dimless
-emulator:
-  fieldin:
-    Type: list
-    Description: "Input fields of the ice-flow emulator."
-    Units: dimless
-  retrain_freq:
-    Type: integer
-    Description: "Frequency at which the emulator is retrained."
-    Units: dimless
-  print_cost:
-    Type: boolean
-    Description: "Display the cost during the optimization."
-    Units: dimless
-  lr:
-    Type: float
-    Description: "Learning rate for the training of the emulator."
-    Units: dimless
-  lr_init:
-    Type: float
-    Description: "Initial learning rate for the training of the emulator."
-    Units: dimless
-  lr_decay:
-    Type: float
-    Description: "Decay learning-rate parameter for the training of the emulator."
-    Units: dimless
-  warm_up_it:
-    Type: float
-    Description: "Number of iterations for a warm-up period, allowing intense initial training."
-    Units: dimless
-  nbit_init:
-    Type: integer
-    Description: "Number of iterations done initially for the training of the emulator."
-    Units: dimless
-  nbit:
-    Type: integer
-    Description: "Number of iterations done at each time step for the training of the emulator."
-    Units: dimless
-  framesizemax:
-    Type: integer
-    Description: "Size of the patch used for training the emulator; this is useful for large size arrays as otherwise the GPU memory could be overloaded."
-    Units: dimless
-  split_patch_method:
-    Type: string
-    Description: "Method to split the patch for the emulator: sequential (usefull for large size arrays) or parallel."
-    Units: dimless
-  pretrained:
-    Type: boolean
-    Description: "Use a pretrained emulator instead of starting from scratch."
-    Units: dimless
-  name:
-    Type: string
-    Description: "Directory path of the pretrained ice-flow emulator; taken from the library if this is empty."
-    Units: dimless
-  save_model:
-    Type: boolean
-    Description: "Save the ice-flow emulator at the end of the simulation."
-    Units: dimless
-  exclude_borders:
-    Type: integer
-    Description: "Quick fix of the border issue; otherwise the emulator shows zero velocity at the border."
-    Units: dimless
-  optimizer:
-    Type: string
-    Description: "Type of optimizer for the emulator."
-    Units: dimless
-  optimizer_clipnorm:
-    Type: float
-    Description: "Maximum value for the gradient of each weight."
-    Units: dimless
-  optimizer_epsilon:
-    Type: float
-    Description: "Small constant for numerical stability of the Adam optimizer."
-    Units: dimless
-  save_cost:
-    Type: string
-    Description: "Name of the file containing the cost."
-    Units: dimless
-  output_directory:
-    Type: string
-    Description: "Directory of the file containing the cost."
-    Units: dimless
-  plot_sol:
-    Type: boolean
-    Description: "Plot the solution of the emulator at each time step."
-    Units: dimless
-  pertubate:
-    Type: boolean
-    Description: "Perturb the input fiels during the training."
-    Units: dimless
-  network:
-    architecture:
-      Type: string
-      Description: "Type of network: cnn, unet."
-      Units: dimless
-    multiple_window_size:
-      Type: integer
-      Description: "For a U-Net, this requires the window size to be a multiple of 2 to the power N."
-      Units: dimless
-    activation:
-      Type: string
-      Description: "Type of activation function: lrelu, relu, tanh, sigmoid, ..."
-      Units: dimless
-    nb_layers:
-      Type: integer
-      Description: "Number of layers in the network."
-      Units: dimless
-    nb_blocks:
-      Type: integer
-      Description: "Number of block layers in the U-Net."
-      Units: dimless
-    nb_out_filter:
-      Type: integer
-      Description: "Number of output filters in the network."
-      Units: dimless
-    conv_ker_size:
-      Type: integer
-      Description: "Size of the convolution kernel."
-      Units: dimless
-    dropout_rate:
-      Type: float
-      Description: "Dropout rate in the CNN."
-      Units: dimless
-    weight_initialization:
-      Type: string
-      Description: "Initialization type for the network weights: glorot_uniform, he_normal, lecun_normal."
-      Units: dimless
-    cnn3d_for_vertical:
-      Type: boolean
-      Description: "Apply a 3D CNN instead of a 2D one for each horizontal layer."
-      Units: dimless
-    batch_norm:
-      Type: boolean
-      Description: "Apply a batch normalization layer."
-      Units: dimless
-    l2_reg:
-      Type: float
-      Description: "Amount of l2 regularization penalty."
-      Units: dimless
-    separable:
-      Type: boolean
-      Description: "Apply convolution layers that are separable."
-      Units: dimless
-    residual:
-      Type: boolean
-      Description: "Apply residual layer."
-      Units: dimless
-diagnostic:
-  save_freq:
-    Type: integer
-    Description: "Frequency of the saving of the metrics."
-    Units: dimless
-  filename_metrics:
-    Type: string
-    Description: "Name of the file with the metrics."
     Units: dimless
 unified:
   mapping:
@@ -1064,7 +884,7 @@ unified:
       Units: dimless
     pretrained_path:
       Type: string
-      Description: "Path to the pretrained network; taken from the library if empty."
+      Description: "Pretrained network to load when pretrained is true (required then). A bare name selects an emulator shipped with igm: dahunet.keras, dahunet_mini.keras, dahunet_micro.keras, dahunet_edu.keras, or a legacy .h5 folder such as pinnbp_10_4_cnn_16_32_2_1_a (trained with u_ref = 1). Otherwise a path to a .keras artifact, an artifact directory, or a legacy folder holding model.h5 and fieldin.dat (a relative legacy folder is looked up in the directory igm_run is launched from)."
       Units: dimless
     print_summary:
       Type: boolean
@@ -1080,7 +900,7 @@ unified:
       Units: dimless
     params:
       Type: dict
-      Description: "Architecture hyperparameters for the from-scratch path (pretrained: false), owned by the unified mode (no longer read from emulator.network). Keys depend on `architecture`; an empty dict uses the architecture's built-in defaults."
+      Description: "Architecture hyperparameters for the from-scratch path (pretrained: false). Keys depend on `architecture`; an empty dict uses the architecture's built-in defaults."
       Units: dimless
   data_preparation:
     framesizemax:

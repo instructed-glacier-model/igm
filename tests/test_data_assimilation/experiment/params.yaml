@@ -30,13 +30,3 @@ assimilations:
     output:
       freq: 1000
       plot2d: false
-
-processes:
-  iceflow:
-    physics:
-      sliding:
-        slidingco: 0.045
-       
-
-      
-
