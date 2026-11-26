@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from typing import Any, Dict
+
 import tensorflow as tf
 
 
@@ -316,12 +317,8 @@ class FactorizedSpectralConv2D(tf.keras.layers.Layer):
         h_ft = tf.shape(x_ft)[2]
         w_r = tf.shape(x_ft)[3]
 
-        top = self._compl_mul2d(
-            x_ft[:, :, : self.modes1, : self.modes2], "top"
-        )
-        bottom = self._compl_mul2d(
-            x_ft[:, :, -self.modes1 :, : self.modes2], "bottom"
-        )
+        top = self._compl_mul2d(x_ft[:, :, : self.modes1, : self.modes2], "top")
+        bottom = self._compl_mul2d(x_ft[:, :, -self.modes1 :, : self.modes2], "bottom")
         top = tf.pad(
             top,
             [[0, 0], [0, 0], [0, h_ft - self.modes1], [0, w_r - self.modes2]],
@@ -365,14 +362,14 @@ class FNO(tf.keras.Model):
     """
 
     _DEFAULTS: Dict[str, tuple] = {
-        "width":            (32,   int),
-        "modes1":           (8,    int),
-        "modes2":           (8,    int),
-        "padding":          (9,    int),
-        "use_grid":         (True, bool),
-        "projection_width": (128,  int),
-        "n_layers":         (4,    int),
-        "factorization_rank": (0,  int),
+        "width": (32, int),
+        "modes1": (8, int),
+        "modes2": (8, int),
+        "padding": (9, int),
+        "use_grid": (True, bool),
+        "projection_width": (128, int),
+        "n_layers": (4, int),
+        "factorization_rank": (0, int),
     }
 
     def __init__(
@@ -413,7 +410,9 @@ class FNO(tf.keras.Model):
         if self.padding < 0:
             raise ValueError(f"padding must be >= 0, got {self.padding}")
         if self.projection_width <= 0:
-            raise ValueError(f"projection_width must be > 0, got {self.projection_width}")
+            raise ValueError(
+                f"projection_width must be > 0, got {self.projection_width}"
+            )
         if self.n_layers <= 0:
             raise ValueError(f"n_layers must be > 0, got {self.n_layers}")
         if self.factorization_rank < 0:
@@ -426,7 +425,9 @@ class FNO(tf.keras.Model):
         self._dummy_H = max(16, self.modes1 + 1)
         self._dummy_W = max(16, 2 * self.modes2 + 2)
 
-        self.fc0 = tf.keras.layers.Dense(self.width, dtype=self.compute_dtype, name="fc0")
+        self.fc0 = tf.keras.layers.Dense(
+            self.width, dtype=self.compute_dtype, name="fc0"
+        )
         if self.factorization_rank:
             self.convs = [
                 FactorizedSpectralConv2D(
@@ -461,8 +462,12 @@ class FNO(tf.keras.Model):
             )
             for i in range(self.n_layers)
         ]
-        self.fc1 = tf.keras.layers.Dense(self.projection_width, dtype=self.compute_dtype, name="fc1")
-        self.fc2 = tf.keras.layers.Dense(self.nb_outputs, dtype=self.compute_dtype, name="fc2")
+        self.fc1 = tf.keras.layers.Dense(
+            self.projection_width, dtype=self.compute_dtype, name="fc1"
+        )
+        self.fc2 = tf.keras.layers.Dense(
+            self.nb_outputs, dtype=self.compute_dtype, name="fc2"
+        )
 
     # ----------------------------------------------------------------------
     # Minimal reconstruction manifest payload
@@ -500,8 +505,16 @@ class FNO(tf.keras.Model):
             )
 
         batch_dim = 1 if input_shape[0] is None else int(input_shape[0])
-        height_dim = self._dummy_H if input_shape[1] is None else max(self._dummy_H, int(input_shape[1]))
-        width_dim = self._dummy_W if input_shape[2] is None else max(self._dummy_W, int(input_shape[2]))
+        height_dim = (
+            self._dummy_H
+            if input_shape[1] is None
+            else max(self._dummy_H, int(input_shape[1]))
+        )
+        width_dim = (
+            self._dummy_W
+            if input_shape[2] is None
+            else max(self._dummy_W, int(input_shape[2]))
+        )
 
         dummy = tf.zeros(
             shape=(batch_dim, height_dim, width_dim, channel_dim),

@@ -61,7 +61,7 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     # In principle, the iceflow module should provide this.
     if not hasattr(state, "iceflow"):
         from igm.processes.iceflow.iceflow import Iceflow
-        from igm.processes.iceflow.vertical import VerticalDiscrs
+        from igm.processes.iceflow.discretization.vertical import VerticalDiscrs
 
         state.iceflow = Iceflow()
         cfg_numerics = cfg.processes.iceflow.numerics

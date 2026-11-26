@@ -3,19 +3,22 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 from __future__ import annotations
-import tensorflow as tf
-from typing import Optional, List
 
-from .progress_optimizer import ProgressOptimizer  # NEW
+from typing import List, Optional
+
+import tensorflow as tf
 from rich.console import Console
-from rich.progress import Progress
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
+    Progress,
+    TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    TextColumn,
 )
+
+from .progress_optimizer import ProgressOptimizer  # NEW
+
 
 class _DAProgressOptimizer(ProgressOptimizer):
     """Rich progress bar with Total/Data/Reg columns + optional halt criteria columns."""
@@ -23,7 +26,6 @@ class _DAProgressOptimizer(ProgressOptimizer):
     def start(self, total_iterations: int, criterion_names=None) -> None:
         if not self.enabled:
             return
-
 
         tf.print("")
         self.console = Console(theme=self.theme)
@@ -54,8 +56,8 @@ class _DAProgressOptimizer(ProgressOptimizer):
         update_dict = {
             "completed": iter + 1,
             "J_total": f"{total:.4e}",
-            "J_data":  f"{data:.4e}",
-            "J_reg":   f"{reg:.4e}",
+            "J_data": f"{data:.4e}",
+            "J_reg": f"{reg:.4e}",
         }
 
         values = criterion_values or []
@@ -77,10 +79,11 @@ class _DAProgressOptimizer(ProgressOptimizer):
     def _build_columns(fields) -> list:
         # local imports to keep module footprint small
 
-
         columns = [
             "🎯",
-            BarColumn(bar_width=None, style="bar.incomplete", complete_style="bar.complete"),
+            BarColumn(
+                bar_width=None, style="bar.incomplete", complete_style="bar.complete"
+            ),
             MofNCompleteColumn(),
             "[label]•[/]",
             TextColumn("[label]Total:[/] [value.cost]{task.fields[J_total]}"),
@@ -109,4 +112,3 @@ class _DAProgressOptimizer(ProgressOptimizer):
             ]
         )
         return columns
-

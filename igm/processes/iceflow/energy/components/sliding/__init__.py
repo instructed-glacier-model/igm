@@ -1,10 +1,10 @@
 from .laws import (
     Budd,
     BuddParams,
-    ReguCoulomb,
-    ReguCoulombParams,
     MohrCoulomb,
     MohrCoulombParams,
+    ReguCoulomb,
+    ReguCoulombParams,
     Weertman,
     WeertmanParams,
 )

@@ -10,11 +10,12 @@ from typing import Callable, Optional, Tuple
 
 import tensorflow as tf
 
+from igm.processes.iceflow.hessian.operators import Operator
+from igm.processes.iceflow.hessian.preconditioners import Preconditioner
+from igm.processes.iceflow.mappings import Mapping
+
 from .cg_newton import OptimizerCGNewton
-from ..halt import Halt, HaltStatus
-from ..mappings import Mapping
-from ..operators import Operator
-from ..preconditioners import Preconditioner
+from .halt import Halt, HaltStatus
 
 
 class OptimizerGaussNewton(OptimizerCGNewton):
@@ -98,9 +99,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
                 "0 < eta_min <= eta_max <= 1."
             )
         if forcing_gamma <= 0.0 or forcing_power <= 0.0:
-            raise ValueError(
-                "Gauss-Newton forcing gamma and power must be positive."
-            )
+            raise ValueError("Gauss-Newton forcing gamma and power must be positive.")
         if not 0.0 < damping_rel_min <= damping_rel_init <= damping_rel_max:
             raise ValueError(
                 "Gauss-Newton relative damping must satisfy min <= init <= max."
@@ -124,9 +123,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
         if not 0.0 < armijo_contraction < 1.0:
             raise ValueError("Gauss-Newton Armijo contraction must be in (0, 1).")
         if line_search_max_iter < 1:
-            raise ValueError(
-                "Gauss-Newton line_search_max_iter must be positive."
-            )
+            raise ValueError("Gauss-Newton line_search_max_iter must be positive.")
 
         dtype = self.precision
         self.forcing_eta_min = tf.constant(forcing_eta_min, dtype)
@@ -151,12 +148,8 @@ class OptimizerGaussNewton(OptimizerCGNewton):
         self.last_step_length = tf.Variable(
             tf.cast(float("nan"), dtype), trainable=False
         )
-        self.last_lm_ratio = tf.Variable(
-            tf.cast(float("nan"), dtype), trainable=False
-        )
-        self.last_forcing_tolerance = tf.Variable(
-            self.forcing_eta_max, trainable=False
-        )
+        self.last_lm_ratio = tf.Variable(tf.cast(float("nan"), dtype), trainable=False)
+        self.last_forcing_tolerance = tf.Variable(self.forcing_eta_max, trainable=False)
 
     def update_parameters(self, iter_max: int) -> None:
         self.iter_max.assign(iter_max)
@@ -218,9 +211,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
             residual = residual - alpha * product
             z = precondition(residual)
             next_delta = tf.tensordot(residual, z, axes=1)
-            beta = next_delta / tf.maximum(
-                delta, tf.cast(1.0e-30, delta.dtype)
-            )
+            beta = next_delta / tf.maximum(delta, tf.cast(1.0e-30, delta.dtype))
             direction = z + beta * direction
             delta = next_delta
 
@@ -239,9 +230,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
         )
 
     def _power_iteration(self, inputs: tf.Tensor, shape: tf.Tensor) -> tf.Tensor:
-        vector = tf.random.stateless_normal(
-            shape, seed=[1729, 0], dtype=self.precision
-        )
+        vector = tf.random.stateless_normal(shape, seed=[1729, 0], dtype=self.precision)
         tiny = tf.cast(1.0e-30, self.precision)
         vector /= tf.maximum(tf.norm(vector), tiny)
         eigenvalue = tf.cast(0.0, self.precision)
@@ -284,9 +273,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
                 reference_cost + self.armijo_c1 * alpha * slope
             )
             good = tf.logical_and(tf.math.is_finite(candidate_cost), sufficient)
-            next_alpha = tf.where(
-                good, alpha, alpha * self.armijo_contraction
-            )
+            next_alpha = tf.where(good, alpha, alpha * self.armijo_contraction)
             return iteration + 1, next_alpha, candidate_cost, good
 
         evaluations, alpha, trial_cost, accepted = tf.while_loop(
@@ -440,13 +427,11 @@ class OptimizerGaussNewton(OptimizerCGNewton):
             for _ in range(self.solve_retries + 1):
                 self._set_preconditioner_damping()
                 start = time.perf_counter()
-                direction, cg_it, cg_relres, residual, negative = (
-                    self._solve(
-                        inputs,
-                        -grad_flat,
-                        self.damping,
-                        forcing,
-                    )
+                direction, cg_it, cg_relres, residual, negative = self._solve(
+                    inputs,
+                    -grad_flat,
+                    self.damping,
+                    forcing,
                 )
                 direction[0:1].numpy()
                 cg_seconds += time.perf_counter() - start
@@ -472,9 +457,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
 
                 start = time.perf_counter()
                 alpha, trial_cost, reference_cost, armijo_ok, evaluations = (
-                    self._armijo_search(
-                        inputs, theta_flat, direction, slope
-                    )
+                    self._armijo_search(inputs, theta_flat, direction, slope)
                 )
                 trial_cost.numpy()
                 line_search_seconds += time.perf_counter() - start
@@ -529,9 +512,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
             costs.append(accepted_cost)
             previous_gradient_norm = gradient_norm_euclidean
             U, V = self.map.get_UV(inputs)
-            grad_u_norm, grad_theta_norm = self._get_grad_norm(
-                grad_u, grad_theta
-            )
+            grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
             self._update_step_state(
                 iteration,
                 U,
@@ -546,9 +527,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
 
             if self.print_timing:
                 total_seconds = time.perf_counter() - iteration_start
-                spectrum_seconds = (
-                    initial_spectrum_seconds if iteration == 0 else 0.0
-                )
+                spectrum_seconds = initial_spectrum_seconds if iteration == 0 else 0.0
                 if iteration == 0:
                     total_seconds += (
                         initial_prepare_seconds
@@ -578,9 +557,7 @@ class OptimizerGaussNewton(OptimizerCGNewton):
 
         if self.print_timing:
             final_cost, _, final_gradient = self.operator.cost_and_grad(inputs)
-            final_gradient_norm = tf.norm(
-                self.map.flatten_theta(final_gradient)
-            )
+            final_gradient_norm = tf.norm(self.map.flatten_theta(final_gradient))
             final_cost.numpy()
             print(
                 f"[gauss_newton_final] cost={float(final_cost.numpy()):.8e} "

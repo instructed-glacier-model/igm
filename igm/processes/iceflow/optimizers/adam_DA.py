@@ -3,13 +3,17 @@
 # GNU GPL v3
 
 from __future__ import annotations
-import tensorflow as tf
+
 from typing import Any, Callable, Tuple
 
-from ..mappings import Mapping
+import tensorflow as tf
+from rich.theme import Theme
+
+from igm.processes.iceflow.mappings import Mapping
+
 from .adam import OptimizerAdam
 from .da_progress_optimizer import _DAProgressOptimizer
-from rich.theme import Theme
+
 progress_theme = Theme(
     {
         "label": "bold #e5e7eb",
@@ -136,7 +140,9 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
         del tape
 
         # Robust against disconnected variables
-        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+        grad_theta = [
+            tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)
+        ]
 
         # Store the DA cost breakdown for display / diagnostics
         self.last_total.assign(tf.stop_gradient(total))

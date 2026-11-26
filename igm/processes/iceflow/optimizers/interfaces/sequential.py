@@ -3,13 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+from typing import Any, Callable, Dict, Optional
+
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
-from typing import Any, Callable, Dict, Optional
+
+from igm.processes.iceflow.mappings import Mapping
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping
 
 
 class InterfaceSequential(InterfaceOptimizer):
@@ -29,7 +31,7 @@ class InterfaceSequential(InterfaceOptimizer):
         map: Mapping,
     ) -> Dict[str, Any]:
         # Lazy import to avoid circular imports
-        from .. import Optimizers, InterfaceOptimizers
+        from .. import InterfaceOptimizers, Optimizers
 
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics

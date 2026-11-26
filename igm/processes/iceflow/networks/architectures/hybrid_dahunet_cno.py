@@ -8,7 +8,7 @@ from typing import Any
 import tensorflow as tf
 
 from .cno import CNO
-from .dahunet import DahuNet, FEATURES_DEFAULT
+from .dahunet import FEATURES_DEFAULT, DahuNet
 
 
 class HybridDahuNetCNO(CNO):

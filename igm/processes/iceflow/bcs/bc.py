@@ -3,9 +3,10 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from abc import ABC, abstractmethod
 from typing import Tuple, Union
+
+import tensorflow as tf
 
 TV = Union[tf.Tensor, tf.Variable]
 

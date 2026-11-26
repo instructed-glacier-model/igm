@@ -7,18 +7,19 @@ from typing import Any, Callable, Dict, Optional
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from ..optimizer import Optimizer
-from igm.utils.schedule import value_at
-from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping
-from ...halt import Halt, InterfaceHalt
-from ...operators import (
+from igm.processes.iceflow.energy.utils import get_energy_components
+from igm.processes.iceflow.hessian.operators import (
     Operator,
     Tridiag1DADOperator,
     Tridiag1DAnalyticOperator,
     supports_tridiag1d,
 )
-from igm.processes.iceflow.energy.utils import get_energy_components
+from igm.processes.iceflow.mappings import Mapping
+from igm.utils.schedule import value_at
+
+from ..halt import Halt, InterfaceHalt
+from ..optimizer import Optimizer
+from .interface import InterfaceOptimizer, Status
 
 
 class InterfaceTridiagNewton(InterfaceOptimizer):

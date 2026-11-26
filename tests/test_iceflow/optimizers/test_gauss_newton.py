@@ -2,14 +2,14 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from igm.processes.iceflow.mappings import MappingNetwork
-from igm.processes.iceflow.operators import GaussNewtonOperator, Operator
-from igm.processes.iceflow.optimizers.gauss_newton import (
-    OptimizerGaussNewton,
-)
-from igm.processes.iceflow.preconditioners import (
+from igm.processes.iceflow.hessian.operators import GaussNewtonOperator, Operator
+from igm.processes.iceflow.hessian.preconditioners import (
     IdentityPreconditioner,
     NystromPreconditioner,
+)
+from igm.processes.iceflow.mappings import MappingNetwork
+from igm.processes.iceflow.optimizers.gauss_newton import (
+    OptimizerGaussNewton,
 )
 
 from .vector_mapping import VectorMapping

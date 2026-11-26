@@ -10,17 +10,18 @@ from typing import Any, Callable, Dict, Optional
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from ..optimizer import Optimizer
-from igm.utils.schedule import value_at
-from .interface import InterfaceOptimizer, Status
-from ...halt import Halt, InterfaceHalt
-from ...mappings import Mapping
-from ...operators import GaussNewtonOperator
-from ...preconditioners import (
+from igm.processes.iceflow.hessian.operators import GaussNewtonOperator
+from igm.processes.iceflow.hessian.preconditioners import (
     IdentityPreconditioner,
     NystromPreconditioner,
     Preconditioner,
 )
+from igm.processes.iceflow.mappings import Mapping
+from igm.utils.schedule import value_at
+
+from ..halt import Halt, InterfaceHalt
+from ..optimizer import Optimizer
+from .interface import InterfaceOptimizer, Status
 
 
 class InterfaceGaussNewton(InterfaceOptimizer):

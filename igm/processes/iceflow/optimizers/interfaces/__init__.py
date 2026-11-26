@@ -1,17 +1,17 @@
-from .interface import InterfaceOptimizer, Status
 from .adam import InterfaceAdam
 from .cg import InterfaceCG
 from .cg_newton import InterfaceCGNewton
 from .gauss_newton import InterfaceGaussNewton
+from .interface import InterfaceOptimizer, Status
 from .lbfgs import InterfaceLBFGS
 from .muon import InterfaceMuon
 from .newton import InterfaceNewton
 from .sequential import InterfaceSequential
 from .soap import InterfaceSOAP
-from .ss_esoap import InterfaceSSESOAP
-from .trust_region import InterfaceTrustRegion
 from .spg import InterfaceSPG
+from .ss_esoap import InterfaceSSESOAP
 from .tridiag_newton import InterfaceTridiagNewton
+from .trust_region import InterfaceTrustRegion
 
 InterfaceOptimizers = {
     "adam": InterfaceAdam,

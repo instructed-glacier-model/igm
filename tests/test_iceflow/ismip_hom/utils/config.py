@@ -5,6 +5,7 @@
 
 import os
 from typing import Any, Dict, List, Optional
+
 import yaml
 
 
@@ -16,44 +17,16 @@ def load_test_config() -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_unified_mapping_optimizers(config: Dict[str, Any]) -> List[tuple]:
+def get_mapping_optimizers(config: Dict[str, Any]) -> List[tuple]:
     """Return configured mapping/optimizer pairs, honoring optional restrictions."""
-    unified = config["methods"]["unified"]
-    optimizer_mappings = unified.get("optimizer_mappings", {})
+    optimizer_mappings = config.get("optimizer_mappings", {})
     pairs = []
-    for mapping in unified["mappings"]:
-        for optimizer in unified["optimizers"]:
+    for mapping in config["mappings"]:
+        for optimizer in config["optimizers"]:
             allowed_mappings = optimizer_mappings.get(optimizer)
             if allowed_mappings is None or mapping in allowed_mappings:
                 pairs.append((mapping, optimizer))
     return pairs
-
-
-def get_test_parameters() -> List[tuple]:
-    """Generate test parameters from config."""
-    config = load_test_config()
-    params = []
-
-    no_length_experiments = {"exp_e_1", "exp_e_2"}
-
-    for exp in config["experiments"]:
-        if exp in no_length_experiments:
-            continue
-
-        for length in config["lengths"]:
-            if config["methods"]["unified"]["enabled"]:
-                for mapping, optimizer in get_unified_mapping_optimizers(config):
-                    test_case = {
-                        "experiment": exp,
-                        "length": length,
-                        "method": "unified",
-                        "mapping": mapping,
-                        "optimizer": optimizer,
-                    }
-                    if not _should_skip(test_case, config.get("skip", [])):
-                        params.append((exp, length, "unified", mapping, optimizer))
-
-    return params
 
 
 def _is_experiment_enabled(experiment: str, config: Dict[str, Any]) -> bool:
@@ -61,37 +34,44 @@ def _is_experiment_enabled(experiment: str, config: Dict[str, Any]) -> bool:
     return experiment in config["experiments"]
 
 
-def get_unified_parameters(experiment: str) -> List[tuple]:
-    """Get unified method parameters for experiment (with length scales)."""
+def get_parameters(experiment: str) -> List[tuple]:
+    """Get (length, mapping, optimizer) parameters for an experiment."""
     config = load_test_config()
 
     if not _is_experiment_enabled(experiment, config):
-        return []
-
-    if not config["methods"]["unified"]["enabled"]:
         return []
 
     params = []
     for length in config["lengths"]:
-        for mapping, optimizer in get_unified_mapping_optimizers(config):
-            params.append((length, mapping, optimizer))
+        for mapping, optimizer in get_mapping_optimizers(config):
+            test_case = {
+                "experiment": experiment,
+                "length": length,
+                "mapping": mapping,
+                "optimizer": optimizer,
+            }
+            if not _should_skip(test_case, config.get("skip") or []):
+                params.append((length, mapping, optimizer))
 
     return params
 
 
-def get_unified_parameters_no_length(experiment: str) -> List[tuple]:
-    """Get unified method parameters for experiment (without length scales)."""
+def get_parameters_no_length(experiment: str) -> List[tuple]:
+    """Get (mapping, optimizer) parameters for an experiment without length scales."""
     config = load_test_config()
 
     if not _is_experiment_enabled(experiment, config):
         return []
 
-    if not config["methods"]["unified"]["enabled"]:
-        return []
-
     params = []
-    for mapping, optimizer in get_unified_mapping_optimizers(config):
-        params.append((mapping, optimizer))
+    for mapping, optimizer in get_mapping_optimizers(config):
+        test_case = {
+            "experiment": experiment,
+            "mapping": mapping,
+            "optimizer": optimizer,
+        }
+        if not _should_skip(test_case, config.get("skip") or []):
+            params.append((mapping, optimizer))
 
     return params
 

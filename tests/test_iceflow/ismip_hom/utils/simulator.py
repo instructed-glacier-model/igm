@@ -4,11 +4,13 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import os
-import pytest
 import sys
-import tensorflow as tf
-from igm.igm_run import main
 from typing import Optional
+
+import pytest
+import tensorflow as tf
+
+from igm.igm_run import main
 
 RANDOM_SEED = 0
 tf.config.experimental.enable_op_determinism()
@@ -16,42 +18,26 @@ tf.config.experimental.enable_op_determinism()
 
 def run_igm(
     monkeypatch: pytest.MonkeyPatch,
-    method: str,
     length: Optional[int] = None,
-    mapping: Optional[str] = None,
-    optimizer: Optional[str] = None,
+    mapping: str = "identity",
+    optimizer: str = "adam",
 ) -> str:
     """
     Run IGM simulation.
 
     Args:
         monkeypatch: pytest fixture for modifying sys.argv
-        method: "unified" (the only ice-flow method)
         length: Length scale in km
-        mapping: Mapping type (for unified method)
-        optimizer: Optimizer type (for unified method)
+        mapping: Mapping type
+        optimizer: Optimizer type
 
     Returns:
         Path to output directory
     """
-    if method == "unified":
-        return _run_unified(monkeypatch, mapping, optimizer, length)
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-
-def _run_unified(
-    monkeypatch: pytest.MonkeyPatch,
-    mapping: str = "identity",
-    optimizer: str = "adam",
-    length: Optional[int] = None,
-) -> str:
-    """Run unified method simulation."""
     experiment_optimizer = "lbfgs" if optimizer == "cg_newton" else optimizer
     argv = [
         "igm_run.py",
         f"+experiment=params_{experiment_optimizer}",
-        "processes.iceflow.method=unified",
         f"processes.iceflow.unified.mapping={mapping}",
         f"processes.iceflow.unified.optimizer={optimizer}",
     ]
@@ -80,11 +66,9 @@ def _run_unified(
 
     if length is not None:
         argv.append(f"inputs.init_state.L={length * 1e3}")
-        path_run_dir = os.path.join(
-            "outputs", f"{length}km", "unified", mapping, optimizer
-        )
+        path_run_dir = os.path.join("outputs", f"{length}km", mapping, optimizer)
     else:
-        path_run_dir = os.path.join("outputs", "unified", mapping, optimizer)
+        path_run_dir = os.path.join("outputs", mapping, optimizer)
 
     argv.append(f"hydra.run.dir={path_run_dir}")
 

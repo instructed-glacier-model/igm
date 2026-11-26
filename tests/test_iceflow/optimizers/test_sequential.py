@@ -3,7 +3,6 @@ from types import SimpleNamespace
 import tensorflow as tf
 from omegaconf import OmegaConf
 
-from igm.utils.schedule import value_at
 from igm.processes.iceflow.optimizers.interfaces import (
     InterfaceOptimizers,
 )
@@ -11,6 +10,7 @@ from igm.processes.iceflow.optimizers.interfaces.interface import Status
 from igm.processes.iceflow.optimizers.interfaces.sequential import (
     InterfaceSequential,
 )
+from igm.utils.schedule import value_at
 
 
 class _StageInterface:

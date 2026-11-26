@@ -32,14 +32,14 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import tensorflow as tf
 
-from igm.utils.math.precision import normalize_precision
+from igm.processes.iceflow.hessian.operators import build_energy_operator
+from igm.processes.iceflow.hessian.preconditioners import build_preconditioner
+from igm.processes.iceflow.mappings.identity import MappingIdentity
 from igm.processes.iceflow.utils.velocities import compute_node_ice_mask, get_velsurf
 from igm.processes.thk.masks import compute_grounded_mask, no_ocean_like
+from igm.utils.math.pcg import pcg_init, pcg_relres, pcg_run
+from igm.utils.math.precision import normalize_precision
 
-from ..mappings.identity import MappingIdentity
-from ..operators import build_energy_operator
-from ..optimizers.utils.pcg import pcg_init, pcg_relres, pcg_run
-from ..preconditioners import build_preconditioner
 from .metrics import summarize_velocity_error
 
 

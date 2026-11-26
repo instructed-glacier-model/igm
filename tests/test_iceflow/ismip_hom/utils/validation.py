@@ -3,9 +3,11 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+from typing import Optional, Tuple
+
 import numpy as np
-from typing import Tuple, Optional
-from .config import load_test_config, get_tolerance
+
+from .config import get_tolerance, load_test_config
 
 
 def validate_results(

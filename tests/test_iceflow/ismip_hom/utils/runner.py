@@ -5,21 +5,21 @@
 
 import os
 from typing import Optional
-import numpy as np
-import xarray as xr
-import pytest
 
+import numpy as np
+import pytest
+import xarray as xr
+
+from .config import get_tolerance, load_test_config
+from .plots import plot_comparison
 from .simulator import run_igm
 from .validation import validate_results
-from .plots import plot_comparison
-from .config import load_test_config, get_tolerance
 
 
 def run_experiment_test(
     monkeypatch: pytest.MonkeyPatch,
     experiment: str,
     length: Optional[int] = None,
-    method: str = "unified",
     mapping: Optional[str] = None,
     optimizer: Optional[str] = None,
 ) -> None:
@@ -30,9 +30,8 @@ def run_experiment_test(
         monkeypatch: pytest fixture
         experiment: Experiment name (exp_a, exp_b, exp_c, exp_e_1, etc.)
         length: Length scale in km (None for experiments without length parameter like exp_e)
-        method: Ice-flow method (unified)
-        mapping: Mapping type (for unified method)
-        optimizer: Optimizer type (for unified method)
+        mapping: Mapping type
+        optimizer: Optimizer type
     """
     # Change to test directory
     test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +39,7 @@ def run_experiment_test(
     monkeypatch.chdir(test_dir)
 
     # Run simulation
-    output_dir = run_igm(monkeypatch, method, length, mapping, optimizer)
+    output_dir = run_igm(monkeypatch, length, mapping, optimizer)
 
     # Load simulation results
     path_results = os.path.join(output_dir, "results.nc")
@@ -55,7 +54,7 @@ def run_experiment_test(
     )
 
     # Create plot
-    title, filename = _get_plot_info(experiment, length, method, mapping, optimizer)
+    title, filename = _get_plot_info(experiment, length, mapping, optimizer)
     plot_comparison(x_ref, v_ref, x_igm, v_igm, title, filename)
 
     # Display error in terminal
@@ -137,30 +136,19 @@ def _load_reference(experiment: str, length: Optional[int] = None) -> tuple:
 def _get_plot_info(
     experiment: str,
     length: Optional[int],
-    method: str,
     mapping: Optional[str],
     optimizer: Optional[str],
 ) -> tuple:
     """Generate plot title and filename."""
     exp_name = experiment.replace("_", "-").upper()
-
-    if method == "unified":
-        method_str = f"{method}/{mapping}/{optimizer}"
-        if length is not None:
-            filename_str = f"{method}_{length}km_{mapping}_{optimizer}"
-        else:
-            filename_str = f"{method}_{mapping}_{optimizer}"
-    else:
-        method_str = method
-        if length is not None:
-            filename_str = f"{method}_{length}km"
-        else:
-            filename_str = method
+    run_str = f"{mapping}/{optimizer}"
 
     if length is not None:
-        title = f"ISMIP-HOM | {exp_name} | L={length}km | {method_str}"
+        filename_str = f"{length}km_{mapping}_{optimizer}"
+        title = f"ISMIP-HOM | {exp_name} | L={length}km | {run_str}"
     else:
-        title = f"ISMIP-HOM | {exp_name} | {method_str}"
+        filename_str = f"{mapping}_{optimizer}"
+        title = f"ISMIP-HOM | {exp_name} | {run_str}"
 
     filename = f"{experiment}_{filename_str}.pdf"
 

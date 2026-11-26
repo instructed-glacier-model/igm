@@ -4,13 +4,15 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 from math import cos
-import tensorflow as tf
 from typing import Callable, Optional, Tuple
 
-from .optimizer import Optimizer
+import tensorflow as tf
+
+from igm.processes.iceflow.mappings import Mapping
+
+from .halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
-from ..mappings import Mapping
-from ..halt import Halt, HaltStatus
+from .optimizer import Optimizer
 
 
 class OptimizerLBFGS(Optimizer):

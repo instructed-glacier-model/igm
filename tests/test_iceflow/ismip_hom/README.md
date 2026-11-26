@@ -28,22 +28,19 @@ lengths: [20, 40, 80, 160]  # For exp_a-d only
 
 Only listed experiments run. exp_e_1 and exp_e_2 don't use length scales.
 
-### Methods
+### Mappings and optimizers
 
 ```yaml
-methods:
-  unified:
-    enabled: true
-    mappings: [identity, network]
-    optimizers: [adam, lbfgs, cg_newton]
-    optimizer_mappings:
-      cg_newton: [identity]
+mappings: [identity, network]
+optimizers: [adam, lbfgs, cg_newton]
+optimizer_mappings:
+  cg_newton: [identity]
 ```
 
 `optimizer_mappings` optionally restricts an optimizer to compatible mappings.
-The CG-Newton ISMIP-HOM configuration uses the MOLHO-capable banded operator
-with finite-difference probes and a vertical-component block-Jacobi
-preconditioner, so it is tested with the identity mapping only.
+The CG-Newton ISMIP-HOM configuration uses the banded Hessian operator with
+autodiff probes and the barotropic multigrid preconditioner, so it is tested
+with the identity mapping only.
 
 ### Validation
 
@@ -76,10 +73,8 @@ skip:
 ```yaml
 experiments: [exp_a]
 lengths: [20]
-methods:
-  unified:
-    mappings: [identity]
-    optimizers: [adam]
+mappings: [identity]
+optimizers: [adam]
 ```
 
 **Strict validation:**

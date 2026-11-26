@@ -3,12 +3,13 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Dict
 
+import tensorflow as tf
+
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+
 from ..sliding import SlidingComponent, mask_gr
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
 
 
 class ReguCoulombParams(tf.experimental.ExtensionType):

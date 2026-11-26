@@ -4,20 +4,21 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import math
-import tensorflow as tf
-from dataclasses import dataclass
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from typing import List, Optional
-from rich.theme import Theme
+
+import tensorflow as tf
 from rich.console import Console
 from rich.progress import (
-    Progress,
     BarColumn,
     MofNCompleteColumn,
+    Progress,
+    TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    TextColumn,
 )
+from rich.theme import Theme
 
 
 @dataclass(frozen=True)

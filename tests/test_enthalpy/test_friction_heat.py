@@ -16,8 +16,7 @@ from igm.processes.iceflow.energy.components.sliding import (
     SlidingParams,
     get_sliding_params_args,
 )
-from igm.processes.iceflow.horizontal import HorizontalDiscrs
-from igm.processes.iceflow.vertical import VerticalDiscrs
+from igm.processes.iceflow.discretization import HorizontalDiscrs, VerticalDiscrs
 
 DTYPE = tf.float64
 SECONDS_PER_YEAR = 31556926.0

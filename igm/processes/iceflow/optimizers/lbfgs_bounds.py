@@ -3,12 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Optional, Tuple
+
+import tensorflow as tf
+
+from igm.utils.math.norms import compute_norm
 
 from .lbfgs import OptimizerLBFGS
 from .line_searches import ValueAndGradient
-from igm.utils.math.norms import compute_norm
+
 
 class OptimizerLBFGSBounds(OptimizerLBFGS):
     def __init__(self, *args, **kwargs):
@@ -28,7 +31,11 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
     def _get_mask(
         self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
     ) -> tf.Tensor:
-        tol = tf.constant(1e-7, w.dtype) if w.dtype == tf.float32 else tf.constant(1e-12, w.dtype)
+        tol = (
+            tf.constant(1e-7, w.dtype)
+            if w.dtype == tf.float32
+            else tf.constant(1e-12, w.dtype)
+        )
 
         interior = tf.logical_and(w > L + tol, w < U - tol)
         at_lower = tf.logical_and(w <= L + tol, g < 0.0)
@@ -48,7 +55,11 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
 
         # Zero components pointing out of the box at active bounds; otherwise a
         # single such component makes alpha_max = 0 and kills the whole step.
-        tol = tf.constant(1e-7, theta_flat.dtype) if theta_flat.dtype == tf.float32 else tf.constant(1e-12, theta_flat.dtype)
+        tol = (
+            tf.constant(1e-7, theta_flat.dtype)
+            if theta_flat.dtype == tf.float32
+            else tf.constant(1e-12, theta_flat.dtype)
+        )
         outward = ((theta_flat <= L + tol) & (p_flat < 0.0)) | (
             (theta_flat >= U - tol) & (p_flat > 0.0)
         )
@@ -137,7 +148,6 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             value_fn=self.line_search.select_value_fn(value_fn),
         )
 
-
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
 
@@ -194,14 +204,20 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         L, U = self.map.get_box_bounds_flat()
 
         # Did projection change any component?
-        tol = tf.constant(1e-7, w_new.dtype) if w_new.dtype == tf.float32 else tf.constant(1e-12, w_new.dtype)
+        tol = (
+            tf.constant(1e-7, w_new.dtype)
+            if w_new.dtype == tf.float32
+            else tf.constant(1e-12, w_new.dtype)
+        )
         proj_changed = tf.abs(w_new - theta_trial) > tol
 
         # Free-set at the NEW point (based on descent feasibility)
         mask_new = self._get_mask(w_new, g_new, L, U)
 
         # Only keep curvature info where variable stayed free AND no projection happened
-        keep = tf.logical_and(tf.logical_and(mask, mask_new), tf.logical_not(proj_changed))
+        keep = tf.logical_and(
+            tf.logical_and(mask, mask_new), tf.logical_not(proj_changed)
+        )
 
         s = tf.where(keep, s, tf.zeros_like(s))
         y = tf.where(keep, y, tf.zeros_like(y))
@@ -222,7 +238,7 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         grad_theta_norm = compute_norm(proj_grad, ord=self.ord_grad_theta)
 
         return grad_u_norm, grad_theta_norm
-        
+
     @tf.function(reduce_retracing=True)
     def _projected_grad_dir(
         self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
@@ -231,7 +247,6 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         mask = self._get_mask(w, g, L, U)
         d = tf.where(mask, -g, tf.zeros_like(g))
         return d, mask
-
 
     @tf.function(reduce_retracing=True)
     def _cauchy_point_approx(
@@ -265,7 +280,7 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             return w_c, mask_c, t
 
         return tf.cond(d_norm_inf <= 0.0, no_move, do_move)
-        
+
     @tf.function(reduce_retracing=True)
     def _step_base_point(
         self,
@@ -298,7 +313,6 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
 
         return theta_flat, grad_masked, mask_c
 
-
     def _mask_memory_for_subspace(
         self,
         s_list: tf.Tensor,
@@ -308,5 +322,7 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         # Mask is expected to be a boolean tensor (free set at Cauchy)
         if mask is None:
             return s_list, y_list
-        m = tf.cast(mask, s_list.dtype)[None, :]  # [1, w_dim] broadcast over memory rows
+        m = tf.cast(mask, s_list.dtype)[
+            None, :
+        ]  # [1, w_dim] broadcast over memory rows
         return s_list * m, y_list * m

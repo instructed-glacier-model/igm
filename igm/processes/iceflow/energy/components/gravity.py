@@ -3,13 +3,14 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Any, Dict
+
+import tensorflow as tf
 from omegaconf import DictConfig
 
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+
 from .energy import EnergyComponent
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
 
 
 class GravityParams(tf.experimental.ExtensionType):

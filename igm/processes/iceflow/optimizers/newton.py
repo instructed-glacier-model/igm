@@ -3,13 +3,17 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Callable, Optional, Tuple
 
-from .optimizer import Optimizer
-from ..mappings import Mapping
-from ..halt import Halt, HaltStatus
+import numpy as np
+import tensorflow as tf
+
+from igm.processes.iceflow.mappings import Mapping
+
+from .halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
+from .optimizer import Optimizer
+
 
 class OptimizerNewton(Optimizer):
     def __init__(
@@ -78,7 +82,6 @@ class OptimizerNewton(Optimizer):
     ) -> tf.Tensor:
         """Wrapper for plotting (called via py_function)."""
         import matplotlib.pyplot as plt
-        import numpy as np
 
         h_mat = h_mat_np.numpy() if hasattr(h_mat_np, "numpy") else h_mat_np
         iter_val = int(iter_np.numpy() if hasattr(iter_np, "numpy") else iter_np)

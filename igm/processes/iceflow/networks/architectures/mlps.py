@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+
 import tensorflow as tf
 
 from igm.utils.math.precision import normalize_precision
@@ -18,10 +19,10 @@ class MLP(tf.keras.Model):
     """
 
     _DEFAULTS: Dict[str, tuple] = {
-        "nb_layers":     (4,         int),
-        "nb_out_filter": (64,        int),
-        "activation":    ("gelu",    str),
-        "precision":     ("float32", str),
+        "nb_layers": (4, int),
+        "nb_out_filter": (64, int),
+        "activation": ("gelu", str),
+        "precision": ("float32", str),
     }
 
     def __init__(

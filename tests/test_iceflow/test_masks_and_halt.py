@@ -6,26 +6,25 @@ import pytest
 import tensorflow as tf
 from omegaconf import OmegaConf
 
-from igm.processes.iceflow.utils import cost as iceflow_cost
+from igm.processes.iceflow.energy import cost as iceflow_cost
 from igm.processes.iceflow.evaluator.evaluator import (
     EvaluatorParams,
     evaluator_iceflow,
 )
 from igm.processes.iceflow.mappings.identity import MappingIdentity
-from igm.processes.thk.masks import compute_grounded_mask
-from igm.processes.iceflow.halt import InterfaceHalt
-from igm.processes.iceflow.halt import Halt
-from igm.processes.iceflow.halt.criteria.rel_initial import (
-    CriterionRelInitial,
-)
-from igm.processes.iceflow.halt.criteria.abs_change import (
+from igm.processes.iceflow.optimizers.halt import Halt, InterfaceHalt
+from igm.processes.iceflow.optimizers.halt.criteria.abs_change import (
     CriterionAbsChange,
 )
-from igm.processes.iceflow.halt.metrics import MetricGradUNorm, MetricU
+from igm.processes.iceflow.optimizers.halt.criteria.rel_initial import (
+    CriterionRelInitial,
+)
+from igm.processes.iceflow.optimizers.halt.metrics import MetricGradUNorm, MetricU
 from igm.processes.iceflow.utils.velocities import (
     compute_cell_ice_mask,
     compute_node_ice_mask,
 )
+from igm.processes.thk.masks import compute_grounded_mask
 
 
 def test_ice_masks_exclude_nodes_without_active_cell_support():
@@ -360,9 +359,9 @@ def test_abs_change_can_be_enabled_from_halt_configuration():
 
 
 def test_raise_on_failure_aborts_the_solve_on_a_nan_velocity():
-    from igm.processes.iceflow.halt.criteria.nan import CriterionNaN
     from igm.processes.iceflow.mappings.identity import MappingIdentity
     from igm.processes.iceflow.optimizers.cg_newton import OptimizerCGNewton
+    from igm.processes.iceflow.optimizers.halt.criteria.nan import CriterionNaN
 
     shape = (1, 1, 2, 2)
     mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")
@@ -389,9 +388,9 @@ def test_raise_on_failure_aborts_the_solve_on_a_nan_velocity():
 
 
 def test_raise_on_failure_works_with_a_compiled_optimizer():
-    from igm.processes.iceflow.halt.criteria.nan import CriterionNaN
     from igm.processes.iceflow.mappings.identity import MappingIdentity
     from igm.processes.iceflow.optimizers.adam import OptimizerAdam
+    from igm.processes.iceflow.optimizers.halt.criteria.nan import CriterionNaN
 
     shape = (1, 1, 2, 2)
     mapping = MappingIdentity([], tf.zeros(shape), tf.zeros(shape), precision="single")

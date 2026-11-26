@@ -3,11 +3,13 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from omegaconf import DictConfig
 from typing import Any, Dict
 
-from .interface import InterfaceBoundaryCondition
+from omegaconf import DictConfig
+
 from igm.common import State
+
+from .interface import InterfaceBoundaryCondition
 
 
 class InterfacePeriodicNS(InterfaceBoundaryCondition):

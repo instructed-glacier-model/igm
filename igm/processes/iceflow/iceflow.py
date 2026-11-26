@@ -7,33 +7,32 @@
 from omegaconf import DictConfig
 
 from igm.common import State, print_model_with_inputs_detailed
-from igm.utils.schedule import check_schedule, is_count, is_positive, parse_schedule
-from igm.processes.iceflow.mappings import Mappings, InterfaceMappings
-from igm.processes.iceflow.optimizers import Optimizers, InterfaceOptimizers
-from igm.processes.iceflow.evaluator import (
-    EvaluatorParams,
-    get_evaluator_params_args,
-    evaluate_iceflow,
-)
+from igm.processes.iceflow.discretization import HorizontalDiscrs, VerticalDiscrs
+from igm.processes.iceflow.discretization.vertical.levels import define_vertical_weight
+from igm.processes.iceflow.energy.cost import get_cost_fn
 from igm.processes.iceflow.error_estimator import (
     ErrorEstimator,
     InterfaceErrorEstimator,
 )
+from igm.processes.iceflow.evaluator import (
+    EvaluatorParams,
+    evaluate_iceflow,
+    get_evaluator_params_args,
+)
 from igm.processes.iceflow.init_stop import InitStop
+from igm.processes.iceflow.mappings import InterfaceMappings, Mappings
+from igm.processes.iceflow.optimizers import InterfaceOptimizers, Optimizers
 from igm.processes.iceflow.solver import solve_iceflow
 from igm.processes.iceflow.solver.solver import should_normalize
-from igm.processes.iceflow.utils.cost import get_cost_fn
 from igm.processes.iceflow.utils.data_preprocessing import (
-    fieldin_state_to_X,
     X_to_fieldin,
+    fieldin_state_to_X,
 )
+from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.vertical_velocity.vertical_velocity import (
     update as update_vertical_velocity,
 )
-from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
-from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
-from igm.processes.iceflow.vertical import VerticalDiscrs
-from igm.processes.iceflow.horizontal import HorizontalDiscrs
+from igm.utils.schedule import check_schedule, is_count, is_positive, parse_schedule
 
 
 class Iceflow:

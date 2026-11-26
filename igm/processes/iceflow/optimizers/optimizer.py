@@ -3,18 +3,20 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
-import tensorflow as tf
+import logging
+import threading
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional, Tuple
 
-from .progress_optimizer import ProgressOptimizer
-from ..mappings import Mapping
-from ..halt import Halt, HaltStatus, HaltState, StepState, DebugState
-from igm.utils.math.precision import normalize_precision
-from igm.utils.math.norms import compute_norm
+import numpy as np
+import tensorflow as tf
 
-import logging
+from igm.processes.iceflow.mappings import Mapping
+from igm.utils.math.norms import compute_norm
+from igm.utils.math.precision import normalize_precision
+
+from .halt import DebugState, Halt, HaltState, HaltStatus, StepState
+from .progress_optimizer import ProgressOptimizer
 
 log = logging.getLogger("werkzeug")  # for DASH POST requests...
 log.setLevel(logging.ERROR)
@@ -281,10 +283,9 @@ class Optimizer(ABC):
 
     def _init_debug_display(self) -> None:
         """Initialize the debug figure with live updates"""
-        from dash import Dash, dcc, html, Input, Output
         import plotly.graph_objects as go
+        from dash import Dash, Input, Output, dcc, html
         from plotly.subplots import make_subplots
-        import threading
 
         # Store the latest data separately
         self._latest_grad_norm = [[0]]  # Placeholder

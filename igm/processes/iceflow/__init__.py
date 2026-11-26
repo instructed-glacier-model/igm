@@ -1,1 +1,1 @@
-from .iceflow import initialize, finalize, update
+from .iceflow import finalize, initialize, update

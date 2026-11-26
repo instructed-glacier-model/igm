@@ -3,17 +3,17 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Any, Dict
 
-from .energy import EnergyComponent
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.grad.strain_rate import (
+import tensorflow as tf
+
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+from igm.utils.grad.strain_rate import (  # dampen_eps_dot_z_floating,
     compute_eps_dot2,
     correct_grad_zeta_to_z,
-    # dampen_eps_dot_z_floating,
 )
+
+from .energy import EnergyComponent
 
 
 class ViscosityParams(tf.experimental.ExtensionType):

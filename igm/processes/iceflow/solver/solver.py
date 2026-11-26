@@ -3,22 +3,22 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from omegaconf import DictConfig
 import tensorflow as tf
+from omegaconf import DictConfig
 
 from igm.common import State
-from igm.utils.schedule import value_at
-from ..optimizers import InterfaceOptimizers, Status
+from igm.processes.iceflow.mappings.normalizer import is_distribution_shifted
+from igm.processes.iceflow.optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import split_field_into_patches
+from igm.processes.iceflow.utils.inputs import get_inputs_from_state
 from igm.utils.math.precision import normalize_precision
+from igm.utils.schedule import value_at
 
-from ..mappings.normalizer import is_distribution_shifted
-from ..utils.inputs import get_inputs_from_state
-from .patch_selection import select_patches
 from .credit_tracker import (
-    update_credit_observer,
     log_and_maybe_reset_credit_observer,
+    update_credit_observer,
 )
+from .patch_selection import select_patches
 
 
 def get_status(

@@ -7,9 +7,10 @@ from typing import Callable, List, Optional, Tuple
 
 import tensorflow as tf
 
+from igm.processes.iceflow.mappings import Mapping, MappingNetwork
+
+from .halt import Halt, HaltStatus
 from .optimizer import Optimizer
-from ..mappings import Mapping, MappingNetwork
-from ..halt import Halt, HaltStatus
 
 
 class _SSESOAPLayerState:

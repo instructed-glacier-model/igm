@@ -4,24 +4,24 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import pytest
+
 from tests.test_iceflow.ismip_hom.utils import (
+    get_parameters,
     run_experiment_test,
-    get_unified_parameters,
 )
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.mark.parametrize("length,mapping,optimizer", get_unified_parameters("exp_b"))
-def test_exp_b_unified(
+@pytest.mark.parametrize("length,mapping,optimizer", get_parameters("exp_b"))
+def test_exp_b(
     monkeypatch: pytest.MonkeyPatch, length: int, mapping: str, optimizer: str
 ) -> None:
-    """Test ISMIP-HOM Experiment B with unified method."""
+    """Test ISMIP-HOM Experiment B."""
     run_experiment_test(
         monkeypatch,
         experiment="exp_b",
         length=length,
-        method="unified",
         mapping=mapping,
         optimizer=optimizer,
     )

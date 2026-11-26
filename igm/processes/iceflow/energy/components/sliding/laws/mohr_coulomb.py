@@ -28,13 +28,14 @@ Weertman pipeline produced once the `1e-6` Pa->MPa conversion and the
 clean form.
 """
 
-import numpy as np
-import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent, mask_gr, get_water_level
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
+import numpy as np
+import tensorflow as tf
+
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+
+from ..sliding import SlidingComponent, get_water_level, mask_gr
 
 
 class MohrCoulombParams(tf.experimental.ExtensionType):

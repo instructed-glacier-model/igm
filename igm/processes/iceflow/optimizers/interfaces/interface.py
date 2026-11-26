@@ -3,13 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
-from omegaconf import DictConfig
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 from typing import Any, Callable, Dict, Optional
 
-from ...mappings import Mapping
+import tensorflow as tf
+from omegaconf import DictConfig
+
+from igm.processes.iceflow.mappings import Mapping
+
 from .. import Optimizer
 
 

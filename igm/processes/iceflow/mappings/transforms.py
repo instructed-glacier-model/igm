@@ -1,9 +1,11 @@
 # igm/processes/iceflow/mappings/transforms.py
 #!/usr/bin/env python3
 from __future__ import annotations
-import tensorflow as tf
+
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Dict, Type
+from typing import Dict, Optional, Tuple, Type
+
+import tensorflow as tf
 
 
 class ParameterTransform(ABC):

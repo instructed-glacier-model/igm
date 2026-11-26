@@ -14,6 +14,8 @@ import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 
 from igm.common import State
+from igm.processes.iceflow.discretization import HorizontalDiscrs, VerticalDiscrs
+from igm.processes.iceflow.energy.cost import get_cost_fn
 from igm.utils.math.precision import normalize_precision
 
 from .reference import load_reference_surface_velocity
@@ -28,10 +30,6 @@ def build_cost_fn_in_precision(cfg: DictConfig, precision: str):
     single-precision network run) it needs its own discretizations and a cost
     function bound to them.
     """
-    from igm.processes.iceflow.horizontal import HorizontalDiscrs
-    from igm.processes.iceflow.vertical import VerticalDiscrs
-    from ..utils.cost import get_cost_fn
-
     cfg_est = copy.deepcopy(cfg)
     cfg_est.processes.iceflow.numerics.precision = (
         "double" if normalize_precision(precision).name == "float64" else "single"

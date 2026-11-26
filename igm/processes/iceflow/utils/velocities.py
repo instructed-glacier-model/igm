@@ -1,7 +1,6 @@
 from typing import Tuple
-import tensorflow as tf
 
-from igm.utils.math.getmag import getmag
+import tensorflow as tf
 
 # The Q1 ice masks are geometry shared with the thickness module; they live
 # with the flotation test in igm.processes.thk.masks and are re-exported here.
@@ -9,6 +8,7 @@ from igm.processes.thk.masks import (  # noqa: F401
     compute_cell_ice_mask,
     compute_node_ice_mask,
 )
+from igm.utils.math.getmag import getmag
 
 
 def get_velbase_1(U: tf.Tensor, V_b: tf.Tensor) -> tf.Tensor:

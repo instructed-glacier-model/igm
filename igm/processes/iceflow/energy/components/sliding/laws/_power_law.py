@@ -23,8 +23,9 @@ stays in its own file.
 
 import tensorflow as tf
 
+from igm.processes.iceflow.discretization.horizontal import HorizontalDiscr
+
 from ..sliding import mask_gr
-from igm.processes.iceflow.horizontal import HorizontalDiscr
 
 
 @tf.function()

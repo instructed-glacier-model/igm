@@ -3,22 +3,22 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Any, Dict
+
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
-from igm.utils.math.precision import normalize_precision
-
 from igm.processes.iceflow.utils.data_preprocessing import fieldin_to_X_2d
 from igm.processes.iceflow.utils.inputs import get_inputs_from_state
-from igm.processes.thk.masks import iceflow_node_mask
 from igm.processes.iceflow.utils.velocities import (
+    clip_max_velbar,
+    get_velbar,
     get_velbase,
     get_velsurf,
-    get_velbar,
-    clip_max_velbar,
 )
+from igm.processes.thk.masks import iceflow_node_mask
+from igm.utils.math.precision import normalize_precision
 
 
 class EvaluatorParams(tf.experimental.ExtensionType):

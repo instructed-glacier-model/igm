@@ -1,17 +1,17 @@
 from .components import (
     EnergyComponent,
-    GravityComponent,
-    GravityParams,
-    get_gravity_params_args,
-    ViscosityComponent,
-    ViscosityParams,
-    get_viscosity_params_args,
     FloatingComponent,
     FloatingParams,
-    get_floating_params_args,
+    GravityComponent,
+    GravityParams,
     SlidingComponents,
     SlidingParams,
+    ViscosityComponent,
+    ViscosityParams,
+    get_floating_params_args,
+    get_gravity_params_args,
     get_sliding_params_args,
+    get_viscosity_params_args,
 )
 
 EnergyComponents = {

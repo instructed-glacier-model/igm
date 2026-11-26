@@ -10,13 +10,13 @@ pressure N read from `fieldin["effective_pressure"]`. The shared math
 lives in `_power_law.py`.
 """
 
-import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
+import tensorflow as tf
 
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+
+from ..sliding import SlidingComponent
 from ._power_law import power_law_cost
 
 

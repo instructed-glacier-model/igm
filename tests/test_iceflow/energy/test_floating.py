@@ -17,9 +17,7 @@ from igm.processes.iceflow.energy.components.floating import (
 )
 def test_floating_cost_integrates_exposed_cell_face(ocean_surface, has_front):
     dtype = tf.float64
-    thickness = tf.constant(
-        [[[100.0, 100.0, 0.0], [100.0, 100.0, 0.0]]], dtype
-    )
+    thickness = tf.constant([[[100.0, 100.0, 0.0], [100.0, 100.0, 0.0]]], dtype)
     surface = tf.constant(
         [
             [

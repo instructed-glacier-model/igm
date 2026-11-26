@@ -7,18 +7,18 @@ from typing import Callable, NamedTuple, Optional
 
 import tensorflow as tf
 
-from .optimizer import Optimizer
-from ..mappings import Mapping
-from ..halt import Halt, HaltState, HaltStatus, StepState
-from ..halt.criteria import CriterionRelTol
-from ..halt.metrics import MetricCost
-from .line_searches import LineSearches
+from igm.processes.iceflow.hessian.operators import Operator, Tridiag1DADOperator
+from igm.processes.iceflow.mappings import Mapping
 from igm.utils.math.tridiagonal import (
     solve_block_tridiagonal,
     solve_tridiagonal_pcr,
 )
 
-from ..operators import Operator, Tridiag1DADOperator
+from .halt import Halt, HaltState, HaltStatus, StepState
+from .halt.criteria import CriterionRelTol
+from .halt.metrics import MetricCost
+from .line_searches import LineSearches
+from .optimizer import Optimizer
 
 
 class _NewtonLoopResult(NamedTuple):
@@ -330,9 +330,7 @@ class OptimizerTridiagNewton(Optimizer):
         ):
             del satisfied, cost, relative_change, grad_theta_norm
             cost, grad_flat = self.operator.cost_grad_at(inputs, theta)
-            bands = self.operator.assemble_bands_at(
-                inputs, theta, damping_value
-            )
+            bands = self.operator.assemble_bands_at(inputs, theta, damping_value)
             g_u, g_v = self.operator.split_row0(grad_flat)
             rhs = -tf.stack([g_u, g_v], axis=1)
             p = solve_block_tridiagonal(
@@ -636,9 +634,7 @@ class OptimizerTridiagNewton(Optimizer):
 
         def body(i, alpha, accepted):
             del accepted
-            trial_cost = self.operator.scalar_cost_at(
-                inputs, u + alpha * direction
-            )
+            trial_cost = self.operator.scalar_cost_at(inputs, u + alpha * direction)
             accepted = trial_cost <= f0 + c1 * alpha * df0
             return i + 1, tf.where(accepted, alpha, alpha * rho), accepted
 
@@ -663,9 +659,7 @@ class OptimizerTridiagNewton(Optimizer):
     ):
         """Read/update identity-map resources around one compiled solve call."""
         u_row = self.map.get_theta()[0][:, 0, 0, :]
-        result = self._xla_scalar_newton_loop(
-            u_row, inputs, iter_max, damping
-        )
+        result = self._xla_scalar_newton_loop(u_row, inputs, iter_max, damping)
         self.map.set_theta(self.map.unflatten_theta(result.theta))
         return result
 

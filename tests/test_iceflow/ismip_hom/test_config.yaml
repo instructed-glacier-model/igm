@@ -9,14 +9,11 @@ experiments:
 # Length scales to test (in km)
 lengths: [20]
 
-# Methods to test
-methods:
-  unified:
-    enabled: true
-    mappings: [identity, network]
-    optimizers: [adam, lbfgs, cg_newton]
-    optimizer_mappings:
-      cg_newton: [identity]
+# Mappings and optimizers to test
+mappings: [identity, network]
+optimizers: [adam, lbfgs, cg_newton]
+optimizer_mappings:
+  cg_newton: [identity]
 
 # Validation settings
 validation:
@@ -41,5 +38,5 @@ validation:
 
 # Optional: Skip specific test combinations
 skip:
-  # Example: - {experiment: exp_a, length: 160, method: unified, mapping: network, optimizer: adam}
+  # Example: - {experiment: exp_a, length: 160, mapping: network, optimizer: adam}
   []

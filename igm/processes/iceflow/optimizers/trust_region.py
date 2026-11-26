@@ -8,7 +8,7 @@
 
 # # from .optimizer import Optimizer
 # # from ..mappings import Mapping
-# # from ..halt import Halt, HaltStatus
+# # from .halt import Halt, HaltStatus
 
 
 # # class OptimizerTrustRegion(Optimizer):
@@ -602,7 +602,7 @@
 
 # from .optimizer import Optimizer
 # from ..mappings import Mapping
-# from ..halt import Halt, HaltStatus
+# from .halt import Halt, HaltStatus
 
 # from dataclasses import dataclass
 
@@ -954,7 +954,7 @@
 
 # from .optimizer import Optimizer
 # from ..mappings import Mapping
-# from ..halt import Halt, HaltStatus
+# from .halt import Halt, HaltStatus
 
 
 # class OptimizerTrustRegion(Optimizer):
@@ -1543,14 +1543,16 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
-from typing import Callable, Optional, Tuple, List
-
-from .optimizer import Optimizer
-from ..mappings import Mapping
-from ..halt import Halt, HaltStatus
-
 from dataclasses import dataclass
+from typing import Callable, List, Optional, Tuple
+
+import tensorflow as tf
+
+from igm.processes.iceflow.mappings import Mapping
+
+from .halt import Halt, HaltStatus
+from .optimizer import Optimizer
+
 
 @dataclass
 class CGContext:

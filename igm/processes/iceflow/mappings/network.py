@@ -3,12 +3,14 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import List, Tuple
 
-from .mapping import Mapping
-from ..bcs import BoundaryCondition
+import tensorflow as tf
+
+from igm.processes.iceflow.bcs import BoundaryCondition
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
+
+from .mapping import Mapping
 
 
 class MappingNetwork(Mapping):
@@ -29,12 +31,11 @@ class MappingNetwork(Mapping):
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
         self.Nz = Nz
         self.name = "network"
-        
+
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
         return U, V
-
 
     def copy_theta(self, theta: list[tf.Variable]) -> list[tf.Tensor]:
         return [theta_i.read_value() for theta_i in theta]

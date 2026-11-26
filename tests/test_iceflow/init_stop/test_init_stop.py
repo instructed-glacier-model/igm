@@ -8,19 +8,19 @@ import pytest
 import tensorflow as tf
 
 import igm
+import igm.processes.iceflow.init_stop.init_stop as init_stop_module
+import igm.processes.iceflow.init_stop.reference as reference_module
 from igm.common.runner.configuration.loader import load_yaml_recursive
-from igm.processes.iceflow.halt import Halt
-from igm.processes.iceflow.halt.step_state import StepState
+from igm.processes.iceflow.evaluator.evaluator import (
+    get_evaluator_inputs_from_state,
+)
 from igm.processes.iceflow.init_stop import (
     InitStopCriterion,
     ReferenceSolve,
     StopReason,
 )
-import igm.processes.iceflow.init_stop.init_stop as init_stop_module
-import igm.processes.iceflow.init_stop.reference as reference_module
-from igm.processes.iceflow.evaluator.evaluator import (
-    get_evaluator_inputs_from_state,
-)
+from igm.processes.iceflow.optimizers.halt import Halt
+from igm.processes.iceflow.optimizers.halt.step_state import StepState
 
 FREQ = 10
 SHAPE = (12, 9)
@@ -374,8 +374,9 @@ def test_double_direct_solve_in_a_single_precision_run(tmp_path, monkeypatch):
 
 def _check_cfg_args(**overrides):
     """A config that passes InitStop.check_cfg, with ``overrides`` merged over it."""
-    from omegaconf import OmegaConf
     from types import SimpleNamespace
+
+    from omegaconf import OmegaConf
 
     cfg_unified = OmegaConf.create(
         {

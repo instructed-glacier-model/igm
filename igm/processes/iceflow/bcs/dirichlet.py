@@ -3,9 +3,11 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Optional, Sequence, Tuple, Union
-from .bc import BoundaryCondition, TV
+
+import tensorflow as tf
+
+from .bc import TV, BoundaryCondition
 
 EdgeValue = Optional[Union[float, Sequence[float]]]
 

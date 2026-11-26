@@ -4,22 +4,20 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
-import warnings
 
 import importlib_resources
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
-
-import igm.processes.iceflow.networks.pretrained as pretrained
-
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.theme import Theme
 
-from igm.processes.iceflow.networks.architectures import Architectures
+from . import pretrained
+from .architectures import Architectures
 
 EMULATOR_FILENAME = "emulator.keras"
 

@@ -7,5 +7,6 @@ from . import (
     gaussian_filter_tf,
     neighbours,
     norms,
+    pcg,
     tridiagonal,
 )

@@ -1,9 +1,9 @@
 from .bc import BoundaryCondition
-from .frozen_bed import FrozenBed
 from .dirichlet import DirichletBoundary
+from .frozen_bed import FrozenBed
+from .no_inflow import NoInflow
 from .periodic_ns import PeriodicNS, PeriodicNSGlobal
 from .periodic_we import PeriodicWE, PeriodicWEGlobal
-from .no_inflow import NoInflow
 
 BoundaryConditions = {
     "frozen_bed": FrozenBed,

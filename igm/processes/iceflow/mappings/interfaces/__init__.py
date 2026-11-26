@@ -1,7 +1,7 @@
+from .data_assimilation import InterfaceDataAssimilation
+from .identity import InterfaceIdentity
 from .interface import InterfaceMapping
 from .network import InterfaceNetwork
-from .identity import InterfaceIdentity
-from .data_assimilation import InterfaceDataAssimilation
 
 InterfaceMappings = {
     "identity": InterfaceIdentity,

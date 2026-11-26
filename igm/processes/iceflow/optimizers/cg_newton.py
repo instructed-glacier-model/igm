@@ -8,12 +8,16 @@ from typing import Callable, List, Optional, Tuple
 
 import tensorflow as tf
 
-from .optimizer import Optimizer
-from ..mappings import Mapping
-from ..halt import Halt, HaltStatus
+from igm.processes.iceflow.hessian.operators import ADOperator, Operator
+from igm.processes.iceflow.hessian.preconditioners import (
+    Preconditioner,
+    build_preconditioner,
+)
+from igm.processes.iceflow.mappings import Mapping
+
+from .halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
-from ..operators import ADOperator, Operator
-from ..preconditioners import Preconditioner, build_preconditioner
+from .optimizer import Optimizer
 
 
 class OptimizerCGNewton(Optimizer):

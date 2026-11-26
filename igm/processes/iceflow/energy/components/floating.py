@@ -8,9 +8,9 @@ from typing import Any, Dict, Tuple
 import tensorflow as tf
 from omegaconf import DictConfig
 
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
+
 from .energy import EnergyComponent
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
 
 
 class FloatingParams(tf.experimental.ExtensionType):

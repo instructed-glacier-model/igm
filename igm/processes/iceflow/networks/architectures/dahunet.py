@@ -9,11 +9,11 @@ Backends: "cnn" (default, DahuNet_5-style), "fno" (FNO2-style), "mlp".
 
 """
 
-import tensorflow as tf
 from typing import Any, Dict
 
-from .nos import SpectralConv2D
+import tensorflow as tf
 
+from .nos import SpectralConv2D
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Physics feature catalogue
@@ -82,7 +82,13 @@ class _CNNBackend(tf.keras.layers.Layer):
         Conv = tf.keras.layers.Conv2D
         self.combine = tf.keras.layers.Dense(n_filters, dtype=self.compute_dtype)
         self.backbone = [
-            Conv(n_filters, ker_size, padding="same", dtype=self.compute_dtype, name=f"bb_{i}")
+            Conv(
+                n_filters,
+                ker_size,
+                padding="same",
+                dtype=self.compute_dtype,
+                name=f"bb_{i}",
+            )
             for i in range(n_layers)
         ]
         self.skip_proj = Conv(n_filters, 1, padding="same", dtype=self.compute_dtype)
@@ -172,7 +178,9 @@ class _MLPBackend(tf.keras.layers.Layer):
     ) -> None:
         super().__init__(**kw)
         self.hidden = [
-            tf.keras.layers.Dense(n_filters, activation="gelu", dtype=self.compute_dtype)
+            tf.keras.layers.Dense(
+                n_filters, activation="gelu", dtype=self.compute_dtype
+            )
             for _ in range(n_layers)
         ]
         self.out = tf.keras.layers.Dense(n_out, dtype=self.compute_dtype)
@@ -370,8 +378,16 @@ class DahuNet(tf.keras.Model):
                 f"Input channel mismatch: model expects {self.nb_inputs} channels "
                 f"from input_names={self.input_names}, but build got C={channel_dim}."
             )
-        H = self._dummy_H if input_shape[1] is None else max(self._dummy_H, int(input_shape[1]))
-        W = self._dummy_W if input_shape[2] is None else max(self._dummy_W, int(input_shape[2]))
+        H = (
+            self._dummy_H
+            if input_shape[1] is None
+            else max(self._dummy_H, int(input_shape[1]))
+        )
+        W = (
+            self._dummy_W
+            if input_shape[2] is None
+            else max(self._dummy_W, int(input_shape[2]))
+        )
         dummy = tf.zeros((1, H, W, self.nb_inputs), dtype=self.compute_dtype)
         _ = self.call(dummy, training=False)
         super().build(input_shape)

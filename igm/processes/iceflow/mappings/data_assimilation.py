@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
-import tensorflow as tf
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
+import tensorflow as tf
+
+from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 from .mapping import Mapping
 from .transforms import TRANSFORMS, ParameterTransform
-from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
 @dataclass
@@ -24,9 +26,7 @@ class VariableSpec:
     """
 
     name: str  # e.g. "thk", "tau_ref"
-    transform: str = (
-        "identity"  # key in TRANSFORMS
-    )
+    transform: str = "identity"  # key in TRANSFORMS
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
     mask: Optional[str] = None  # e.g. inverse_mask would use state.inverse_mask
@@ -159,7 +159,9 @@ class MappingDataAssimilation(Mapping):
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
             self._sizes_int.append(
-                theta.shape.num_elements() if theta.shape.num_elements() is not None else None
+                theta.shape.num_elements()
+                if theta.shape.num_elements() is not None
+                else None
             )
 
             self._mask_bool.append(mask_bool)
@@ -404,4 +406,3 @@ class MappingDataAssimilation(Mapping):
             )
         idx = self._varname_to_idx[name]
         return tf.cast(self._theta_to_field(idx), self.precision)
-

@@ -20,7 +20,7 @@ import importlib_resources
 import tensorflow as tf
 from omegaconf import DictConfig
 
-import igm.processes.iceflow.networks.pretrained as pretrained
+from . import pretrained
 
 
 def resolve_legacy_emulator(

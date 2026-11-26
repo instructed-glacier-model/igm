@@ -1,9 +1,9 @@
-from .architectures import Architectures, CNN
+from .architectures import CNN, Architectures
 from .normalizations import (
-    FixedAffineLayer,
     AdaptiveAffineLayer,
-    StandardizationLayer,
+    FixedAffineLayer,
     IdentityTransformation,
+    StandardizationLayer,
 )
 
 NormalizationsDict = {

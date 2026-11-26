@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+import os
+
+import numpy as np
+import pytest
+from omegaconf import DictConfig
+
+import igm
+from igm.common.runner.configuration.loader import load_yaml_recursive
+from igm.processes.iceflow.discretization.vertical import VerticalDiscrs
+from igm.processes.iceflow.discretization.vertical.lagrange import LagrangeDiscr
+
+
+@pytest.fixture
+def cfg() -> DictConfig:
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+    cfg.processes.iceflow.numerics.Nz = 3
+    cfg.processes.iceflow.numerics.vert_spacing = 1.0
+    return cfg
+
+
+def test_registry_name() -> None:
+    assert "lagrange" in VerticalDiscrs
+    assert VerticalDiscrs["lagrange"] == LagrangeDiscr
+
+
+def test_registry_instantiate(cfg: DictConfig) -> None:
+    assert isinstance(VerticalDiscrs["lagrange"](cfg), LagrangeDiscr)
+
+
+@pytest.mark.parametrize("Nz", [2, 5, 10])
+def test_matrices_shapes(cfg: DictConfig, Nz: int) -> None:
+    cfg.processes.iceflow.numerics.Nz = Nz
+    discr = LagrangeDiscr(cfg)
+
+    assert discr.w.shape == (Nz - 1,)
+    assert discr.zeta.shape == (Nz - 1,)
+    assert discr.V_q.shape == (Nz - 1, Nz)
+    assert discr.V_q_grad.shape == (Nz - 1, Nz)
+    assert discr.V_b.shape == (Nz,)
+    assert discr.V_s.shape == (Nz,)
+    assert discr.V_bar.shape == (Nz,)
+    assert discr.V_int.shape == (Nz, Nz)
+    assert discr.V_corr_b.shape == (Nz, Nz)
+    assert discr.V_corr_s.shape == (Nz, Nz)
+    assert discr.V_const.shape == (Nz,)
+
+
+def test_matrices_properties(cfg: DictConfig) -> None:
+    discr = LagrangeDiscr(cfg)
+
+    sum_rows_V_q = np.sum(discr.V_q.numpy(), axis=1)
+    sum_rows_V_q_grad = np.sum(discr.V_q_grad.numpy(), axis=1)
+
+    np.testing.assert_allclose(sum_rows_V_q, 1.0)
+    np.testing.assert_allclose(sum_rows_V_q_grad, 0.0)
+
+
+def test_matrices_example(cfg: DictConfig) -> None:
+    discr = LagrangeDiscr(cfg)
+
+    w_computed = discr.w.numpy()
+    zeta_computed = discr.zeta.numpy()
+    V_q_computed = discr.V_q.numpy()
+    V_q_grad_computed = discr.V_q_grad.numpy()
+    V_b_computed = discr.V_b.numpy()
+    V_s_computed = discr.V_s.numpy()
+    V_bar_computed = discr.V_bar.numpy()
+    V_int_computed = discr.V_int.numpy()
+    V_corr_b_computed = discr.V_corr_b.numpy()
+    V_corr_s_computed = discr.V_corr_s.numpy()
+    V_const_computed = discr.V_const.numpy()
+
+    w_expected = np.array([0.5, 0.5])
+    zeta_expected = np.array([0.25, 0.75])
+    V_q_expected = np.array([[0.5, 0.5, 0.0], [0.0, 0.5, 0.5]])
+    V_q_grad_expected = np.array([[-2.0, 2.0, 0.0], [0.0, -2.0, 2.0]])
+    V_b_expected = np.array([1.0, 0.0, 0.0])
+    V_s_expected = np.array([0.0, 0.0, 1.0])
+    V_bar_expected = np.array([0.25, 0.5, 0.25])
+    V_int_expected = np.array([[0.0, 0.0, 0.0], [0.25, 0.25, 0.0], [0.25, 0.5, 0.25]])
+    V_corr_b_expected = np.array(
+        [[0.0, 0.0, 0.0], [-0.75, 0.75, 0.0], [-0.75, 0.5, 0.25]]
+    )
+    V_corr_s_expected = np.array(
+        [[0.0, 0.0, 0.0], [-0.25, 0.25, 0.0], [-0.25, -0.5, 0.75]]
+    )
+    V_const_expected = np.array([1.0, 1.0, 1.0])
+
+    np.testing.assert_allclose(w_computed, w_expected)
+    np.testing.assert_allclose(zeta_computed, zeta_expected)
+    np.testing.assert_allclose(V_q_computed, V_q_expected)
+    np.testing.assert_allclose(V_q_grad_computed, V_q_grad_expected)
+    np.testing.assert_allclose(V_b_computed, V_b_expected)
+    np.testing.assert_allclose(V_s_computed, V_s_expected)
+    np.testing.assert_allclose(V_bar_computed, V_bar_expected)
+    np.testing.assert_allclose(V_int_computed, V_int_expected)
+    np.testing.assert_allclose(V_corr_b_computed, V_corr_b_expected)
+    np.testing.assert_allclose(V_corr_s_computed, V_corr_s_expected)
+    np.testing.assert_allclose(V_const_computed, V_const_expected)

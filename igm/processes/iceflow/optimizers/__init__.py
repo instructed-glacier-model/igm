@@ -1,4 +1,3 @@
-from .optimizer import Optimizer
 from .adam import OptimizerAdam
 from .adam_DA import OptimizerAdamDataAssimilation
 from .cg import OptimizerCG
@@ -9,12 +8,13 @@ from .lbfgs_bounds import OptimizerLBFGSBounds
 from .lbfgs_DA import OptimizerLBFGSBoundsDA
 from .muon import OptimizerMuon
 from .newton import OptimizerNewton
+from .optimizer import Optimizer
 from .sequential import OptimizerSequential
 from .soap import OptimizerSOAP
-from .ss_esoap import OptimizerSSESOAP
-from .trust_region import OptimizerTrustRegion
 from .spectral_projected_gradient import OptimizerSpectralProjectedGradient
+from .ss_esoap import OptimizerSSESOAP
 from .tridiag_newton import OptimizerTridiagNewton
+from .trust_region import OptimizerTrustRegion
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -36,4 +36,3 @@ Optimizers = {
 }
 
 from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status
-from .utils import SyntheticCosts

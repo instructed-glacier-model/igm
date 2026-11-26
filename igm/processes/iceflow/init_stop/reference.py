@@ -12,12 +12,12 @@ import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 
 from igm.common import State
+from igm.processes.iceflow.error_estimator.interface import build_cost_fn_in_precision
+from igm.processes.iceflow.mappings import InterfaceMappings, Mappings
+from igm.processes.iceflow.optimizers import InterfaceOptimizers, Optimizers, Status
+from igm.processes.iceflow.optimizers.halt import HaltStatus
 from igm.processes.iceflow.utils.velocities import get_velsurf
 from igm.utils.math.precision import normalize_precision
-from ..error_estimator.interface import build_cost_fn_in_precision
-from ..halt import HaltStatus
-from ..mappings import InterfaceMappings, Mappings
-from ..optimizers import InterfaceOptimizers, Optimizers, Status
 
 
 @dataclass

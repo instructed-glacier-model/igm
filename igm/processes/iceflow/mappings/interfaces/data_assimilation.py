@@ -11,10 +11,10 @@ from omegaconf import DictConfig
 from igm.common import State
 from igm.processes.iceflow.bcs.utils import init_bcs
 
-from .interface import InterfaceMapping
 from ..data_assimilation import VariableSpec
 from ..network import MappingNetwork
 from ..transforms import TRANSFORMS
+from .interface import InterfaceMapping
 
 
 class InterfaceDataAssimilation(InterfaceMapping):

@@ -1,8 +1,10 @@
-from omegaconf import DictConfig
 from typing import Any, Dict
 
-from .interface import InterfaceBoundaryCondition
+from omegaconf import DictConfig
+
 from igm.common import State
+
+from .interface import InterfaceBoundaryCondition
 
 
 def _plain(value: Any) -> Any:

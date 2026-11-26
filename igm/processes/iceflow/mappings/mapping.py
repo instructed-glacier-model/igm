@@ -3,11 +3,12 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from abc import ABC, abstractmethod
-from typing import Any, Tuple, Union, List
+from typing import Any, List, Tuple, Union
 
-from ..bcs import BoundaryCondition
+import tensorflow as tf
+
+from igm.processes.iceflow.bcs import BoundaryCondition
 from igm.utils.math.precision import normalize_precision
 
 TV = Union[tf.Tensor, tf.Variable]

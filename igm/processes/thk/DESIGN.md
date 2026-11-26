@@ -31,11 +31,11 @@ an IGM process module follows, so no wrapper type is needed.
 
 `thk.py` holds only the module lifecycle and composition. The dispatch
 dictionaries remain beside their implementations, in the same direct style as
-`iceflow.vertical.VerticalDiscrs`. `_select_components(cfg)` turns the
-configuration into a validated set of components and `initialize` stores it on
-`state.thk_components`, following the process-owned container pattern used by
-the iceflow module. This deliberately small dataclass contains run-level
-orchestration data, not spatial model fields. `update` only reads that
+`iceflow.discretization.vertical.VerticalDiscrs`. `_select_components(cfg)`
+turns the configuration into a validated set of components and `initialize`
+stores it on `state.thk_components`, following the process-owned container
+pattern used by the iceflow module. This deliberately small dataclass contains
+run-level orchestration data, not spatial model fields. `update` only reads that
 container, so the configuration is parsed once per run rather than once per
 timestep:
 
@@ -85,9 +85,10 @@ transport is the one that has to support active domains.
 A backend exposes `initialize(cfg, state)` and `update(cfg, state)`. Add its
 module to the `TransportSchemes` dictionary in `transport/__init__.py`,
 following the direct dispatch pattern used by
-`iceflow.vertical.VerticalDiscrs`. The root package deliberately exposes only
-the IGM lifecycle functions. No registration call or change to `thk.py` is
-needed. The update publishes at least `state.thk` and `state.divflux`.
+`iceflow.discretization.vertical.VerticalDiscrs`. The root package deliberately
+exposes only the IGM lifecycle functions. No registration call or change to
+`thk.py` is needed. The update publishes at least `state.thk` and
+`state.divflux`.
 
 A backend declares what it supports, and an omitted declaration always means
 "not supported", so a new scheme can never silently ignore an option:

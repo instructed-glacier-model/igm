@@ -9,17 +9,18 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
-from igm.processes.iceflow.vertical_velocity.vertical_velocity_v1 import (
-    compute_vertical_velocity_v1,
-)
-from igm.processes.iceflow.vertical_velocity.vertical_velocity_v2 import (
-    compute_vertical_velocity_v2,
-)
-from igm.processes.iceflow.vertical_velocity.vertical_velocity_v3 import (
-    compute_vertical_velocity_v3,
-)
 from igm.processes.iceflow.utils.velocities import get_velbase_1, get_velsurf_1
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
+
+from .v1 import (
+    compute_vertical_velocity_v1,
+)
+from .v2 import (
+    compute_vertical_velocity_v2,
+)
+from .v3 import (
+    compute_vertical_velocity_v3,
+)
 
 
 def smooth_vertical_velocity(W: tf.Tensor, thk: tf.Tensor, sigma: float) -> tf.Tensor:
@@ -61,7 +62,9 @@ def update(cfg: DictConfig, state: State) -> None:
 
     state.W = compute_vertical_velocity(cfg, state)
 
-    smooth_sigma = float(cfg.processes.iceflow.vertical_velocity.get("smooth_sigma", 0.0))
+    smooth_sigma = float(
+        cfg.processes.iceflow.vertical_velocity.get("smooth_sigma", 0.0)
+    )
     if smooth_sigma > 0.0:
         state.W = smooth_vertical_velocity(state.W, state.thk, smooth_sigma)
 

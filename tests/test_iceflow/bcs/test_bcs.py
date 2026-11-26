@@ -3,23 +3,22 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import pytest
-import numpy as np
-import tensorflow as tf
 from typing import Tuple
 
-from igm.processes.iceflow.bcs import BoundaryConditions
+import numpy as np
+import pytest
+import tensorflow as tf
+
 from igm.processes.iceflow.bcs import (
     BoundaryCondition,
+    BoundaryConditions,
     FrozenBed,
-    PeriodicNS,
-    PeriodicWE,
-    PeriodicNSGlobal,
-    PeriodicWEGlobal,
-)
-from igm.processes.iceflow.bcs import (
     InterfaceBoundaryCondition,
     InterfaceBoundaryConditions,
+    PeriodicNS,
+    PeriodicNSGlobal,
+    PeriodicWE,
+    PeriodicWEGlobal,
 )
 
 

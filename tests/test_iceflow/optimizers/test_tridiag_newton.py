@@ -3,30 +3,30 @@ import pytest
 import tensorflow as tf
 from omegaconf import OmegaConf
 
+from igm.processes.iceflow.bcs.dirichlet import DirichletBoundary
 from igm.processes.iceflow.bcs.periodic_ns import PeriodicNS
 from igm.processes.iceflow.bcs.periodic_we import PeriodicWE
-from igm.processes.iceflow.bcs.dirichlet import DirichletBoundary
-from igm.processes.iceflow.mappings.identity import MappingIdentity
-from igm.processes.iceflow.operators import ADOperator
-from igm.processes.iceflow.operators.tridiag1d import (
+from igm.processes.iceflow.discretization.horizontal import Q1Discr
+from igm.processes.iceflow.discretization.vertical import SSADiscr
+from igm.processes.iceflow.energy import cost as iceflow_cost
+from igm.processes.iceflow.energy.components.sliding import SlidingComponents
+from igm.processes.iceflow.energy.utils import get_energy_components
+from igm.processes.iceflow.hessian.operators import ADOperator
+from igm.processes.iceflow.hessian.operators.tridiag1d import (
     Tridiag1DADOperator,
     supports_tridiag1d,
 )
-from igm.processes.iceflow.operators.tridiag1d_analytic import (
+from igm.processes.iceflow.hessian.operators.tridiag1d_analytic import (
     Tridiag1DAnalyticOperator,
 )
-from igm.processes.iceflow.utils import cost as iceflow_cost
-from igm.processes.iceflow.energy.components.sliding import SlidingComponents
-from igm.processes.iceflow.energy.utils import get_energy_components
-from igm.processes.thk.masks import weights_gr
-from igm.processes.iceflow.horizontal import Q1Discr
-from igm.processes.iceflow.vertical import SSADiscr
-from igm.processes.iceflow.optimizers.tridiag_newton import (
-    OptimizerTridiagNewton,
-)
+from igm.processes.iceflow.mappings.identity import MappingIdentity
 from igm.processes.iceflow.optimizers.interfaces.tridiag_newton import (
     InterfaceTridiagNewton,
 )
+from igm.processes.iceflow.optimizers.tridiag_newton import (
+    OptimizerTridiagNewton,
+)
+from igm.processes.thk.masks import weights_gr
 
 
 def test_supports_tridiag1d():

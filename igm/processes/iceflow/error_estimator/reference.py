@@ -8,6 +8,7 @@
 from typing import Dict, Tuple
 
 import numpy as np
+from netCDF4 import Dataset
 
 
 def load_reference_surface_velocity(
@@ -17,15 +18,11 @@ def load_reference_surface_velocity(
 
     Returns float64 arrays of shape ``expected_shape`` with NaN replaced by 0.
     """
-    from netCDF4 import Dataset
-
     with Dataset(path, "r") as ds:
         out = {}
         for name in ("uvelsurf", "vvelsurf"):
             if name not in ds.variables:
-                raise KeyError(
-                    f"❌ Reference file {path} has no variable '{name}'."
-                )
+                raise KeyError(f"❌ Reference file {path} has no variable '{name}'.")
             array = np.asarray(ds.variables[name][:], dtype=np.float64)
             if array.ndim == 3:
                 array = array[-1]

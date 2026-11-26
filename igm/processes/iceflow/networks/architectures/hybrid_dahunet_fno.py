@@ -18,7 +18,7 @@ from typing import Any, Dict
 
 import tensorflow as tf
 
-from .dahunet import DahuNet, FEATURES_DEFAULT
+from .dahunet import FEATURES_DEFAULT, DahuNet
 from .nos import FNO
 
 

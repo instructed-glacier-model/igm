@@ -9,19 +9,25 @@ from typing import Any, Callable, Dict, Optional
 import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 
-from ..optimizer import Optimizer
+from igm.processes.iceflow.mappings import Mapping
 from igm.utils.schedule import value_at
+
+from ..halt import Halt, InterfaceHalt
+from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping
-from ...halt import Halt, InterfaceHalt
 
 try:
-    from ...mappings import MappingDataAssimilation, MappingCombinedDataAssimilation
+    from igm.processes.iceflow.mappings import (
+        MappingCombinedDataAssimilation,
+        MappingDataAssimilation,
+    )
 except (
     Exception
 ):  # pragma: no cover - keeps the interface compatible across IGM branches.
     try:
-        from ...mappings.data_assimilation import MappingDataAssimilation
+        from igm.processes.iceflow.mappings.data_assimilation import (
+            MappingDataAssimilation,
+        )
     except Exception:  # pragma: no cover
         MappingDataAssimilation = None
     MappingCombinedDataAssimilation = None

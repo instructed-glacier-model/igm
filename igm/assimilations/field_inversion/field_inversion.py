@@ -9,9 +9,9 @@ import importlib
 import keras
 import tensorflow as tf
 
-from igm.processes.iceflow.halt import Halt
-from igm.processes.iceflow.halt.criteria import Criteria
-from igm.processes.iceflow.halt.metrics import Metrics
+from igm.processes.iceflow.optimizers.halt import Halt
+from igm.processes.iceflow.optimizers.halt.criteria import Criteria
+from igm.processes.iceflow.optimizers.halt.metrics import Metrics
 from igm.processes.iceflow.mappings.data_assimilation import MappingDataAssimilation
 from igm.processes.iceflow.mappings.interfaces.data_assimilation import (
     InterfaceDataAssimilation,

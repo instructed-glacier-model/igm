@@ -4,8 +4,9 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 from typing import Any, Dict
-from omegaconf import DictConfig
+
 import tensorflow as tf
+from omegaconf import DictConfig
 
 from igm.processes.thk.masks import mask_gr, no_ocean_like
 

@@ -8,10 +8,11 @@ from typing import Any, Callable, Optional, Sequence, Tuple
 
 import tensorflow as tf
 
-from .optimizer import Optimizer
-from ..halt import Halt, HaltStatus
-from ..mappings import Mapping
+from igm.processes.iceflow.mappings import Mapping
 from igm.utils.math.norms import compute_norm
+
+from .halt import Halt, HaltStatus
+from .optimizer import Optimizer
 
 try:  # Optional: available in the DA optimizer package, but not required generally.
     from .da_progress_optimizer import _DAProgressOptimizer
@@ -44,7 +45,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
 
     def __init__(
         self,
-        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor | tuple[tf.Tensor, ...]],
+        cost_fn: Callable[
+            [tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor | tuple[tf.Tensor, ...]
+        ],
         map: Mapping,
         halt: Optional[Halt] = None,
         print_cost: bool = True,
@@ -101,17 +104,25 @@ class OptimizerSpectralProjectedGradient(Optimizer):
 
         self.iter_max = tf.Variable(int(iter_max), dtype=tf.int32, trainable=False)
         self.alpha0 = tf.Variable(float(alpha0), dtype=self.precision, trainable=False)
-        self.alpha_min = tf.Variable(float(alpha_min), dtype=self.precision, trainable=False)
-        self.alpha_max = tf.Variable(float(alpha_max), dtype=self.precision, trainable=False)
+        self.alpha_min = tf.Variable(
+            float(alpha_min), dtype=self.precision, trainable=False
+        )
+        self.alpha_max = tf.Variable(
+            float(alpha_max), dtype=self.precision, trainable=False
+        )
 
         self.armijo_c = tf.constant(float(armijo_c), dtype=self.precision)
-        self.backtrack_factor = tf.constant(float(backtrack_factor), dtype=self.precision)
+        self.backtrack_factor = tf.constant(
+            float(backtrack_factor), dtype=self.precision
+        )
         self.max_backtracks = int(max_backtracks)
         self.nonmonotone_window = max(1, int(nonmonotone_window))
         self.bb_variant = bb_variant
         self.step_tol = tf.constant(float(step_tol), dtype=self.precision)
 
-        self.eps = tf.constant(1e-12 if self.precision == tf.float32 else 1e-20, self.precision)
+        self.eps = tf.constant(
+            1e-12 if self.precision == tf.float32 else 1e-20, self.precision
+        )
 
         self.last_total = tf.Variable(0.0, trainable=False, dtype=self.precision)
         self.last_data = tf.Variable(0.0, trainable=False, dtype=self.precision)
@@ -168,16 +179,24 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         cost_reg_hist: Sequence[tf.Tensor],
         n_keep: int,
     ) -> None:
-        self.accepted_cost_total_hist = self._stack_history(cost_total_hist[:n_keep], self.precision)
-        self.accepted_cost_data_hist = self._stack_history(cost_data_hist[:n_keep], self.precision)
-        self.accepted_cost_reg_hist = self._stack_history(cost_reg_hist[:n_keep], self.precision)
+        self.accepted_cost_total_hist = self._stack_history(
+            cost_total_hist[:n_keep], self.precision
+        )
+        self.accepted_cost_data_hist = self._stack_history(
+            cost_data_hist[:n_keep], self.precision
+        )
+        self.accepted_cost_reg_hist = self._stack_history(
+            cost_reg_hist[:n_keep], self.precision
+        )
 
     def _bounds(self) -> Tuple[tf.Tensor, tf.Tensor]:
         lower, upper = self.map.get_box_bounds_flat()
         return tf.cast(lower, self.precision), tf.cast(upper, self.precision)
 
     @tf.function(reduce_retracing=True)
-    def _project(self, theta_flat: tf.Tensor, lower: tf.Tensor, upper: tf.Tensor) -> tf.Tensor:
+    def _project(
+        self, theta_flat: tf.Tensor, lower: tf.Tensor, upper: tf.Tensor
+    ) -> tf.Tensor:
         return tf.clip_by_value(theta_flat, lower, upper)
 
     @tf.function(reduce_retracing=True)
@@ -199,7 +218,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         # box-constrained problem under a unit projected-gradient step.
         return theta_flat - self._project(theta_flat - grad_flat, lower, upper)
 
-    def _split_cost_output(self, cost_output: Any) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def _split_cost_output(
+        self, cost_output: Any
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         if isinstance(cost_output, (tuple, list)):
             if len(cost_output) >= 3:
                 total, data, reg = cost_output[:3]
@@ -229,16 +250,28 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         return getattr(self.map, "inputs", raw_inputs)
 
     @tf.function(reduce_retracing=True, jit_compile=False)
-    def _evaluate_value(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def _evaluate_value(
+        self, inputs: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         U, V = self.map.get_UV(inputs)
-        total, data, reg = self._split_cost_output(self.cost_fn(U, V, self._cost_inputs(inputs)))
+        total, data, reg = self._split_cost_output(
+            self.cost_fn(U, V, self._cost_inputs(inputs))
+        )
         return total, data, reg
 
     @tf.function(reduce_retracing=True, jit_compile=False)
     def _evaluate_grad(
         self,
         inputs: tf.Tensor,
-    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tuple[tf.Tensor, tf.Tensor], list[tf.Tensor], tf.Tensor, tf.Tensor]:
+    ) -> Tuple[
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tuple[tf.Tensor, tf.Tensor],
+        list[tf.Tensor],
+        tf.Tensor,
+        tf.Tensor,
+    ]:
         theta = self.map.get_theta()
 
         with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
@@ -285,7 +318,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         pg_norm = compute_norm(pg, ord=self.ord_grad_theta)
         return grad_u_norm, pg_norm
 
-    def _reference_cost(self, recent_total_costs: Sequence[tf.Tensor], current_cost: tf.Tensor) -> tf.Tensor:
+    def _reference_cost(
+        self, recent_total_costs: Sequence[tf.Tensor], current_cost: tf.Tensor
+    ) -> tf.Tensor:
         if not recent_total_costs:
             return tf.identity(current_cost)
         window = recent_total_costs[-self.nonmonotone_window :]
@@ -300,7 +335,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         grad_prev_flat: Optional[tf.Tensor],
     ) -> tf.Tensor:
         if theta_prev_flat is None or grad_prev_flat is None:
-            return tf.clip_by_value(self.alpha0.read_value(), self.alpha_min, self.alpha_max)
+            return tf.clip_by_value(
+                self.alpha0.read_value(), self.alpha_min, self.alpha_max
+            )
 
         s = theta_flat - theta_prev_flat
         y = grad_flat - grad_prev_flat
@@ -322,7 +359,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
 
         alpha = tf.where(finite & positive_curvature, alpha, self.alpha0.read_value())
         alpha = tf.where(tf.math.is_finite(alpha), alpha, self.alpha0.read_value())
-        return tf.clip_by_value(tf.cast(alpha, self.precision), self.alpha_min, self.alpha_max)
+        return tf.clip_by_value(
+            tf.cast(alpha, self.precision), self.alpha_min, self.alpha_max
+        )
 
     def _projected_armijo_search(
         self,
@@ -338,7 +377,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         lower, upper = self._bounds()
         theta_backup = self.map.copy_theta(self.map.get_theta())
 
-        alpha = tf.clip_by_value(tf.cast(alpha_start, self.precision), self.alpha_min, self.alpha_max)
+        alpha = tf.clip_by_value(
+            tf.cast(alpha_start, self.precision), self.alpha_min, self.alpha_max
+        )
         best_theta = tf.identity(theta_flat)
         best_total = tf.identity(current_total)
         best_data = tf.identity(current_data)
@@ -361,9 +402,8 @@ class OptimizerSpectralProjectedGradient(Optimizer):
                 break
 
             directional_derivative = self._dot(grad_flat, step)
-            if (
-                not bool(tf.math.is_finite(directional_derivative).numpy())
-                or bool((directional_derivative >= -self.eps).numpy())
+            if not bool(tf.math.is_finite(directional_derivative).numpy()) or bool(
+                (directional_derivative >= -self.eps).numpy()
             ):
                 alpha = alpha * self.backtrack_factor
                 continue
@@ -408,14 +448,24 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         self.map.set_theta(theta_backup)
 
         if accepted and accepted_payload is not None:
-            theta_new, total_new, data_new, reg_new, alpha_used, step_norm = accepted_payload
+            theta_new, total_new, data_new, reg_new, alpha_used, step_norm = (
+                accepted_payload
+            )
             return theta_new, total_new, data_new, reg_new, alpha_used, step_norm, True
 
         # Conservative fallback: if Armijo fails but a strictly lower finite value was
         # found, accept that value-only descent point rather than declaring failure.
         # This is useful for noisy DA objectives and still preserves monotone descent.
         if found_strict_decrease:
-            return best_theta, best_total, best_data, best_reg, best_alpha, best_step_norm, True
+            return (
+                best_theta,
+                best_total,
+                best_data,
+                best_reg,
+                best_alpha,
+                best_step_norm,
+                True,
+            )
 
         return (
             tf.identity(theta_flat),
@@ -490,7 +540,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
         grad_prev_flat: Optional[tf.Tensor] = None
 
         iter_max = int(self.iter_max.numpy())
-        debug_freq = int(tf.convert_to_tensor(self.debug_freq).numpy()) if self.debug_mode else 1
+        debug_freq = (
+            int(tf.convert_to_tensor(self.debug_freq).numpy()) if self.debug_mode else 1
+        )
 
         for iter_py in range(iter_max):
             iter_tf = tf.constant(iter_py, dtype=tf.int32)
@@ -503,15 +555,17 @@ class OptimizerSpectralProjectedGradient(Optimizer):
             )
             reference_total = self._reference_cost(cost_total_hist, total)
 
-            theta_new, _, _, _, _, step_norm, step_accepted = self._projected_armijo_search(
-                theta_flat=theta_flat,
-                grad_flat=grad_flat,
-                current_total=total,
-                current_data=data,
-                current_reg=reg,
-                reference_total=reference_total,
-                alpha_start=alpha,
-                inputs=inputs_full,
+            theta_new, _, _, _, _, step_norm, step_accepted = (
+                self._projected_armijo_search(
+                    theta_flat=theta_flat,
+                    grad_flat=grad_flat,
+                    current_total=total,
+                    current_data=data,
+                    current_reg=reg,
+                    reference_total=reference_total,
+                    alpha_start=alpha,
+                    inputs=inputs_full,
+                )
             )
 
             if not step_accepted:
@@ -529,7 +583,9 @@ class OptimizerSpectralProjectedGradient(Optimizer):
 
             # One full gradient evaluation per accepted step.  The value-only line
             # search deliberately avoids gradients at rejected trial points.
-            total, data, reg, grad_u, grad_theta, U, V = self._evaluate_grad(inputs_full)
+            total, data, reg, grad_u, grad_theta, U, V = self._evaluate_grad(
+                inputs_full
+            )
             grad_flat = self.map.flatten_theta(grad_theta)
 
             theta_prev_flat = theta_old
@@ -541,7 +597,10 @@ class OptimizerSpectralProjectedGradient(Optimizer):
             cost_reg_hist.append(tf.identity(self.last_reg.read_value()))
 
             accepted_iter = iter_py + 1
-            if getattr(self.map, "_da_out_freq", 0) > 0 and accepted_iter % int(self.map._da_out_freq) == 0:
+            if (
+                getattr(self.map, "_da_out_freq", 0) > 0
+                and accepted_iter % int(self.map._da_out_freq) == 0
+            ):
                 self._publish_cost_history(
                     cost_total_hist,
                     cost_data_hist,

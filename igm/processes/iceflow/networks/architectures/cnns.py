@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import math
+from typing import Any, Dict
+
 import numpy as np
 import tensorflow as tf
-import math
 
 from igm.utils.math.precision import normalize_precision
-from typing import Any, Dict
 
 
 class CNN(tf.keras.Model):
@@ -23,20 +24,20 @@ class CNN(tf.keras.Model):
 
     # Each entry is (default, coercer)
     _DEFAULTS: Dict[str, tuple] = {
-        "nb_layers":             (16, int),
-        "nb_out_filter":         (32, int),
-        "conv_ker_size":         (3,  int),
-        "activation":            ("LeakyReLU",      str),
+        "nb_layers": (16, int),
+        "nb_out_filter": (32, int),
+        "conv_ker_size": (3, int),
+        "activation": ("LeakyReLU", str),
         "weight_initialization": ("glorot_uniform", str),
-        "batch_norm":            (False, bool),
-        "residual":              (True,  bool),
-        "separable":             (False, bool),
-        "dropout_rate":          (0.0,   float),
-        "l2_reg":                (0.0,   float),
-        "cnn3d_for_vertical":    (False, bool),
-        "precision":             ("float32", str),
-        "use_skip":              (True,  bool),
-        "leakyrelu_alpha":       (0.01,  float),
+        "batch_norm": (False, bool),
+        "residual": (True, bool),
+        "separable": (False, bool),
+        "dropout_rate": (0.0, float),
+        "l2_reg": (0.0, float),
+        "cnn3d_for_vertical": (False, bool),
+        "precision": ("float32", str),
+        "use_skip": (True, bool),
+        "leakyrelu_alpha": (0.01, float),
     }
     _LEGACY_FIELDS = set(_DEFAULTS)
 

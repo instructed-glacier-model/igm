@@ -1,7 +1,7 @@
+from .data_assimilation import MappingDataAssimilation
+from .identity import MappingIdentity
 from .mapping import Mapping
 from .network import MappingNetwork
-from .identity import MappingIdentity
-from .data_assimilation import MappingDataAssimilation
 
 Mappings = {
     "identity": MappingIdentity,

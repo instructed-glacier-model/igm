@@ -1,9 +1,9 @@
-from .interface import InterfaceBoundaryCondition
+from .dirichlet import InterfaceDirichletBoundary
 from .frozen_bed import InterfaceFrozenBed
+from .interface import InterfaceBoundaryCondition
+from .no_inflow import InterfaceNoInflow
 from .periodic_ns import InterfacePeriodicNS, InterfacePeriodicNSGlobal
 from .periodic_we import InterfacePeriodicWE, InterfacePeriodicWEGlobal
-from .no_inflow import InterfaceNoInflow
-from .dirichlet import InterfaceDirichletBoundary
 
 InterfaceBoundaryConditions = {
     "frozen_bed": InterfaceFrozenBed,

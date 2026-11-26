@@ -1,5 +1,6 @@
-import tensorflow as tf
 from typing import Dict, List
+
+import tensorflow as tf
 
 
 def split_field_into_patches(X: tf.Tensor, framesizemax: int) -> tf.Tensor:

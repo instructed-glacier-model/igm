@@ -10,10 +10,9 @@ from omegaconf import OmegaConf
 
 import igm
 from igm.common.runner.configuration.loader import load_yaml_recursive
+from igm.processes.iceflow.discretization import HorizontalDiscrs, VerticalDiscrs
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
-from igm.processes.iceflow.horizontal import HorizontalDiscrs
-from igm.processes.iceflow.vertical import VerticalDiscrs
 
 NAMES = ("thk", "usurf", "arrhenius", "tau_ref", "dX")
 B, NZ, NY, NX = 3, 4, 12, 14

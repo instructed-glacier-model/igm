@@ -1,6 +1,7 @@
-import tensorflow as tf
-from typing import Tuple, Dict
+from typing import Dict, Tuple
+
 import numpy as np
+import tensorflow as tf
 
 
 class FixedAffineLayer(tf.keras.layers.Layer):
@@ -132,8 +133,6 @@ class AdaptiveAffineLayer(tf.keras.layers.Layer):
             self.build((None, None, None, nb_channels))
 
     def build(self, input_shape):
-        import numpy as np
-
         if self.built:
             return
 

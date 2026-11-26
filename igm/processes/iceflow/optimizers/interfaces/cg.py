@@ -1,12 +1,15 @@
 # interface_cg.py
+from typing import Any, Callable, Dict, Optional
+
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict, Optional
-from ...mappings import Mapping, MappingDataAssimilation
-from ..optimizer import Optimizer
+
+from igm.processes.iceflow.mappings import Mapping, MappingDataAssimilation
 from igm.utils.schedule import value_at
-from .interface import InterfaceOptimizer, Status
+
 from ..cg import OptimizerCG
+from ..optimizer import Optimizer
+from .interface import InterfaceOptimizer, Status
 
 
 class InterfaceCG(InterfaceOptimizer):

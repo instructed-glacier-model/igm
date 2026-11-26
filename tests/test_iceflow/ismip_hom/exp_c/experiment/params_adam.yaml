@@ -15,7 +15,6 @@ defaults:
 
 processes:
   iceflow:
-    method: unified
     physics:
       energy_components: [viscosity, gravity, sliding]
       sliding:

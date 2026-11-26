@@ -3,14 +3,16 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
-from omegaconf import DictConfig
 from typing import Any, Dict
 
-from .interface import InterfaceMapping
+import tensorflow as tf
+from omegaconf import DictConfig
+
 from igm.common import State
 from igm.processes.iceflow.bcs.utils import init_bcs
 from igm.utils.math.precision import normalize_precision
+
+from .interface import InterfaceMapping
 
 
 class InterfaceIdentity(InterfaceMapping):

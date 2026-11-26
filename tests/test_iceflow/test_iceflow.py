@@ -1,6 +1,7 @@
 import os
-import tensorflow as tf
+
 import pytest
+import tensorflow as tf
 
 import igm
 from igm.common.runner.configuration.loader import load_yaml_recursive

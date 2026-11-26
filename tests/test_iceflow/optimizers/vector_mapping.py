@@ -1,8 +1,10 @@
 # tests/test_iceflow/optimizers/vector_mapping.py
 
 #!/usr/bin/env python3
-import tensorflow as tf
 from typing import List, Tuple
+
+import tensorflow as tf
+
 from igm.processes.iceflow.mappings.mapping import Mapping
 
 

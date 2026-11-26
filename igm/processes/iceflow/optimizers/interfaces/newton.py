@@ -2,16 +2,18 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import warnings
+from typing import Any, Callable, Dict, Optional
+
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Any, Callable, Dict, Optional
-import warnings
 
-from ..optimizer import Optimizer
+from igm.processes.iceflow.mappings import Mapping
 from igm.utils.schedule import value_at
+
+from ..halt import Halt, InterfaceHalt
+from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ...mappings import Mapping
-from ...halt import Halt, InterfaceHalt
 
 
 class InterfaceNewton(InterfaceOptimizer):

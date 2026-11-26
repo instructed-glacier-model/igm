@@ -3,13 +3,14 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Dict, List
 
-from .components import EnergyComponent
-from igm.processes.iceflow.horizontal import HorizontalDiscr
-from igm.processes.iceflow.vertical import VerticalDiscr
+import tensorflow as tf
+
+from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin
+
+from .components import EnergyComponent
 
 
 def iceflow_energy(

@@ -3,15 +3,15 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
-import numpy as np
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
-from igm.common import State
-
+import numpy as np
+import tensorflow as tf
 from hydra.core.hydra_config import HydraConfig
-import os
+
+from igm.common import State
 
 
 class Experiment(ABC):

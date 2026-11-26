@@ -3,12 +3,14 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from typing import Callable, List, Optional
 
+import tensorflow as tf
+
+from igm.processes.iceflow.mappings import Mapping, MappingNetwork
+
+from .halt import Halt, HaltStatus
 from .optimizer import Optimizer
-from ..mappings import Mapping, MappingNetwork
-from ..halt import Halt, HaltStatus
 
 
 class _SOAPLayerState:
@@ -254,7 +256,7 @@ class OptimizerSOAP(Optimizer):
             m_hat = state.exp_avg / bc1
             v_hat = state.exp_avg_sq / bc2
             return self.lr * m_hat / (tf.sqrt(v_hat) + self.eps)
-        
+
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
         B = self.batch_size
@@ -302,7 +304,11 @@ class OptimizerSOAP(Optimizer):
 
             # Apply averaged gradients once per iteration
             for w, g_accum, state in zip(theta, grad_theta_accum, self._layer_states):
-                w.assign_sub(self._soap_step(g_accum / n_batches_f, state, iter, should_update_eig))
+                w.assign_sub(
+                    self._soap_step(
+                        g_accum / n_batches_f, state, iter, should_update_eig
+                    )
+                )
 
             costs = costs.write(iter, cost_avg)
 

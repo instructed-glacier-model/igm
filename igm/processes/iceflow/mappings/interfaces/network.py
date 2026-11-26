@@ -1,23 +1,24 @@
-import tensorflow as tf
-
 import warnings
 from typing import Any, Dict
+
+import tensorflow as tf
 from omegaconf import DictConfig
 
-from .interface import InterfaceMapping
 from igm.common import State
+from igm.processes.iceflow.bcs.utils import init_bcs
 from igm.processes.iceflow.networks import NormalizationsDict
-from igm.processes.iceflow.networks.artifacts import load_emulator_artifact
 from igm.processes.iceflow.networks.architectures import Architectures
 from igm.processes.iceflow.networks.architectures.utils import (
     build_network_params,
 )
-from igm.processes.iceflow.bcs.utils import init_bcs
-from igm.utils.math.precision import normalize_precision
+from igm.processes.iceflow.networks.artifacts import load_emulator_artifact
 from igm.processes.iceflow.networks.legacy import (
-    resolve_legacy_emulator,
     load_legacy_emulator,
+    resolve_legacy_emulator,
 )
+from igm.utils.math.precision import normalize_precision
+
+from .interface import InterfaceMapping
 
 
 def mapping_args_for_model(

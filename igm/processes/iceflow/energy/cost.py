@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+from typing import Callable
+
+import tensorflow as tf
+from omegaconf import DictConfig
+
+from igm.common import State
+from igm.processes.iceflow.utils.velocities import compute_cell_ice_mask
+from igm.processes.thk.masks import (
+    compute_grounded_mask,
+    water_level_from_inputs,
+)
+
+from .energy import iceflow_energy_UV
+from .utils import get_energy_components
+
+
+def get_cost_fn(
+    cfg: DictConfig, state: State
+) -> Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]:
+    """Create cost function for ice flow optimization."""
+
+    cfg_unified = cfg.processes.iceflow.unified
+
+    energy_components = get_energy_components(cfg)
+    input_names = tuple(cfg_unified.inputs)
+    idx_thk = input_names.index("thk")
+    idx_usurf = input_names.index("usurf")
+    rho_ratio = (
+        cfg.processes.iceflow.physics.water_density
+        / cfg.processes.iceflow.physics.ice_density
+    )
+
+    def _cost_fn_impl(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+        """Cost function from velocity fields and inputs."""
+        energy = iceflow_energy_UV(
+            inputs_names=tuple(cfg_unified.inputs),
+            inputs=input,
+            U=U,
+            V=V,
+            discr_h=state.iceflow.discr_h,
+            discr_v=state.iceflow.discr_v,
+            energy_components=energy_components,
+        )
+
+        thk = input[..., idx_thk]
+        topg = input[..., idx_usurf] - thk
+        water_level = water_level_from_inputs(input, input_names, thk)
+        grounded = compute_grounded_mask(thk, topg, water_level, rho_ratio)
+        cell_mask = compute_cell_ice_mask(thk, grounded)
+        energy = energy * tf.cast(cell_mask[tf.newaxis, :, :, :], energy.dtype)
+
+        energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+        total_energy = tf.reduce_sum(energy_mean, axis=0)
+
+        return total_energy
+
+    # Keep the nested HVP tapes compact by differentiating a PartitionedCall.
+    cost_fn = tf.function(_cost_fn_impl, reduce_retracing=True)
+    return cost_fn

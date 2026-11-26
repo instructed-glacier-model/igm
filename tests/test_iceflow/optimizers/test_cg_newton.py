@@ -7,26 +7,26 @@ from omegaconf import OmegaConf
 
 from igm.processes.iceflow.bcs.periodic_ns import PeriodicNS
 from igm.processes.iceflow.bcs.periodic_we import PeriodicWE
-from igm.processes.iceflow.mappings.identity import MappingIdentity
-from igm.processes.iceflow.optimizers.cg_newton import OptimizerCGNewton
-from igm.processes.iceflow.operators.banded import (
-    COMPONENT_CENTER_KEY,
-)
-from igm.processes.iceflow.operators import (
+from igm.processes.iceflow.hessian.operators import (
     ADOperator,
     BandedADOperator,
     MOLHOBandedADOperator,
     SSABandedADOperator,
 )
-from igm.processes.iceflow.preconditioners import (
+from igm.processes.iceflow.hessian.operators.banded import (
+    COMPONENT_CENTER_KEY,
+)
+from igm.processes.iceflow.hessian.preconditioners import (
     ComponentBlockJacobiPreconditioner,
     SSABlockJacobiPreconditioner,
     build_preconditioner,
 )
-from igm.processes.iceflow.optimizers.line_searches import LineSearches
+from igm.processes.iceflow.mappings.identity import MappingIdentity
+from igm.processes.iceflow.optimizers.cg_newton import OptimizerCGNewton
 from igm.processes.iceflow.optimizers.interfaces.cg_newton import (
     InterfaceCGNewton,
 )
+from igm.processes.iceflow.optimizers.line_searches import LineSearches
 
 
 def test_cg_newton_replaces_nonfinite_or_non_descent_direction():

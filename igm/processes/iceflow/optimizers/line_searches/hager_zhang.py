@@ -12,7 +12,6 @@ import tensorflow as tf
 
 from .line_search import LineSearch, ValueAndGradient
 
-
 LineSearchResult = collections.namedtuple(
     "LineSearchResult",
     ["alpha", "converged", "failed", "func_evals", "iterations", "left", "right"],
@@ -36,9 +35,7 @@ _Secant2Result = collections.namedtuple(
 
 def _is_finite(val: ValueAndGradient) -> tf.Tensor:
     return (
-        tf.math.is_finite(val.x)
-        & tf.math.is_finite(val.f)
-        & tf.math.is_finite(val.df)
+        tf.math.is_finite(val.x) & tf.math.is_finite(val.f) & tf.math.is_finite(val.df)
     )
 
 
@@ -104,8 +101,8 @@ def _satisfies_wolfe(
     #   f'(c) >= sigma * f'(0)
     approx_wolfe_applies = val_c.f <= f_lim
     approx_wolfe_suff_dec = (
-        (2.0 * sufficient_decrease_param - 1.0) * val_0.df >= val_c.df
-    )
+        2.0 * sufficient_decrease_param - 1.0
+    ) * val_0.df >= val_c.df
     approx_wolfe = approx_wolfe_applies & approx_wolfe_suff_dec & wolfe_curvature
 
     return exact_wolfe | approx_wolfe
@@ -130,7 +127,11 @@ def _bisect(
         failed = curr.failed | (
             tf.logical_not(finished)
             & tf.logical_not(curr.stopped)
-            & (_bad_nan(mid) | tf.equal(mid.x, curr.left.x) | tf.equal(mid.x, curr.right.x))
+            & (
+                _bad_nan(mid)
+                | tf.equal(mid.x, curr.left.x)
+                | tf.equal(mid.x, curr.right.x)
+            )
         )
 
         to_update = tf.logical_not(curr.stopped | failed)
@@ -258,8 +259,14 @@ def _bracket(
 
         return (
             _IntermediateResult(
-                iteration=curr.iteration + tf.cast(tf.logical_not(curr.stopped), tf.int32),
-                stopped=curr.stopped | failed | finished | bracketed | needs_bisect | clamped,
+                iteration=curr.iteration
+                + tf.cast(tf.logical_not(curr.stopped), tf.int32),
+                stopped=curr.stopped
+                | failed
+                | finished
+                | bracketed
+                | needs_bisect
+                | clamped,
                 failed=failed,
                 num_evals=curr.num_evals + tf.constant(1, dtype=curr.num_evals.dtype),
                 left=left,
@@ -437,7 +444,9 @@ def _secant2(
     sufficient_decrease_param: tf.Tensor,
     curvature_param: tf.Tensor,
 ) -> _Secant2Result:
-    val_c = value_and_gradients_function(_secant(search_interval.left, search_interval.right))
+    val_c = value_and_gradients_function(
+        _secant(search_interval.left, search_interval.right)
+    )
 
     finished = _is_negative_inf(val_c.f)
     failed = tf.logical_not(search_interval.converged) & (
@@ -445,10 +454,14 @@ def _secant2(
         | (tf.logical_not(finished) & tf.logical_not(_is_finite(val_c)))
     )
 
-    converged = search_interval.converged | finished | (
-        tf.logical_not(failed)
-        & _satisfies_wolfe(
-            val_0, val_c, f_lim, sufficient_decrease_param, curvature_param
+    converged = (
+        search_interval.converged
+        | finished
+        | (
+            tf.logical_not(failed)
+            & _satisfies_wolfe(
+                val_0, val_c, f_lim, sufficient_decrease_param, curvature_param
+            )
         )
     )
 
@@ -460,7 +473,8 @@ def _secant2(
         active=tf.logical_not(failed) & tf.logical_not(converged),
         converged=converged,
         failed=failed,
-        num_evals=search_interval.func_evals + tf.constant(1, dtype=search_interval.func_evals.dtype),
+        num_evals=search_interval.func_evals
+        + tf.constant(1, dtype=search_interval.func_evals.dtype),
         left=val_left,
         right=val_right,
     )
@@ -495,7 +509,8 @@ def _line_search_inner_bisection(
 
     next_interval = search_interval._replace(
         failed=search_interval.failed | new_failed,
-        func_evals=search_interval.func_evals + tf.constant(1, dtype=search_interval.func_evals.dtype),
+        func_evals=search_interval.func_evals
+        + tf.constant(1, dtype=search_interval.func_evals.dtype),
     )
 
     def _apply_update() -> HagerZhangLineSearchResult:
@@ -546,7 +561,8 @@ def _line_search_after_bracketing(
         )
 
         secant2_result = HagerZhangLineSearchResult(
-            converged=secant2_raw_result.converged & tf.logical_not(curr_interval.failed),
+            converged=secant2_raw_result.converged
+            & tf.logical_not(curr_interval.failed),
             failed=secant2_raw_result.failed | curr_interval.failed,
             iterations=curr_interval.iterations + tf.cast(active, tf.int32),
             func_evals=secant2_raw_result.num_evals,
@@ -554,19 +570,23 @@ def _line_search_after_bracketing(
             right=secant2_raw_result.right,
         )
 
-        should_check_shrinkage = tf.logical_not(secant2_result.converged | secant2_result.failed)
+        should_check_shrinkage = tf.logical_not(
+            secant2_result.converged | secant2_result.failed
+        )
 
         def _do_check_shrinkage() -> HagerZhangLineSearchResult:
             old_width = curr_interval.right.x - curr_interval.left.x
             new_width = secant2_result.right.x - secant2_result.left.x
             sufficient_shrinkage = new_width < old_width * shrinkage_param
 
-            func_is_flat = _very_close(curr_interval.left.f, curr_interval.right.f) & _very_close(
-                secant2_result.left.f, secant2_result.right.f
-            )
+            func_is_flat = _very_close(
+                curr_interval.left.f, curr_interval.right.f
+            ) & _very_close(secant2_result.left.f, secant2_result.right.f)
 
             new_converged = should_check_shrinkage & sufficient_shrinkage & func_is_flat
-            needs_inner_bisect = should_check_shrinkage & tf.logical_not(sufficient_shrinkage)
+            needs_inner_bisect = should_check_shrinkage & tf.logical_not(
+                sufficient_shrinkage
+            )
 
             inner_bisect_args = secant2_result._replace(
                 converged=secant2_result.converged | new_converged
@@ -593,9 +613,7 @@ def _line_search_after_bracketing(
             next_args.left.x, next_args.right.x
         )
 
-        return (
-            next_args._replace(converged=next_args.converged | interval_shrunk),
-        )
+        return (next_args._replace(converged=next_args.converged | interval_shrunk),)
 
     return tf.while_loop(
         cond=_loop_cond,
@@ -628,7 +646,9 @@ def _prepare_args(
     return val_0, val_initial, f_lim, num_evals
 
 
-def _select_output_alpha(result: HagerZhangLineSearchResult, dtype: tf.dtypes.DType) -> tf.Tensor:
+def _select_output_alpha(
+    result: HagerZhangLineSearchResult, dtype: tf.dtypes.DType
+) -> tf.Tensor:
     zero = tf.constant(0.0, dtype=dtype)
     left_x = tf.cast(result.left.x, dtype)
     left_valid = tf.math.is_finite(left_x) & (left_x > zero)
@@ -660,7 +680,9 @@ class LineSearchHagerZhang(LineSearch):
 
         # These match the TFP public API, with your local step_size_initial name
         # corresponding to TFP's initial_step_size.
-        self.threshold_use_approximate_wolfe_condition = threshold_use_approximate_wolfe_condition
+        self.threshold_use_approximate_wolfe_condition = (
+            threshold_use_approximate_wolfe_condition
+        )
         self.shrinkage_param = shrinkage_param
         self.expansion_param = expansion_param
         self.sufficient_decrease_param = sufficient_decrease_param
@@ -764,7 +786,8 @@ class LineSearchHagerZhang(LineSearch):
             )
 
         result = tf.cond(
-            tf.logical_not(init_interval.failed) & tf.logical_not(init_interval.converged),
+            tf.logical_not(init_interval.failed)
+            & tf.logical_not(init_interval.converged),
             _apply_bracket_and_search,
             lambda: init_interval,
         )

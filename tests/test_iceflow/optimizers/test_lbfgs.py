@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import numpy as np
-import tensorflow as tf
 import pytest
+import tensorflow as tf
 
 from igm.processes.iceflow.optimizers.lbfgs import OptimizerLBFGS
 from igm.processes.iceflow.optimizers.lbfgs_bounds import OptimizerLBFGSBounds
-from .vector_mapping import VectorMapping, BoundedVectorMapping, IdentitySampler
+
+from .vector_mapping import BoundedVectorMapping, IdentitySampler, VectorMapping
 
 # Mark the whole module as slow
 pytestmark = pytest.mark.slow

@@ -16,15 +16,15 @@ from omegaconf import OmegaConf
 
 import igm
 from igm.processes.enthalpy.dissipation.utils import compute_friction_heat
+from igm.processes.iceflow.discretization.horizontal import HorizontalDiscrs
+from igm.processes.iceflow.discretization.vertical import VerticalDiscrs
 from igm.processes.iceflow.energy.components.sliding import (
     SlidingComponents,
     SlidingParams,
     get_sliding_params_args,
 )
-from igm.processes.iceflow.horizontal import HorizontalDiscrs
-from igm.processes.iceflow.utils.inputs import get_inputs_from_state
 from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
-from igm.processes.iceflow.vertical import VerticalDiscrs
+from igm.processes.iceflow.utils.inputs import get_inputs_from_state
 from igm.processes.thk.masks import mask_gr, weights_gr
 
 DTYPE = tf.float64
