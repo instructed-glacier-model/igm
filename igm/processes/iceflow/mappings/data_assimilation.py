@@ -9,9 +9,8 @@ from typing import Dict, List, Optional, Tuple
 
 import tensorflow as tf
 
-from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
-
 from .mapping import Mapping
+from .network import Y_to_UV
 from .transforms import TRANSFORMS, ParameterTransform
 
 

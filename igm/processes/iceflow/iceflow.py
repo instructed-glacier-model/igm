@@ -4,6 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State, print_model_with_inputs_detailed
@@ -24,11 +25,8 @@ from igm.processes.iceflow.mappings import InterfaceMappings, Mappings
 from igm.processes.iceflow.optimizers import InterfaceOptimizers, Optimizers
 from igm.processes.iceflow.solver import solve_iceflow
 from igm.processes.iceflow.solver.solver import should_normalize
-from igm.processes.iceflow.utils.data_preprocessing import (
-    X_to_fieldin,
-    fieldin_state_to_X,
-)
 from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
+from igm.processes.iceflow.utils.inputs import patch_grid
 from igm.processes.iceflow.vertical_velocity.vertical_velocity import (
     update as update_vertical_velocity,
 )
@@ -136,9 +134,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
     )
     if "batch_size" in optimizer_args:
         framesizemax = cfg_unified.data_preparation.framesizemax
-        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
-        ny, nx = int(X.shape[0]), int(X.shape[1])
-        num_patches = (ny // framesizemax + 1) * (nx // framesizemax + 1)
+        ny, nx = int(state.thk.shape[0]), int(state.thk.shape[1])
+        sy, sx = patch_grid(ny, nx, framesizemax)
+        num_patches = sy * sx
         if num_patches > 1 and mapping_name != "network":
             raise ValueError(
                 f"❌ Multiple batching requires mapping=network, "
@@ -166,8 +164,10 @@ def initialize(cfg: DictConfig, state: State) -> None:
     state.iceflow.evaluator_params = evaluator_params
 
     if mapping_name == "network" and cfg_unified.network.print_summary:
-        X = fieldin_state_to_X(state, cfg.processes.iceflow.unified.inputs)
-        fieldin_dict = X_to_fieldin(X, fieldin_names=cfg_unified.inputs)
+        fieldin_dict = {
+            name: tf.convert_to_tensor(getattr(state, name))
+            for name in cfg_unified.inputs
+        }
         print_model_with_inputs_detailed(
             model=state.iceflow_model,
             input_data=fieldin_dict,

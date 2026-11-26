@@ -11,9 +11,6 @@ import igm
 import igm.processes.iceflow.init_stop.init_stop as init_stop_module
 import igm.processes.iceflow.init_stop.reference as reference_module
 from igm.common.runner.configuration.loader import load_yaml_recursive
-from igm.processes.iceflow.evaluator.evaluator import (
-    get_evaluator_inputs_from_state,
-)
 from igm.processes.iceflow.init_stop import (
     InitStopCriterion,
     ReferenceSolve,
@@ -21,6 +18,7 @@ from igm.processes.iceflow.init_stop import (
 )
 from igm.processes.iceflow.optimizers.halt import Halt
 from igm.processes.iceflow.optimizers.halt.step_state import StepState
+from igm.processes.iceflow.utils.inputs import get_evaluator_inputs_from_state
 
 FREQ = 10
 SHAPE = (12, 9)

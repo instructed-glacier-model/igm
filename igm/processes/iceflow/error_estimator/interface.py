@@ -16,6 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 from igm.common import State
 from igm.processes.iceflow.discretization import HorizontalDiscrs, VerticalDiscrs
 from igm.processes.iceflow.energy.cost import get_cost_fn
+from igm.processes.iceflow.utils.inputs import patch_grid
 from igm.utils.math.precision import normalize_precision
 
 from .reference import load_reference_surface_velocity
@@ -74,7 +75,8 @@ class InterfaceErrorEstimator:
         # Single-patch requirement: the estimator sees the full domain.
         ny, nx = int(state.thk.shape[0]), int(state.thk.shape[1])
         framesizemax = int(cfg_unified.data_preparation.framesizemax)
-        num_patches = (ny // framesizemax + 1) * (nx // framesizemax + 1)
+        sy, sx = patch_grid(ny, nx, framesizemax)
+        num_patches = sy * sx
         if num_patches > 1:
             raise ValueError(
                 "❌ error_estimator requires a single full-domain patch; "

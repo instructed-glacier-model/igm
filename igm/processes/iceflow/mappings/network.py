@@ -8,9 +8,18 @@ from typing import List, Tuple
 import tensorflow as tf
 
 from igm.processes.iceflow.bcs import BoundaryCondition
-from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 from .mapping import Mapping
+
+
+@tf.function(jit_compile=True)
+def Y_to_UV(Nz, Y):
+    """Converts the output of the emulator (Y) to the horizontal velocities (U, V)."""
+
+    U = tf.experimental.numpy.moveaxis(Y[..., :Nz], [-1], [1])
+    V = tf.experimental.numpy.moveaxis(Y[..., Nz:], [-1], [1])
+
+    return U, V
 
 
 class MappingNetwork(Mapping):

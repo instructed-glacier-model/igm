@@ -3,15 +3,12 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
 from igm.processes.iceflow.mappings.normalizer import is_distribution_shifted
 from igm.processes.iceflow.optimizers import InterfaceOptimizers, Status
-from igm.processes.iceflow.utils.data_preprocessing import split_field_into_patches
-from igm.processes.iceflow.utils.inputs import get_inputs_from_state
-from igm.utils.math.precision import normalize_precision
+from igm.processes.iceflow.utils.inputs import get_solver_inputs_from_state
 from igm.utils.schedule import value_at
 
 from .credit_tracker import (
@@ -63,14 +60,6 @@ def get_status(
     # return Status.DEFAULT
 
     return Status.IDLE
-
-
-def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
-    """Returns [N, ly, lx, C] non-overlapping patches (see split_field_into_patches)."""
-    X = get_inputs_from_state(cfg, state)
-    framesizemax = cfg.processes.iceflow.unified.data_preparation.framesizemax
-    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
-    return tf.cast(split_field_into_patches(X, framesizemax), dtype)
 
 
 def should_normalize(cfg: DictConfig) -> bool:

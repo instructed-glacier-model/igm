@@ -9,8 +9,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_to_X_2d
-from igm.processes.iceflow.utils.inputs import get_inputs_from_state
+from igm.processes.iceflow.utils.inputs import get_evaluator_inputs_from_state
 from igm.processes.iceflow.utils.velocities import (
     clip_max_velbar,
     get_velbar,
@@ -18,7 +17,6 @@ from igm.processes.iceflow.utils.velocities import (
     get_velsurf,
 )
 from igm.processes.thk.masks import iceflow_node_mask
-from igm.utils.math.precision import normalize_precision
 
 
 class EvaluatorParams(tf.experimental.ExtensionType):
@@ -56,18 +54,6 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
         "V_b": state.iceflow.discr_v.V_b,
         "V_s": state.iceflow.discr_v.V_s,
     }
-
-
-def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
-    """Prepare input tensor from state variables for ice flow evaluation."""
-
-    inputs = fieldin_to_X_2d(get_inputs_from_state(cfg, state))
-
-    # not sure if this is needed but need to verify double precision in other places...
-    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
-    inputs = tf.cast(inputs, dtype)
-
-    return inputs
 
 
 @tf.function(jit_compile=True)

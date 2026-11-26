@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.processes.iceflow.evaluator import evaluate_iceflow
-from igm.processes.iceflow.solver.solver import get_solver_inputs_from_state
+from igm.processes.iceflow.utils.inputs import get_solver_inputs_from_state
 
 from .objective import build_objective_from_cfg
 from .outputs.output_ncdf import update_ncdf_optimize

@@ -8,9 +8,19 @@ from typing import Dict, List
 import tensorflow as tf
 
 from igm.processes.iceflow.discretization import HorizontalDiscr, VerticalDiscr
-from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin
 
 from .components import EnergyComponent
+
+
+@tf.function(jit_compile=True)
+def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
+    """Converts the input tensor X to a dictionary of fieldin variables.
+
+    Name-agnostic. The dual-name handling for the friction field is on
+    the consumer side, in `sliding.get_friction_field`.
+    """
+    channels = tf.unstack(X, num=len(fieldin_names), axis=-1)
+    return dict(zip(fieldin_names, channels))
 
 
 def iceflow_energy(

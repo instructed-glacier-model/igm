@@ -32,10 +32,10 @@ from omegaconf import DictConfig
 
 from igm.common import State
 from igm.processes.iceflow.error_estimator.metrics import masked_median
-from igm.processes.iceflow.evaluator.evaluator import get_evaluator_inputs_from_state
 from igm.processes.iceflow.mappings import Mapping
 from igm.processes.iceflow.optimizers.halt.criteria import Criterion
 from igm.processes.iceflow.optimizers.halt.step_state import StepState
+from igm.processes.iceflow.utils.inputs import get_evaluator_inputs_from_state
 from igm.processes.thk.masks import compute_grounded_mask
 
 from .display import InitStopDisplay

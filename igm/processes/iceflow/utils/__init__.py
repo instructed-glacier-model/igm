@@ -1,7 +1,3 @@
-from .data_preprocessing import (
-    fieldin_to_X_2d,
-    split_field_into_patches,
-)
 from .fields import (
     initialize_iceflow_fields,
 )

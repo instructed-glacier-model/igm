@@ -23,7 +23,6 @@ from igm.processes.iceflow.energy.components.sliding import (
     SlidingParams,
     get_sliding_params_args,
 )
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
 from igm.processes.iceflow.utils.inputs import get_inputs_from_state
 from igm.processes.thk.masks import mask_gr, weights_gr
 
@@ -282,6 +281,11 @@ def _state(fieldin):
     return SimpleNamespace(**{name: field[0] for name, field in fieldin.items()})
 
 
+def _raw_inputs(state, inputs):
+    """The inputs stacked from ``state`` without any weighting."""
+    return tf.stack([getattr(state, name) for name in inputs], axis=-1)
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("law", LAWS)
 def test_inputs_are_read_unchanged_without_subgrid(law):
@@ -294,7 +298,7 @@ def test_inputs_are_read_unchanged_without_subgrid(law):
         inputs = cfg.processes.iceflow.unified.inputs
         np.testing.assert_array_equal(
             get_inputs_from_state(cfg, state).numpy(),
-            fieldin_state_to_X(state, inputs).numpy(),
+            _raw_inputs(state, inputs).numpy(),
         )
 
 
@@ -305,7 +309,7 @@ def test_subgrid_weights_exactly_the_inputs_that_scale_the_friction(law):
     state = _state(fieldin)
     cfg = _cfg(law, use_subgrid_gl=True)
     inputs = list(cfg.processes.iceflow.unified.inputs)
-    raw = fieldin_state_to_X(state, inputs).numpy()
+    raw = _raw_inputs(state, inputs).numpy()
     weighted = get_inputs_from_state(cfg, state).numpy()
     weight = weights_gr(state.thk, state.topg, state.water_level, RATIO).numpy()
     for k, name in enumerate(inputs):
